@@ -415,22 +415,23 @@ const Exam: React.FC = () => {
                     className={`input-styled py-3 ${isConfirmed ? 'bg-gray-100' : ''}`}
                     placeholder={`答案 ${idx + 1}`}
                   />
-                  {isConfirmed && (
+                  {isConfirmed && !isThisCorrect && (
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-gray-600">正确答案: </span>
                       <span className="text-sm font-medium text-green-600">{displayCorrectAnswer}</span>
-                      {isThisCorrect ? (
-                        <span className="text-green-600">✓</span>
-                      ) : (
-                        <span className="text-red-600">✗</span>
-                      )}
+                      <span className="text-red-600">✗</span>
+                    </div>
+                  )}
+                  {isConfirmed && isThisCorrect && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-green-600">✓ 正确</span>
                     </div>
                   )}
                 </div>
               );
             })}
             
-            {!isConfirmed && blankAnswers.some(a => a && (a as string).trim()) && (
+            {!isConfirmed && (
               <button
                 onClick={() => handleFillBlankConfirm(question.id)}
                 className="mt-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
