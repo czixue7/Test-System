@@ -1,0 +1,100 @@
+{
+  "name": "数据中心基础知识测试（第三周）",
+  "description": "高压配电系统、开关柜、断路器、变压器、巡检内容与品牌。",
+  "questions": [
+    {
+      "type": "fill-in-blank",
+      "content": "数据中心中高压配电的组成：______",
+      "correctAnswer": ["市电引入（110KV/35KV）→变电站（110KV/35KV）→中压系统（10KV）→低压配电系统（400V）"],
+      "score": 1
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "数据中心的开关柜的功能有：______、______、______、______、______",
+      "correctAnswer": ["对外市电进行分配", "变换", "通断控制", "监测", "保护"],
+      "score": 5,
+      "allowDisorder": true
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "真空断路器的功能：______、______、______",
+      "correctAnswer": ["开断负荷电流", "开合故障电流", "自动分合闸"],
+      "score": 3,
+      "allowDisorder": true
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "开关柜操作机柜的独立电源，常用的电压等级是：______",
+      "correctAnswer": ["DC110V"],
+      "score": 1
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "高压进线柜的结构是：______、______、______、______",
+      "correctAnswer": ["仪表室", "断路器室", "母线室", "电缆室"],
+      "score": 4,
+      "allowDisorder": true
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "变压器的工作原理是：______",
+      "correctAnswer": ["电磁感应原理"],
+      "score": 1
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "对于10KV市电进线而言，假如变压器一次侧线圈绕组为50组，二次侧线圈绕组为100组，对于变压器出线电压电压为：______",
+      "correctAnswer": ["20KV"],
+      "score": 1
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "变压器的按照通风冷却方式分类可以分为：______、______",
+      "correctAnswer": ["干式变压器", "油浸式变压器"],
+      "score": 2,
+      "allowDisorder": true
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "变压器的容量中，功率为：______，单位为：______，计算容量公式：______",
+      "correctAnswer": ["视在功率", "KVA（千伏安）", "S=VXI"],
+      "score": 3
+    },
+    {
+      "type": "subjective",
+      "content": "数据中心10KV/35KV开关柜系统的组成？",
+      "correctAnswer": "进线柜、计量柜、PT柜、出线柜、联络柜、隔高柜、电抗器柜组成",
+      "score": 10
+    },
+    {
+      "type": "subjective",
+      "content": "高低压开关柜「五防联锁」的作用？",
+      "correctAnswer": "防止误分、误合隔离开关防止带负荷拉、合刀闸或手车触头防止带电挂接地线（合接地刀闸）防止带电地线（接地刀闸）合闸送电防止误入带电设备间隔",
+      "score": 10
+    },
+    {
+      "type": "subjective",
+      "content": "10KV中压系统主要电气？",
+      "correctAnswer": "真空断路器、电压/电流互感器、避雷器、接地开关、操作电源、微机综合继电保护器",
+      "score": 10
+    },
+    {
+      "type": "subjective",
+      "content": "高低压配电室日常巡检的内容有？",
+      "correctAnswer": "序号 巡检项目 巡检内容\n1 高压配电室环境 照明、室内温湿度、通风状况、整洁度、漏水和结露情况、防鼠害措施\n2 开关柜整体外观 柜体完整性（变形、表面脱落或腐蚀情况），回路铭牌、标号，指示灯与仪表工作状态，安全锁具及操作工具完整性\n3 开关柜、断路器 异常声响、震动、气味\n4 开关状态及指示灯 主开关分/合状态、实验/工作状态、接地开关情况、带电指示灯、计量/测量仪表显示\n5 综合保护器检查 工作电源情况、报警信息、故障跳闸指示灯\n6 直流电源检查 记录充电电压、报警信息",
+      "score": 10
+    },
+    {
+      "type": "subjective",
+      "content": "数据中心开关柜的品牌有哪些？",
+      "correctAnswer": "ABB、西门子、施耐德以及使用较少的：德力西电气、中国西电、人民电器和大全集团",
+      "score": 10
+    },
+    {
+      "type": "subjective",
+      "content": "变压器巡检的内容有？",
+      "correctAnswer": "序号 巡检项目 巡检内容\n1 变压器室（配电室）环境 照明、室内温湿度、通风状况、整洁度、漏水和结露情况、防鼠害\n2 运行噪音 均匀平稳、与之前相比无明显变化\n3 绕组温度 温控器显示三相绕组温度，有无过温报警提示\n4 风扇运行状况 风扇启/停状态",
+      "score": 10
+    }
+  ]
+}
