@@ -1,10 +1,10 @@
-# 低压电工考试系统
+# 低压电工测试系统
 
-一个基于 Tauri 2.x 构建的跨平台考试应用，支持 Windows 桌面端和 Android 移动端。
+一个基于 Tauri 2.x 构建的跨平台测试应用，支持 Windows 桌面端和 Android 移动端。
 
 ## 项目介绍
 
-本系统用于低压电工考试练习，包含以下功能：
+本系统用于低压电工测试练习，包含以下功能：
 - 10 周考题练习
 - 选择题、判断题、主观题答题
 - 主观题智能评分（基于文本相似度算法）
@@ -218,7 +218,7 @@ Low_Voltage_Electrician_Exam/
 │   │   ├── Records.tsx           # 答题记录列表
 │   │   └── Result.tsx            # 答题结果
 │   ├── store/                    # 状态管理
-│   │   ├── examStore.ts          # 考试状态
+│   │   ├── examStore.ts          # 测试状态
 │   │   ├── questionBankStore.ts  # 题库状态
 │   │   └── recordStore.ts        # 记录状态
 │   ├── utils/                    # 工具函数
