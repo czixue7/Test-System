@@ -5,6 +5,21 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>低压电工测试系统</title>
+    <script>
+      // 在页面渲染前立即应用主题，防止闪烁
+      (function() {
+        try {
+          const storedTheme = localStorage.getItem('theme-preference');
+          const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          const theme = storedTheme || (systemDark ? 'dark' : 'light');
+          if (theme === 'dark') {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {
+          // 忽略错误
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

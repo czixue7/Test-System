@@ -152,16 +152,30 @@ export const useExamStore = create<ExamStore>((set, get) => ({
     const question = state.examState.questions.find(q => q.id === questionId);
     const answer = state.examState.answers.get(questionId);
     
-    if (!question || answer === undefined) return;
+    if (!question) return;
     
-    const { isCorrect, score } = checkAnswer(question, answer);
+    const hasAnswered = answer !== undefined && 
+      answer !== '' && 
+      (!Array.isArray(answer) || answer.length > 0);
     
-    const result: QuestionResult = {
-      answer,
-      isConfirmed: true,
-      isCorrect,
-      score
-    };
+    let result: QuestionResult;
+    
+    if (!hasAnswered) {
+      result = {
+        answer: answer ?? '',
+        isConfirmed: true,
+        isCorrect: false,
+        score: 0
+      };
+    } else {
+      const { isCorrect, score } = checkAnswer(question, answer);
+      result = {
+        answer,
+        isConfirmed: true,
+        isCorrect,
+        score
+      };
+    }
     
     set((state) => {
       if (!state.examState) return state;
@@ -244,23 +258,26 @@ export const useExamStore = create<ExamStore>((set, get) => ({
         return {
           questionId: question.id,
           answer: result.answer,
-          score: result.score
+          score: result.score,
+          isCorrect: result.isCorrect
         };
       }
       
       if (answer !== undefined) {
-        const { score } = checkAnswer(question, answer);
+        const { score, isCorrect } = checkAnswer(question, answer);
         return {
           questionId: question.id,
           answer,
-          score
+          score,
+          isCorrect
         };
       }
       
       return {
         questionId: question.id,
         answer: '',
-        score: 0
+        score: 0,
+        isCorrect: false
       };
     });
     

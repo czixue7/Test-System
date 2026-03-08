@@ -4,18 +4,12 @@ import { useQuestionBankStore } from './store/questionBankStore';
 import { useRecordStore } from './store/recordStore';
 
 const Home = lazy(() => import('./pages/Home'));
-const QuestionBankDetail = lazy(() => import('./pages/QuestionBankDetail'));
+const Profile = lazy(() => import('./pages/Profile'));
+const Practice = lazy(() => import('./pages/Practice'));
 const Exam = lazy(() => import('./pages/Exam'));
 const Result = lazy(() => import('./pages/Result'));
 const Records = lazy(() => import('./pages/Records'));
 const Import = lazy(() => import('./pages/Import'));
-
-const PageLoader: React.FC = () => (
-  <div className="page-loading-fallback">
-    <div className="page-loading-spinner"></div>
-    <p className="text-gray-500 mt-4">加载中...</p>
-  </div>
-);
 
 const App: React.FC = () => {
   const { loadBanks } = useQuestionBankStore();
@@ -36,15 +30,27 @@ const App: React.FC = () => {
   }, [loadBanks, loadRecords]);
 
   if (initializing) {
-    return <PageLoader />;
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-500 dark:text-gray-400">加载中...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
     <BrowserRouter>
-      <Suspense fallback={<PageLoader />}>
+      <Suspense fallback={
+        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      }>
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/bank/:id" element={<QuestionBankDetail />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/practice/:bankId/:mode" element={<Practice />} />
           <Route path="/exam/:bankId" element={<Exam />} />
           <Route path="/result/:id" element={<Result />} />
           <Route path="/records" element={<Records />} />

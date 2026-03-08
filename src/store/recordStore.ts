@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { ExamRecord, UserAnswer } from '../types';
+import { ExamRecord, UserAnswer, Question } from '../types';
 import { getStoreValue, setStoreValue } from '../utils/tauriStore';
 
 function generateId(): string {
@@ -14,6 +14,7 @@ interface RecordState {
   addRecord: (
     bankId: string,
     bankName: string,
+    questions: Question[],
     answers: UserAnswer[],
     duration: number,
     maxScore: number
@@ -38,7 +39,7 @@ export const useRecordStore = create<RecordState>()(
         set({ records, isLoaded: true });
       },
       
-      addRecord: (bankId, bankName, answers, duration, maxScore) => {
+      addRecord: (bankId, bankName, questions, answers, duration, maxScore) => {
         const id = generateId();
         const now = new Date().toISOString();
         
@@ -48,6 +49,7 @@ export const useRecordStore = create<RecordState>()(
           id,
           bankId,
           bankName,
+          questions,
           answers,
           totalScore,
           maxScore: maxScore,

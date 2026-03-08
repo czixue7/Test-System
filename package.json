@@ -1,7 +1,7 @@
 {
   "name": "low-voltage-electrician-exam",
-  "version": "0.1.0",
-  "description": "低压电工考试系统",
+  "version": "0.2.2",
+  "description": "答题测试库",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -28,7 +28,7 @@
     "zustand": "^4.5.4"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.0.0",
+    "@tauri-apps/cli": "^2.10.1",
     "@types/node": "^20.14.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",

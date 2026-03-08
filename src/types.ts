@@ -1,5 +1,7 @@
 export type QuestionType = 'fill-in-blank' | 'single-choice' | 'multiple-choice' | 'subjective';
 
+export type PracticeMode = 'sequential' | 'wrong' | 'favorites' | 'common' | 'view';
+
 export interface AnswerWithImages {
   text: string;
   images?: string[];
@@ -36,12 +38,14 @@ export interface UserAnswer {
   answer: string | string[];
   score?: number;
   similarity?: number;
+  isCorrect: boolean;
 }
 
 export interface ExamRecord {
   id: string;
   bankId: string;
   bankName: string;
+  questions: Question[];
   answers: UserAnswer[];
   totalScore: number;
   maxScore: number;
