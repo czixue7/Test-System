@@ -5,15 +5,33 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "fs:default",
+    "fs:allow-read",
+    "fs:allow-write",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
+    "fs:allow-create",
+    "fs:allow-mkdir",
+    "fs:allow-remove",
+    "fs:allow-rename",
+    "fs:allow-exists",
+    "fs:allow-app-read",
+    "fs:allow-app-write",
+    "fs:allow-app-meta",
+    "fs:allow-app-read-recursive",
+    "fs:allow-app-write-recursive",
     "store:default",
     "store:allow-get",
     "store:allow-set",
     "store:allow-save",
     "store:allow-delete",
     "store:allow-load",
+    "store:allow-keys",
     "sql:default",
     "sql:allow-load",
     "sql:allow-execute",
-    "sql:allow-select"
-  ]
+    "sql:allow-select",
+    "sql:allow-close"
+  ],
+  "platforms": ["linux", "macOS", "windows", "android", "iOS"]
 }

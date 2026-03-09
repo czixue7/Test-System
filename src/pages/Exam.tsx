@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuestionBankStore } from '../store/questionBankStore';
 import { useExamStore } from '../store/examStore';
 import { useRecordStore } from '../store/recordStore';
+import { useSettingsStore } from '../store/settingsStore';
 import { Question } from '../types';
 import ConfirmModal from '../components/ConfirmModal';
 
@@ -28,6 +29,8 @@ const Exam: React.FC = () => {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [submitType, setSubmitType] = useState<'partial' | 'complete' | null>(null);
+  const [isGrading, setIsGrading] = useState(false);
+  const [gradingProgress, setGradingProgress] = useState(0);
   const navRef = useRef<HTMLDivElement>(null);
 
   const bank = getBank(bankId!);
@@ -42,7 +45,7 @@ const Exam: React.FC = () => {
   }, [bank, startExam]);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval>;
     if (examState && !examState.isFinished && examStartTime > 0) {
       interval = setInterval(() => {
         setElapsedTime(Math.floor((Date.now() - examStartTime) / 1000));
@@ -90,57 +93,68 @@ const Exam: React.FC = () => {
     setShowSubmitConfirm(true);
   };
 
-  const handleSubmitConfirm = () => {
+  const handleSubmitConfirm = async () => {
     setShowSubmitConfirm(false);
-    const answers = finishExam();
-    const maxScore = examState?.questions.reduce((sum, q) => sum + q.score, 0) || 0;
+    setIsGrading(true);
+    setGradingProgress(0);
     
-    const wrongQuestionsInExam: Question[] = [];
-    answers.forEach((answer) => {
-      const hasAnswered = answer.answer !== '' && 
-        (!Array.isArray(answer.answer) || answer.answer.length > 0);
-      if (hasAnswered && !answer.isCorrect) {
-        const question = examState?.questions.find(q => q.id === answer.questionId);
-        if (question) {
-          wrongQuestionsInExam.push(question);
-        }
-      }
-    });
-    
-    if (wrongQuestionsInExam.length > 0) {
-      const stored = localStorage.getItem('practice-data-global');
-      let existingWrong: Question[] = [];
-      if (stored) {
-        try {
-          const data = JSON.parse(stored);
-          existingWrong = data.wrongQuestions || [];
-        } catch {}
-      }
+    try {
+      const answers = await finishExam();
+      setGradingProgress(100);
       
-      const mergedWrong = [...existingWrong];
-      wrongQuestionsInExam.forEach(q => {
-        if (!mergedWrong.find(existing => existing.id === q.id)) {
-          mergedWrong.push(q);
+      const maxScore = examState?.questions.reduce((sum, q) => sum + q.score, 0) || 0;
+      
+      const wrongQuestionsInExam: Question[] = [];
+      answers.forEach((answer) => {
+        const hasAnswered = answer.answer !== '' && 
+          (!Array.isArray(answer.answer) || answer.answer.length > 0);
+        if (hasAnswered && !answer.isCorrect) {
+          const question = examState?.questions.find(q => q.id === answer.questionId);
+          if (question) {
+            wrongQuestionsInExam.push(question);
+          }
         }
       });
       
-      const storedData = stored ? JSON.parse(stored) : {};
-      localStorage.setItem('practice-data-global', JSON.stringify({
-        ...storedData,
-        wrongQuestions: mergedWrong
-      }));
+      if (wrongQuestionsInExam.length > 0) {
+        const stored = localStorage.getItem('practice-data-global');
+        let existingWrong: Question[] = [];
+        if (stored) {
+          try {
+            const data = JSON.parse(stored);
+            existingWrong = data.wrongQuestions || [];
+          } catch {}
+        }
+        
+        const mergedWrong = [...existingWrong];
+        wrongQuestionsInExam.forEach(q => {
+          if (!mergedWrong.find(existing => existing.id === q.id)) {
+            mergedWrong.push(q);
+          }
+        });
+        
+        const storedData = stored ? JSON.parse(stored) : {};
+        localStorage.setItem('practice-data-global', JSON.stringify({
+          ...storedData,
+          wrongQuestions: mergedWrong
+        }));
+      }
+      
+      const recordId = addRecord(
+        examState?.bankId || '',
+        examState?.bankName || '',
+        examState?.questions || [],
+        answers,
+        elapsedTime,
+        maxScore,
+        useSettingsStore.getState().gradingMode
+      );
+      resetExam();
+      navigate(`/result/${recordId}`);
+    } finally {
+      setIsGrading(false);
+      setGradingProgress(0);
     }
-    
-    const recordId = addRecord(
-      examState?.bankId || '',
-      examState?.bankName || '',
-      examState?.questions || [],
-      answers,
-      elapsedTime,
-      maxScore
-    );
-    resetExam();
-    navigate(`/result/${recordId}`);
   };
 
   if (!bank) {
@@ -349,6 +363,24 @@ const Exam: React.FC = () => {
           cancelText="继续答题"
           type={submitType === 'partial' ? 'warning' : 'info'}
         />
+      )}
+
+      {isGrading && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 mx-4 max-w-sm w-full text-center shadow-xl">
+            <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-lg font-medium text-gray-800 dark:text-gray-200 mb-2">正在判题...</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              {useSettingsStore.getState().gradingMode === 'ai' ? 'AI 正在批改您的答案，请稍候' : '正在使用固定规则批改您的答案，请稍候'}
+            </p>
+            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+              <div
+                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${gradingProgress}%` }}
+              ></div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

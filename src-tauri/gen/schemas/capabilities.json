@@ -1,1 +1,0 @@
-{"default":{"identifier":"default","description":"Default capabilities for the application","local":true,"windows":["main"],"permissions":["core:default","store:default","store:allow-get","store:allow-set","store:allow-save","store:allow-delete","store:allow-load","sql:default","sql:allow-load","sql:allow-execute","sql:allow-select"]}}

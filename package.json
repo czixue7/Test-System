@@ -1,6 +1,6 @@
 {
   "name": "low-voltage-electrician-exam",
-  "version": "0.2.2",
+  "version": "0.3.1",
   "description": "答题测试库",
   "type": "module",
   "scripts": {
@@ -17,10 +17,7 @@
     "parse-pdf": "tsx scripts/parse-pdf.ts"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.0.0",
-    "@tauri-apps/plugin-os": "^2.3.2",
-    "@tauri-apps/plugin-sql": "^2.0.0",
-    "@tauri-apps/plugin-store": "^2.4.2",
+    "@wllama/wllama": "^2.3.7",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.0",
@@ -34,6 +31,7 @@
     "@types/react-dom": "^18.3.0",
     "@types/string-similarity": "^4.0.2",
     "@vitejs/plugin-react": "^4.3.1",
+    "@webgpu/types": "^0.1.69",
     "autoprefixer": "^10.4.19",
     "canvas": "^3.2.1",
     "pdf-parse": "^1.1.1",

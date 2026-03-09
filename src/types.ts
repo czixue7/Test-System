@@ -39,6 +39,9 @@ export interface UserAnswer {
   score?: number;
   similarity?: number;
   isCorrect: boolean;
+  aiFeedback?: string;
+  aiExplanation?: string;
+  gradingMode?: GradingMode;
 }
 
 export interface ExamRecord {
@@ -53,6 +56,8 @@ export interface ExamRecord {
   duration: number;
   startedAt: string;
   finishedAt: string;
+  aiEvaluation?: string;
+  gradingMode?: GradingMode;
 }
 
 export type QuestionStatus = 'unanswered' | 'correct' | 'incorrect';
@@ -62,6 +67,9 @@ export interface QuestionResult {
   isConfirmed: boolean;
   isCorrect: boolean;
   score: number;
+  aiFeedback?: string;
+  aiExplanation?: string;
+  gradingMode?: GradingMode;
 }
 
 export interface ExamState {
@@ -90,4 +98,13 @@ export interface JsonBankData {
   name: string;
   description?: string;
   questions: JsonQuestionData[];
+}
+
+export type GradingMode = 'ai' | 'fixed' | 'ai-fallback';
+
+export interface AIGradingResult {
+  score: number;
+  isCorrect: boolean;
+  similarity?: number;
+  feedback?: string;
 }

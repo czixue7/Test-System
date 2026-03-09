@@ -89,7 +89,7 @@ export function validateJsonBank(data: unknown): { valid: boolean; error?: strin
 
 export function convertJsonToBank(data: JsonBankData): QuestionBank {
   const now = new Date().toISOString();
-  
+
   const questions: Question[] = data.questions.map(q => ({
     id: generateId(),
     type: q.type as QuestionType,
@@ -100,9 +100,10 @@ export function convertJsonToBank(data: JsonBankData): QuestionBank {
     })),
     correctAnswer: q.correctAnswer,
     score: q.score ?? 10,
-    explanation: q.explanation
+    explanation: q.explanation,
+    allowDisorder: q.allowDisorder
   }));
-  
+
   return {
     id: generateId(),
     name: data.name,

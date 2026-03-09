@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { Question, ExamState, UserAnswer, QuestionResult, QuestionStatus, AnswerWithImages } from '../types';
 import { calculateSubjectiveScore } from '../utils/similarity';
+import { useSettingsStore } from './settingsStore';
+import { gradeFillBlankQuestion, gradeSubjective, isModelReady } from '../utils/aiGrading';
 
 function isAnswerWithImages(answer: unknown): answer is AnswerWithImages {
   return typeof answer === 'object' && answer !== null && 'text' in answer;
@@ -21,13 +23,13 @@ interface ExamStore {
   startExam: (bankId: string, bankName: string, questions: Question[]) => void;
   setAnswer: (questionId: string, answer: string | string[]) => void;
   getAnswer: (questionId: string) => string | string[] | undefined;
-  confirmAnswer: (questionId: string) => void;
+  confirmAnswer: (questionId: string) => Promise<void>;
   getResult: (questionId: string) => QuestionResult | undefined;
   getQuestionStatus: (questionId: string) => QuestionStatus;
   nextQuestion: () => void;
   prevQuestion: () => void;
   goToQuestion: (index: number) => void;
-  finishExam: () => UserAnswer[];
+  finishExam: () => Promise<UserAnswer[]>;
   resetExam: () => void;
   getCurrentQuestion: () => Question | undefined;
   getProgress: () => { answered: number; total: number };
@@ -109,6 +111,89 @@ const checkAnswer = (question: Question, answer: string | string[]): { isCorrect
   return { isCorrect: false, score: 0 };
 };
 
+const checkAnswerWithAI = async (
+  question: Question,
+  answer: string | string[]
+): Promise<{ isCorrect: boolean; score: number; aiFeedback?: string; aiExplanation?: string }> => {
+  if (question.type === 'single-choice') {
+    const isCorrect = answer === question.correctAnswer;
+    return { isCorrect, score: isCorrect ? question.score : 0 };
+  }
+  
+  if (question.type === 'multiple-choice') {
+    const correctSet = new Set(question.correctAnswer as string[]);
+    const userSet = new Set(answer as string[]);
+    const isCorrect =
+      correctSet.size === userSet.size &&
+      [...correctSet].every((item) => userSet.has(item));
+    return { isCorrect, score: isCorrect ? question.score : 0 };
+  }
+  
+  const gradingMode = useSettingsStore.getState().gradingMode;
+  const aiEnabled = gradingMode === 'ai' && isModelReady();
+  
+  if (question.type === 'fill-in-blank') {
+    const rawCorrectAnswer = question.correctAnswer;
+    const correctAnswers: string[] = Array.isArray(rawCorrectAnswer)
+      ? rawCorrectAnswer.filter((a): a is string => typeof a === 'string')
+      : (typeof rawCorrectAnswer === 'string' ? [rawCorrectAnswer] : []);
+    const userAnswers = Array.isArray(answer) ? answer : [answer];
+    
+    if (correctAnswers.length === 0) {
+      return { isCorrect: false, score: 0 };
+    }
+    
+    if (aiEnabled) {
+      // 使用整题判题，一次性传入所有答案
+      const aiResult = await gradeFillBlankQuestion(
+        userAnswers,
+        correctAnswers,
+        question.score,
+        question.content,
+        question.allowDisorder
+      );
+
+      if (aiResult !== null) {
+        return {
+          isCorrect: aiResult.isCorrect,
+          score: aiResult.score,
+          aiFeedback: aiResult.feedback,
+          aiExplanation: aiResult.explanation
+        };
+      }
+    }
+    
+    // AI 未启用或失败，使用固定规则
+    return checkAnswer(question, answer);
+  }
+  
+  if (question.type === 'subjective') {
+    if (aiEnabled) {
+      const correctAnswerText = getAnswerTextForComparison(question.correctAnswer);
+      const aiResult = await gradeSubjective(answer as string, correctAnswerText, question.score);
+      
+      if (aiResult !== null) {
+        return { 
+          isCorrect: aiResult.isCorrect, 
+          score: aiResult.score,
+          aiFeedback: aiResult.feedback,
+          aiExplanation: aiResult.explanation
+        };
+      }
+    }
+    
+    const result = calculateSubjectiveScore(
+      answer as string,
+      getAnswerTextForComparison(question.correctAnswer),
+      question.score
+    );
+    const isCorrect = result.similarity >= 0.8;
+    return { isCorrect, score: result.score };
+  }
+  
+  return { isCorrect: false, score: 0 };
+};
+
 export const useExamStore = create<ExamStore>((set, get) => ({
   examState: null,
   
@@ -145,7 +230,7 @@ export const useExamStore = create<ExamStore>((set, get) => ({
     return get().examState?.answers.get(questionId);
   },
   
-  confirmAnswer: (questionId) => {
+  confirmAnswer: async (questionId) => {
     const state = get();
     if (!state.examState) return;
     
@@ -168,12 +253,16 @@ export const useExamStore = create<ExamStore>((set, get) => ({
         score: 0
       };
     } else {
-      const { isCorrect, score } = checkAnswer(question, answer);
+      const { isCorrect, score, aiFeedback, aiExplanation } = await checkAnswerWithAI(question, answer);
+      const gradingMode = useSettingsStore.getState().gradingMode;
       result = {
         answer,
         isConfirmed: true,
         isCorrect,
-        score
+        score,
+        aiFeedback,
+        aiExplanation,
+        gradingMode: gradingMode === 'ai' ? 'ai' : 'fixed'
       };
     }
     
@@ -246,40 +335,49 @@ export const useExamStore = create<ExamStore>((set, get) => ({
     });
   },
   
-  finishExam: () => {
+  finishExam: async () => {
     const state = get();
     if (!state.examState) return [];
     
-    const userAnswers: UserAnswer[] = state.examState.questions.map((question) => {
-      const result = state.examState!.results.get(question.id);
-      const answer = state.examState!.answers.get(question.id);
-      
-      if (result) {
+    const userAnswers: UserAnswer[] = await Promise.all(
+      state.examState.questions.map(async (question) => {
+        const result = state.examState!.results.get(question.id);
+        const answer = state.examState!.answers.get(question.id);
+        
+        if (result) {
+          return {
+            questionId: question.id,
+            answer: result.answer,
+            score: result.score,
+            isCorrect: result.isCorrect,
+            aiFeedback: result.aiFeedback,
+            aiExplanation: result.aiExplanation,
+            gradingMode: result.gradingMode
+          };
+        }
+
+        if (answer !== undefined) {
+          const { score, isCorrect, aiFeedback, aiExplanation } = await checkAnswerWithAI(question, answer);
+          const gradingMode = useSettingsStore.getState().gradingMode;
+          return {
+            questionId: question.id,
+            answer,
+            score,
+            isCorrect,
+            aiFeedback,
+            aiExplanation,
+            gradingMode: gradingMode === 'ai' ? 'ai' : 'fixed'
+          };
+        }
+        
         return {
           questionId: question.id,
-          answer: result.answer,
-          score: result.score,
-          isCorrect: result.isCorrect
+          answer: '',
+          score: 0,
+          isCorrect: false
         };
-      }
-      
-      if (answer !== undefined) {
-        const { score, isCorrect } = checkAnswer(question, answer);
-        return {
-          questionId: question.id,
-          answer,
-          score,
-          isCorrect
-        };
-      }
-      
-      return {
-        questionId: question.id,
-        answer: '',
-        score: 0,
-        isCorrect: false
-      };
-    });
+      })
+    );
     
     set((state) => ({
       examState: state.examState

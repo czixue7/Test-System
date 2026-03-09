@@ -5,20 +5,18 @@ import { useThemeStore, Theme } from '../store/themeStore';
 const Profile: React.FC = () => {
   const navigate = useNavigate();
   const [showAboutModal, setShowAboutModal] = useState(false);
-  const [showDevModal, setShowDevModal] = useState(false);
-  const [devModalTitle, setDevModalTitle] = useState('');
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const { theme, setTheme } = useThemeStore();
 
   useEffect(() => {
-    if (showAboutModal || showDevModal || showThemeModal) {
+    if (showAboutModal || showThemeModal) {
       const timer = setTimeout(() => setModalVisible(true), 10);
       return () => clearTimeout(timer);
     } else {
       setModalVisible(false);
     }
-  }, [showAboutModal, showDevModal, showThemeModal]);
+  }, [showAboutModal, showThemeModal]);
 
   const menuItems = [
     {
@@ -29,10 +27,7 @@ const Profile: React.FC = () => {
         </svg>
       ),
       title: '设置',
-      onClick: () => {
-        setDevModalTitle('设置');
-        setShowDevModal(true);
-      }
+      onClick: () => navigate('/settings')
     },
     {
       icon: (
@@ -41,6 +36,7 @@ const Profile: React.FC = () => {
         </svg>
       ),
       title: '主题',
+      value: theme === 'light' ? '浅色' : '深色',
       onClick: () => setShowThemeModal(true)
     },
     {
@@ -77,9 +73,11 @@ const Profile: React.FC = () => {
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md overflow-hidden">
           {menuItems.map((item, index) => (
             <div
-              key={index}
+              key={item.title}
               onClick={item.onClick}
-              className="flex items-center justify-between px-4 py-3.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors border-b border-gray-100 dark:border-gray-700 last:border-b-0"
+              className={`flex items-center justify-between px-4 py-3.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+                index > 0 ? 'border-t border-gray-100 dark:border-gray-700' : ''
+              }`}
             >
               <div className="flex items-center gap-3">
                 <div className="text-blue-500 dark:text-blue-400">
@@ -87,9 +85,14 @@ const Profile: React.FC = () => {
                 </div>
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{item.title}</span>
               </div>
-              <svg className="w-4 h-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
+              <div className="flex items-center gap-2">
+                {item.value && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400">{item.value}</span>
+                )}
+                <svg className="w-4 h-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
             </div>
           ))}
         </div>
@@ -137,10 +140,11 @@ const Profile: React.FC = () => {
                 </svg>
               </div>
               <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-1">答题测试库</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">版本 0.2.2</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">版本 0.3.1</p>
               <div className="text-sm text-gray-600 dark:text-gray-300 space-y-1.5 mb-4">
                 <p>一款帮助用户学习和备考的应用</p>
                 <p>支持题库管理、模拟测试、错题回顾等功能</p>
+                <p>支持 AI 智能判题（WebLLM）</p>
                 <div className="pt-2 mt-2 border-t border-gray-200 dark:border-gray-700">
                   <a 
                     href="https://github.com/czixue7/Test-System" 
@@ -161,37 +165,6 @@ const Profile: React.FC = () => {
               className="w-full py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg font-medium hover:from-blue-600 hover:to-blue-700 transition-all"
             >
               确定
-            </button>
-          </div>
-        </div>
-      )}
-
-      {showDevModal && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fade-in"
-          onClick={() => setShowDevModal(false)}
-        >
-          <div 
-            className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl transform transition-all duration-300 ease-out"
-            style={{
-              animation: modalVisible ? 'bounceIn 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards' : 'none'
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="text-center">
-              <div className="w-14 h-14 mx-auto mb-3 bg-yellow-100 dark:bg-yellow-900/30 rounded-full flex items-center justify-center">
-                <svg className="w-7 h-7 text-yellow-500 dark:text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </div>
-              <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-2">{devModalTitle}</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">功能开发中，敬请期待...</p>
-            </div>
-            <button
-              onClick={() => setShowDevModal(false)}
-              className="w-full py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-all"
-            >
-              关闭
             </button>
           </div>
         </div>

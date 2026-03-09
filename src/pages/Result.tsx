@@ -166,6 +166,32 @@ const Result: React.FC = () => {
               <div className="text-gray-700 dark:text-gray-300">{currentQuestion.explanation}</div>
             </div>
           )}
+          
+          {(userAnswer?.aiFeedback || userAnswer?.aiExplanation) && (
+            <div className={`p-4 rounded-lg border ${
+              record.gradingMode === 'ai'
+                ? 'bg-purple-50 dark:bg-purple-900/30 border-purple-200 dark:border-purple-700'
+                : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700'
+            }`}>
+              <div className="flex items-center gap-2 mb-2">
+                <svg className={`w-4 h-4 ${
+                  record.gradingMode === 'ai' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-600 dark:text-gray-400'
+                }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+                <div className={`text-sm font-medium ${
+                  record.gradingMode === 'ai' ? 'text-purple-700 dark:text-purple-400' : 'text-gray-700 dark:text-gray-400'
+                }`}>
+                  {record.gradingMode === 'ai' ? 'AI 智能判题解析' : '固定规则判题解析'}
+                </div>
+              </div>
+              {userAnswer.aiExplanation ? (
+                <div className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{userAnswer.aiExplanation}</div>
+              ) : (
+                <div className="text-gray-700 dark:text-gray-300">{userAnswer.aiFeedback}</div>
+              )}
+            </div>
+          )}
         </div>
       );
     };
@@ -268,9 +294,71 @@ const Result: React.FC = () => {
               <div className="text-xs text-gray-500 dark:text-gray-400">未答</div>
             </div>
           </div>
-          <div className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          <div className="text-sm text-gray-500 dark:text-gray-400 mb-2">
             {record.bankName} · {new Date(record.finishedAt).toLocaleString()}
           </div>
+          <div className="mb-4">
+            {(() => {
+              // 统计各判题模式的使用情况
+              const modeCounts: Record<string, number> = {};
+              record.answers.forEach(ans => {
+                const mode = ans.gradingMode || record.gradingMode || 'fixed';
+                modeCounts[mode] = (modeCounts[mode] || 0) + 1;
+              });
+              
+              const hasMixedModes = Object.keys(modeCounts).length > 1;
+              
+              if (hasMixedModes) {
+                return (
+                  <div className="flex flex-wrap justify-center gap-2">
+                    <span className="text-xs text-gray-500 dark:text-gray-400">混合判题模式：</span>
+                    {modeCounts['ai'] && (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300">
+                        AI 智能判题 {modeCounts['ai']}题
+                      </span>
+                    )}
+                    {modeCounts['fixed'] && (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
+                        固定规则判题 {modeCounts['fixed']}题
+                      </span>
+                    )}
+                    {modeCounts['ai-fallback'] && (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300">
+                        AI降级判题 {modeCounts['ai-fallback']}题
+                      </span>
+                    )}
+                  </div>
+                );
+              }
+              
+              // 单一模式
+              const singleMode = record.gradingMode || 'fixed';
+              return (
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                  singleMode === 'ai'
+                    ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300'
+                    : singleMode === 'ai-fallback'
+                      ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300'
+                      : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                }`}>
+                  {singleMode === 'ai' ? 'AI 智能判题' : singleMode === 'ai-fallback' ? 'AI降级判题' : '固定规则判题'}
+                </span>
+              );
+            })()}
+          </div>
+          
+          {record.aiEvaluation && (
+            <div className="mb-4 p-4 bg-purple-50 dark:bg-purple-900/30 rounded-xl border border-purple-200 dark:border-purple-700">
+              <div className="flex items-center gap-2 mb-2">
+                <svg className="w-5 h-5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+                <span className="text-sm font-medium text-purple-700 dark:text-purple-400">AI 考试评价</span>
+              </div>
+              <p className="text-sm text-gray-700 dark:text-gray-300">{record.aiEvaluation}</p>
+            </div>
+          )}
+          
           <button onClick={() => setShowDetail(true)} className="w-full py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg font-medium hover:from-blue-600 hover:to-blue-700 transition-all mb-2">
             查看答题详情
           </button>

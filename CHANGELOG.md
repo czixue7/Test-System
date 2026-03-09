@@ -6,6 +6,345 @@
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-03-09
+
+### 移除
+
+- **GGUF 模型支持**：
+  - 移除 GGUF 模型加载功能（wllama）
+  - 移除 GGUF 模型下载管理器
+  - 移除模型存储管理模块
+  - 简化 AI 判题，仅保留 WebLLM 方式
+  - 精简设置页面，移除 GGUF 相关 UI
+
+### 新增
+
+- **WebLLM 模型下载管理**：
+  - 新增 `webllmDownloadManager` 管理 WebLLM 模型下载任务
+  - 支持暂停、继续、取消下载操作
+  - 下载进度实时显示
+  - 已下载模型显示"启用"和"删除"按钮
+- **AI 判题详细解析**：
+  - 新增 `aiExplanation` 字段存储详细解析内容
+  - 填空题显示逐空分析和综合解析
+  - 主观题显示题目分析、答案要点分析、关联分析、解析建议
+  - 前端结果页显示完整解析内容
+- **自动加载上次使用的模型**：
+  - 应用启动时自动加载上次使用的 WebLLM 模型
+  - 模型加载状态保存到 localStorage
+- **详细的 AI 判题日志**：
+  - 完整的判题流程日志输出
+  - 包含 Prompt、AI 响应、解析结果等详细信息
+
+### 修改
+
+- **WebLLM 模型按钮优化**：
+  - 已缓存模型显示"启用"和"删除"按钮
+  - 未下载模型显示"下载"按钮
+  - 加载中模型显示进度条和操作按钮
+- **AI 判题 Prompt 优化**：
+  - 填空题 Prompt 要求逐空判断并给出综合解析
+  - 主观题 Prompt 要求结构化分析
+  - 严格限制评分标准和返回格式
+- **模型加载队列**：
+  - 支持模型加载队列，避免冲突
+  - 当前模型加载完成后再加载新模型
+
+### 修复
+
+- 修复 AI 响应被截断时判题失败的问题
+- 修复详细解析内容未正确提取的问题
+- 修复填空题综合解析不显示的问题
+- 修复前端不显示 AI 详细解析的问题
+
+### 技术细节
+
+#### WebLLM 下载管理器
+
+**新增文件：** `src/utils/webllmDownloadManager.ts`
+
+```typescript
+export interface WebLLMDownloadTask {
+  id: string;
+  modelId: string;
+  progress: number;
+  status: 'downloading' | 'paused' | 'completed' | 'error' | 'cancelled';
+  statusText: string;
+  error?: string;
+}
+```
+
+#### AI 判题解析
+
+**修改文件：** `src/utils/aiGrading.ts`
+
+填空题解析格式：
+```
+【逐空分析】
+- 第1空：正确/错误，说明原因
+- 第2空：正确/错误，说明原因
+
+【综合解析】
+从知识点角度分析...
+```
+
+主观题解析格式：
+```
+1. 题目分析：说明题目考查的知识点
+2. 答案要点分析：逐条对比用户答案与参考答案
+3. 关联分析：分析用户答案与题目要求的相关性
+4. 解析建议：给出具体的改进建议和学习指导
+```
+
+#### 自动加载模型
+
+**修改文件：** `src/utils/modelLoader.ts`
+
+```typescript
+async autoLoadLastModel(onProgress?: (progress: number, status: string) => Promise<boolean> {
+  const lastModelId = this.getLastUsedModel();
+  // 自动加载上次使用的模型
+}
+```
+
+## [0.3.1] - 2026-03-08
+
+### 新增
+
+- **GGUF 模型真正推理**：
+  - 集成 `@wllama/wllama` 库（llama.cpp 的 WASM 绑定）
+  - 支持在浏览器中直接运行 GGUF 模型推理
+  - 无需 WebGPU，使用 WebAssembly SIMD 加速
+- **离线模型导入**：
+  - 支持从本地文件导入 GGUF 模型
+  - 导入成功/失败状态提示
+  - 已导入模型列表展示
+- **AI 考试评价**：
+  - 考试结束后生成 AI 总体评价
+  - 根据正确率给出不同评价等级
+- **AI 判题解析**：
+  - 每道题下方显示 AI 判题解析
+  - 填空题显示每空的判题结果
+  - 主观题显示 AI 评分和评价
+- **删除模型确认弹窗**：
+  - 使用美化的 ConfirmModal 替代原生 confirm
+  - 显示模型名称和警告信息
+
+### 修改
+
+- GGUF 模型列表更新：移除不支持的 Qwen3.5，添加 TinyLlama
+- WebLLM 和 GGUF 模型可同时加载，系统自动选择已加载的模型
+- 判题逻辑优化：只有模型就绪时才使用 AI 判题
+
+### 修复
+
+- 修复 Tauri Store 在 Web 环境下的报错
+- 修复 React Router Future Flag 警告
+- 修复离线导入模型不显示在列表的问题
+- 修复 GGUF 模型加载失败的问题（使用正确的 loadModel API）
+
+### 技术细节
+
+#### GGUF 推理实现
+
+**新增文件：** `src/utils/ggufLoader.ts`
+
+使用 wllama 库实现 GGUF 模型加载和推理：
+
+```typescript
+import { Wllama } from '@wllama/wllama';
+
+const wllama = new Wllama(ASSETS_PATH, config);
+await wllama.loadModel([modelBlob], { n_ctx: 2048, n_threads: 4 });
+const result = await wllama.createCompletion(prompt, {
+  nPredict: 100,
+  sampling: { temp: 0.7, top_k: 40, top_p: 0.9 }
+});
+```
+
+#### AI 判题反馈
+
+**修改文件：** `src/types.ts`
+
+```typescript
+interface UserAnswer {
+  questionId: string;
+  answer: string | string[];
+  score?: number;
+  isCorrect: boolean;
+  aiFeedback?: string;  // AI 判题解析
+}
+
+interface ExamRecord {
+  // ...
+  aiEvaluation?: string;     // AI 考试总评价
+  gradingMode?: 'fixed' | 'ai';
+}
+```
+
+#### 离线导入模型
+
+**修改文件：** `src/pages/Settings.tsx`
+
+```tsx
+<input
+  type="file"
+  accept=".gguf"
+  onChange={async (e) => {
+    const file = e.target.files?.[0];
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const data = event.target?.result as ArrayBuffer;
+      await saveModel(customId, new Uint8Array(data));
+      setCustomModels(prev => [...prev, { id, name }]);
+    };
+    reader.readAsArrayBuffer(file);
+  }}
+/>
+```
+
+#### Tauri Store 环境检测
+
+**修改文件：** `src/utils/tauriStore.ts`
+
+```typescript
+const isTauri = (): boolean => {
+  return typeof window !== 'undefined' && '__TAURI__' in window;
+};
+
+export async function getStoreValue<T>(key: string, defaultValue: T): Promise<T> {
+  if (!isTauri()) {
+    return defaultValue;  // Web 环境直接返回默认值
+  }
+  // Tauri 环境使用 Store
+}
+```
+
+#### React Router Future Flags
+
+**修改文件：** `src/App.tsx`
+
+```tsx
+<BrowserRouter
+  future={{
+    v7_startTransition: true,
+    v7_relativeSplatPath: true,
+  }}
+>
+```
+
+---
+
+## [0.3.0] - 2026-03-08
+
+### 新增
+
+- **AI 智能判题功能**：
+  - 集成 WebLLM 库，支持浏览器端 AI 推理
+  - 填空题 AI 判题：判断用户答案与标准答案的语义等价性
+  - 主观题 AI 判题：分析答案语义相似度并给出评分
+  - 超时自动降级到固定判断模式
+- **模型管理**：
+  - WebLLM 模型在线加载：Qwen3 1.7B、Qwen2.5 1.5B/0.5B、Llama 3.2 1B/3B
+  - GGUF 模型下载：Qwen3.5-0.8B、Qwen2.5-1.5B、Qwen2.5-0.5B
+  - 自定义模型导入：支持通过链接导入 GGUF 格式模型
+  - 模型加载进度显示和状态管理
+- **设置页面重构**：
+  - 独立的设置页面，判题模式和模型管理分开展示
+  - 判题模式设置：支持固定判断和 AI 判断两种模式
+  - 折叠式交互设计，默认折叠，点击展开
+- **移动端适配**：
+  - 设备内存检测和警告提示
+  - WebGPU 支持检测
+  - 低内存设备模型推荐
+- **模型存储**：
+  - Tauri 环境使用 tauri-plugin-fs 存储到本地
+  - Web 环境使用 IndexedDB 作为后备存储
+
+### 修改
+
+- 设置入口从弹窗改为独立页面 `/settings`
+- 判题模式选择改为折叠框交互
+- 模型列表改为折叠框形式，每个模型独立展示
+- 关于弹窗添加 AI 智能判题功能说明
+
+### 技术细节
+
+#### AI 判题服务
+
+**新增文件：** `src/utils/aiGrading.ts`
+
+AI 判题核心功能：
+- `gradeFillBlank()` - 填空题 AI 判题，5秒超时
+- `gradeSubjective()` - 主观题 AI 判题，10秒超时
+- `initializeModel()` - 模型初始化
+- 自动降级到相似度计算或精确匹配
+
+#### 模型加载服务
+
+**新增文件：** `src/utils/modelLoader.ts`
+
+WebLLM 模型加载服务：
+- WebGPU 支持检测
+- 模型加载进度回调
+- 内存优化配置
+- 超时控制
+
+#### 模型存储管理
+
+**新增文件：** `src/utils/modelStorage.ts`
+
+模型文件存储管理：
+- Tauri 环境：使用 `tauri-plugin-fs` 存储到应用数据目录
+- Web 环境：使用 IndexedDB 存储
+- 统一的存储接口
+
+#### 设备检测
+
+**新增文件：** `src/utils/deviceDetection.ts`
+
+设备能力检测：
+- 内存容量检测
+- WebGPU 支持检测
+- 移动端检测
+- 模型推荐
+
+#### 下载管理器
+
+**新增文件：** `src/utils/downloadManager.ts`
+
+基于 `fetch` + `ReadableStream` 实现的下载管理器：
+- 实时进度追踪
+- 暂停/继续下载（使用 AbortController）
+- 任务状态管理（downloading/paused/completed/error）
+- 存储到本地文件系统
+
+```typescript
+interface DownloadTask {
+  id: string;
+  url: string;
+  fileName: string;
+  progress: number;
+  status: 'downloading' | 'paused' | 'completed' | 'error';
+  totalSize: number;
+  downloadedSize: number;
+  storageProgress?: number;
+  error?: string;
+}
+```
+
+#### 状态管理扩展
+
+**修改文件：** `src/store/settingsStore.ts`
+
+新增模型状态管理：
+- `modelState`: 模型状态（not-downloaded/downloading/downloaded/loading/ready/error）
+- `modelLoadProgress`: 加载进度
+- `modelError`: 错误信息
+- `downloadedModelId`: 已下载模型 ID
+
+---
+
 ## [0.2.2] - 2026-03-08
 
 ### 新增
@@ -904,6 +1243,8 @@ tasks.whenTaskAdded {
 ## 版本说明
 
 - **[Unreleased]**: 开发中的功能
+- **[0.3.1]**: GGUF 真正推理、离线模型导入、AI 考试评价、AI 判题解析
+- **[0.3.0]**: 设置页面重构、判题模式设置、模型下载管理、AI 判题接口预留
 - **[0.2.2]**: vConsole 优化、自定义确认弹窗、滚动条美化、主题过渡优化、答题导航滚动、PC/Android 打包签名
 - **[0.2.1]**: 全局错题记录、答题流程优化、输入显示修复
 - **[0.2.0]**: 现代化移动应用风格布局重构、页面路由重构
