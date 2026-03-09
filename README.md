@@ -460,9 +460,6 @@ sdk.dir=C:\\Users\\<用户名>\\AppData\\Local\\Android\\Sdk
 - 支持 Android 8.0+ 系统
 - 下载地址：[Releases](https://github.com/yourusername/low-voltage-electrician-exam/releases)
 
-### Web 网页版
-- 直接访问：https://yourusername.github.io/low-voltage-electrician-exam/
-
 ## 许可证
 
 MIT License
