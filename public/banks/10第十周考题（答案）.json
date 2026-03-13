@@ -1,0 +1,99 @@
+{
+  "name": "数据中心基础知识测试（第十周）",
+  "description": "物联网、信息处理、信息安全攻击与防护、智能设备调试、传感器及布线方式。",
+  "questions": [
+    {
+      "type": "fill-in-blank",
+      "content": "什么是物联网：______。",
+      "correctAnswer": ["把所有物品通过信息传感设备与互联网连接起来，进行信息交换，即物物相息，以实现智能化识别和管理"],
+      "score": 1
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "物联网的特征：______、______、______、______。",
+      "correctAnswer": ["全面感知", "广泛互联", "智能处理", "自动控制"],
+      "score": 4,
+      "allowDisorder": true
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "信息处理的常见两种处理逻辑：______、______。",
+      "correctAnswer": ["批处理", "流处理"],
+      "score": 2,
+      "allowDisorder": true
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "数据中心设备监控是通过：______来完成的。",
+      "correctAnswer": ["微控制器"],
+      "score": 1
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "信息安全的几个重点指标：______、______、______、______、______。",
+      "correctAnswer": ["机密性", "完整性", "认证性", "不可否认性", "可用性"],
+      "score": 5,
+      "allowDisorder": true
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "网线理论最长传输距离：______。",
+      "correctAnswer": ["100M"],
+      "score": 1
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "各通信端局（站）可根据监控参量的具体情况，配置一个或数个监控模块，其它各通信局（站）的监控模块可纳入本通信局（站）______。",
+      "correctAnswer": ["FSU"],
+      "score": 1
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "监控系统具有告警分析功能。系统应能以报表图形等形式根据告警对象、告警类型、告警级别、告警产生的时间对告警进行分析比较。",
+      "correctAnswer": [],
+      "score": 0
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "门磁传感器的输出线是______。",
+      "correctAnswer": ["两芯线"],
+      "score": 1
+    },
+    {
+      "type": "subjective",
+      "content": "数据中心常见的几种综合布线方式？",
+      "correctAnswer": "手拉手布线方式：适合RS485、RS422。星型布线方式：适合RS485，现场不适合手拉手的条件下。网络综合布线：适合网络接口设备。",
+      "score": 10
+    },
+    {
+      "type": "subjective",
+      "content": "智能设备的调试工作，三个步骤和三个条件？",
+      "correctAnswer": "三个步骤：线路调试、数据测试、验证数据。\n三个条件：设备上电、协议文档、调试工具。",
+      "score": 10
+    },
+    {
+      "type": "subjective",
+      "content": "Modbus-RTU的传输方式，以及几个功能域？",
+      "correctAnswer": "Modbus-RTU的传输方式：每个信息中的每8位字节分成2个4位16进制的字符，每个信息必须连续传输。\n四个功能域：地址域、功能域、数据域、校验域。",
+      "score": 10
+    },
+    {
+      "type": "subjective",
+      "content": "数据中心常见的传感器有哪些？",
+      "correctAnswer": "温度传感器、湿度传感器、烟雾探测器、断电传感器、门禁设备、蓄电池巡检模块、UPS监测模块、空调监测模块、红外探测传感器、震动传感器。",
+      "score": 10
+    },
+    {
+      "type": "subjective",
+      "content": "针对信息安全的攻击有哪些？",
+      "correctAnswer": "主动攻击：中断、篡改、伪造、重放。\n被动攻击：截取。",
+      "score": 10
+    },
+    {
+      "type": "subjective",
+      "content": "提高信息安全的方式有哪些？",
+      "correctAnswer": "预防：设备物理隔离、白名单通信、启动所需服务、登录认证。\n检测：检测外部通信发现非法访问、数据篡改验证、信任传递。\n应用：定期修复漏洞、查杀病毒、更新账号密码。\n保护服务器端系统：网关设备认证、数据流量监测和制约、保护所采集数据的隐私、在信道上进行数据隐藏、保护所感测数据的隐私。",
+      "score": 10
+    }
+  ]
+}

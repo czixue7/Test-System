@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>答题测试库</title>
+    <script>
+      // 在页面渲染前立即应用主题，防止闪烁
+      (function() {
+        try {
+          const storedTheme = localStorage.getItem('theme-preference');
+          const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          const theme = storedTheme || (systemDark ? 'dark' : 'light');
+          if (theme === 'dark') {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {
+          // 忽略错误
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

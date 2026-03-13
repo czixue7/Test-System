@@ -1,0 +1,111 @@
+{
+  "name": "数据中心基础知识测试（第九周）",
+  "description": "弱电系统、串口通讯（RS232/RS485）、四遥、监控参数、信息安全管理。",
+  "questions": [
+    {
+      "type": "fill-in-blank",
+      "content": "什么是弱电系统：______。",
+      "correctAnswer": ["能用于信息传输的电力系统"],
+      "score": 2
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "弱电系统中，运维人员最常用的系统是：______、______。",
+      "correctAnswer": ["动环监控系统DCIM", "楼宇自控系统BA"],
+      "score": 4
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "数据中心智能设备的串口通讯有：______、______、______三种方式。",
+      "correctAnswer": ["RS232", "RS422", "RS485"],
+      "score": 6,
+      "allowDisorder": true
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "RS232中DTE与DCE相连，使用的是______接线。",
+      "correctAnswer": ["直通"],
+      "score": 2
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "RS485总线上的设备接线是______接线。",
+      "correctAnswer": ["同名端"],
+      "score": 2
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "数据中心数据采集的「四遥」包含有：______、______、______、______。",
+      "correctAnswer": ["遥测", "通信", "遥控", "遥调"],
+      "score": 8,
+      "allowDisorder": true
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "电脑只能识别串口通讯中的：______端口。",
+      "correctAnswer": ["RS232"],
+      "score": 2
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "数据中心中配电系统的数据采集是通过：______实行监测。",
+      "correctAnswer": ["智能电量检测仪机房市电进线的供电参数"],
+      "score": 2
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "数据中心中行业要求，空调环境每______部署一个温湿度传感器。",
+      "correctAnswer": ["20m-30㎡"],
+      "score": 2
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "视频监控系统是通过协议：______或______实现视频系统的集成监测。",
+      "correctAnswer": ["TCP/IP", "SDK开发包"],
+      "score": 4
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "数据中心监控系统权限等级划分有：______、______、______。",
+      "correctAnswer": ["最高管理员", "区域管理员", "网点运维人员"],
+      "score": 6,
+      "allowDisorder": true
+    },
+    {
+      "type": "subjective",
+      "content": "弱电系统中，电力监控的内容有哪些？",
+      "correctAnswer": "柴油发电机、高压综合保护、变压器、低压配电柜、UPS、高压直流（HVDC）、电池、列头柜、直流屏。",
+      "score": 10
+    },
+    {
+      "type": "subjective",
+      "content": "弱电控制系统对精密配电柜需要监测的参数有哪些？",
+      "correctAnswer": "输入回路三相电压、电流、频率、功率因数、功率、电度、零线电流、电压谐波及电流谐波百分比、负载百分比、开关状态等；所有输出回路电流、负载百分比、有功功率、电度、开关状态等。",
+      "score": 10
+    },
+    {
+      "type": "subjective",
+      "content": "弱电控制系统对精密空调需要监测的参数有哪些？",
+      "correctAnswer": "风机、电加热加湿器累计运行时间、风机转速、水闸开度百分比反馈、送/回风温/湿度、水路进/出水温度、滤网前后压差，风机/系统制冷/加湿器/系统除湿/电加热运行状态，送/回风温/湿度设定，遥控开关机。",
+      "score": 10
+    },
+    {
+      "type": "subjective",
+      "content": "RS232和RS485有什么区别？",
+      "correctAnswer": "1. 传输距离和通信速率：RS232最大传输距离约15米，速率一般9600bps；RS485最大传输距离可达4000英尺（约1219米），速率最高10Mbps。\n2. 抗干扰能力：RS232采用单端通信，易受共模干扰；RS485采用平衡传输，抗干扰能力强。\n3. 多点通信能力：RS232只能点对点；RS485可以组网。",
+      "score": 10
+    },
+    {
+      "type": "subjective",
+      "content": "RS232和RS485的检测方法？",
+      "correctAnswer": "测量电压：RS232的Txd与GND之间的电压为7-10V；RS485的A+与B-之间的电压为5V左右。\n线路通断：用万用表测试通讯线路之间的通断，检查是否有断开、短路和接地的情况。",
+      "score": 10
+    },
+    {
+      "type": "subjective",
+      "content": "数据中心信息安全管理包含有？",
+      "correctAnswer": "系统管理、密码管理、权限管理、日志管理、数据管理。",
+      "score": 10
+    }
+  ]
+}
