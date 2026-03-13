@@ -70,31 +70,55 @@ const Profile: React.FC = () => {
           const platform = navigator.platform.toLowerCase();
           const userAgent = navigator.userAgent.toLowerCase();
           
+          if (userAgent.includes('android') || platform.includes('android')) {
+            const isArm64 = userAgent.includes('aarch64') || userAgent.includes('arm64');
+            
+            if (isArm64) {
+              const arm64Apk = assets.find(a => 
+                a.name.includes('arm64') && a.name.endsWith('.apk')
+              );
+              if (arm64Apk) return arm64Apk;
+            }
+            
+            const universalApk = assets.find(a => 
+              a.name.includes('universal') && a.name.endsWith('.apk')
+            );
+            if (universalApk) return universalApk;
+            
+            return null;
+          }
+          
           if (platform.includes('win') || userAgent.includes('windows')) {
             return assets.find(a => a.name.endsWith('.exe')) || 
-                   assets.find(a => a.name.includes('windows') && a.name.endsWith('.zip')) ||
-                   assets.find(a => a.name.endsWith('.zip'));
+                   assets.find(a => a.name.includes('windows') && a.name.endsWith('.zip'));
           }
           if (platform.includes('mac') || userAgent.includes('mac')) {
             return assets.find(a => a.name.endsWith('.dmg')) || 
-                   assets.find(a => a.name.includes('macos') && a.name.endsWith('.zip')) ||
-                   assets.find(a => a.name.endsWith('.zip'));
+                   assets.find(a => a.name.includes('macos') && a.name.endsWith('.zip'));
           }
           if (platform.includes('linux') || userAgent.includes('linux')) {
             return assets.find(a => a.name.endsWith('.AppImage')) || 
-                   assets.find(a => a.name.includes('linux') && a.name.endsWith('.zip')) ||
-                   assets.find(a => a.name.endsWith('.zip'));
+                   assets.find(a => a.name.includes('linux') && a.name.endsWith('.zip'));
           }
-          return assets.find(a => a.name.endsWith('.zip'));
+          return null;
         };
         
         const asset = data.assets ? getPlatformAsset(data.assets) : null;
-        setUpdateInfo({
-          hasUpdate: true,
-          latestVersion,
-          message: `发现新版本 v${latestVersion}`,
-          downloadUrl: asset?.browser_download_url || data.html_url
-        });
+        
+        if (asset) {
+          setUpdateInfo({
+            hasUpdate: true,
+            latestVersion,
+            message: `发现新版本 v${latestVersion}`,
+            downloadUrl: asset.browser_download_url
+          });
+        } else {
+          setUpdateInfo({
+            hasUpdate: false,
+            latestVersion,
+            message: '当前已是最新版本'
+          });
+        }
       } else {
         setUpdateInfo({
           hasUpdate: false,

@@ -21,6 +21,7 @@ interface BankInfo {
   name: string;
   filename: string;
   downloadUrl: string;
+  imagePath?: string;
   sha: string;
   source: 'system' | 'user';
   exists: boolean;
@@ -60,7 +61,7 @@ const DownloadBanks: React.FC = () => {
 
   const GITHUB_REPO = 'czixue7/Test-System';
   const SYSTEM_BANKS_PATH = 'public/banks';
-  const USER_BANKS_PATH = 'Question%20bank';
+  const USER_BANKS_PATH = 'Question_bank';
 
   const isBuiltInBankFile = (filename: string): boolean => {
     return BUILT_IN_BANK_FILES.includes(filename);
@@ -93,24 +94,72 @@ const DownloadBanks: React.FC = () => {
     return { exists: true, hasUpdate, isBuiltIn: false };
   }, [banks]);
 
+  const fetchUserBankDir = useCallback(async (): Promise<BankInfo[]> => {
+    const userBankInfos: BankInfo[] = [];
+    try {
+      const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${USER_BANKS_PATH}`);
+      if (!response.ok) return userBankInfos;
+      
+      const dirs: GitHubFile[] = await response.json();
+      
+      for (const dir of dirs) {
+        if (dir.type === 'dir') {
+          try {
+            const dirResponse = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${dir.path}`);
+            if (!dirResponse.ok) continue;
+            
+            const dirContents: GitHubFile[] = await dirResponse.json();
+            const expectedJsonFileName = `${dir.name}.json`;
+            const jsonFile = dirContents.find(f => f.type === 'file' && f.name === expectedJsonFileName);
+            
+            if (jsonFile) {
+              const bankName = jsonFile.name.replace('.json', '');
+              const status = checkBankStatus(bankName, jsonFile.sha, jsonFile.name, 'user');
+              
+              const imageDir = dirContents.find(f => f.type === 'dir' && f.name === 'image');
+              
+              userBankInfos.push({
+                name: bankName,
+                filename: jsonFile.name,
+                downloadUrl: jsonFile.download_url || '',
+                imagePath: imageDir ? `${dir.path}/image` : undefined,
+                sha: jsonFile.sha,
+                source: 'user',
+                exists: status.exists,
+                hasUpdate: status.hasUpdate,
+                isBuiltIn: false,
+                downloading: false,
+                progress: 0
+              });
+            }
+          } catch (err) {
+            console.warn(`Error processing user bank directory ${dir.path}:`, err);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Error fetching user banks directory:', err);
+    }
+    
+    return userBankInfos;
+  }, [checkBankStatus]);
+
   const fetchBankList = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [systemResponse, userResponse] = await Promise.all([
+      const [systemResponse, userBankInfos] = await Promise.all([
         fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${SYSTEM_BANKS_PATH}`),
-        fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${USER_BANKS_PATH}`)
+        fetchUserBankDir()
       ]);
 
-      if (!systemResponse.ok || !userResponse.ok) {
+      if (!systemResponse.ok) {
         throw new Error('无法获取题库列表');
       }
 
       const systemData: GitHubFile[] = await systemResponse.json();
-      const userData: GitHubFile[] = await userResponse.json();
       
       const systemJsonFiles = systemData.filter(file => file.name.endsWith('.json') && file.type === 'file' && file.size > 100);
-      const userJsonFiles = userData.filter(file => file.name.endsWith('.json') && file.type === 'file' && file.size > 100);
       
       const systemBankInfos: BankInfo[] = systemJsonFiles.map(file => {
         const bankName = file.name.replace('.json', '');
@@ -128,23 +177,6 @@ const DownloadBanks: React.FC = () => {
           progress: 0
         };
       });
-
-      const userBankInfos: BankInfo[] = userJsonFiles.map(file => {
-        const bankName = file.name.replace('.json', '');
-        const status = checkBankStatus(bankName, file.sha, file.name, 'user');
-        return {
-          name: bankName,
-          filename: file.name,
-          downloadUrl: file.download_url || '',
-          sha: file.sha,
-          source: 'user',
-          exists: status.exists,
-          hasUpdate: status.hasUpdate,
-          isBuiltIn: false,
-          downloading: false,
-          progress: 0
-        };
-      });
       
       setBankList([...systemBankInfos, ...userBankInfos]);
     } catch (err) {
@@ -153,7 +185,7 @@ const DownloadBanks: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [checkBankStatus, showError]);
+  }, [checkBankStatus, fetchUserBankDir, showError]);
 
   useEffect(() => {
     fetchBankList();
@@ -170,6 +202,59 @@ const DownloadBanks: React.FC = () => {
       };
     }));
   }, [banks, checkBankStatus]);
+
+  const downloadImageAsBase64 = async (url: string): Promise<string> => {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Failed to download image: ${url}`);
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  const downloadAndProcessImages = async (imagePath: string, totalProgress: (progress: number) => void): Promise<Map<string, string[]>> => {
+    const questionImagesMap = new Map<string, string[]>();
+    
+    try {
+      const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${imagePath}`);
+      if (!response.ok) return questionImagesMap;
+      
+      const imageFiles: GitHubFile[] = await response.json();
+      const validImages = imageFiles.filter(f => f.type === 'file' && (f.name.endsWith('.jpg') || f.name.endsWith('.jpeg') || f.name.endsWith('.png') || f.name.endsWith('.gif')));
+      
+      let processedCount = 0;
+      const totalImages = validImages.length;
+      
+      for (const imageFile of validImages) {
+        try {
+          const match = imageFile.name.match(/^(\d+)-(\d+)\.(jpg|jpeg|png|gif)$/);
+          if (match && imageFile.download_url) {
+            const questionIndex = parseInt(match[1]) - 1;
+            const base64Image = await downloadImageAsBase64(imageFile.download_url);
+            
+            if (!questionImagesMap.has(questionIndex.toString())) {
+              questionImagesMap.set(questionIndex.toString(), []);
+            }
+            questionImagesMap.get(questionIndex.toString())?.push(base64Image);
+          }
+        } catch (err) {
+          console.warn(`Failed to process image ${imageFile.name}:`, err);
+        }
+        
+        processedCount++;
+        if (totalImages > 0) {
+          totalProgress(processedCount / totalImages * 50);
+        }
+      }
+    } catch (err) {
+      console.warn('Error downloading images:', err);
+    }
+    
+    return questionImagesMap;
+  };
 
   const handleDownload = async (bank: BankInfo, index: number) => {
     if (!bank.downloadUrl) {
@@ -188,6 +273,14 @@ const DownloadBanks: React.FC = () => {
     }
 
     try {
+      let currentProgress = 0;
+      const updateProgress = (newProgress: number) => {
+        currentProgress = newProgress;
+        setBankList(prev => prev.map((b, i) => 
+          i === index ? { ...b, progress: currentProgress } : b
+        ));
+      };
+
       const response = await fetch(bank.downloadUrl);
       if (!response.ok) {
         throw new Error(`HTTP 错误: ${response.status}`);
@@ -211,6 +304,14 @@ const DownloadBanks: React.FC = () => {
         throw new Error('题库格式无效，缺少 questions 字段');
       }
       
+      updateProgress(20);
+      
+      let questionImagesMap = new Map<string, string[]>();
+      if (bank.imagePath) {
+        questionImagesMap = await downloadAndProcessImages(bank.imagePath, updateProgress);
+        updateProgress(70);
+      }
+      
       const newBank: Omit<QuestionBank, 'id' | 'createdAt' | 'updatedAt'> = {
         name: data.name || bank.name,
         description: data.description,
@@ -222,7 +323,7 @@ const DownloadBanks: React.FC = () => {
           correctAnswer: q.correctAnswer,
           score: q.score || 1,
           explanation: q.explanation,
-          images: q.images,
+          images: questionImagesMap.has(qIndex.toString()) ? questionImagesMap.get(qIndex.toString()) : q.images,
           allowDisorder: q.allowDisorder
         })),
         sourceSha: bank.sha,
@@ -231,6 +332,8 @@ const DownloadBanks: React.FC = () => {
       };
 
       importBankWithSha(newBank as QuestionBank, bank.sha, bank.filename);
+
+      updateProgress(100);
 
       setBankList(prev => prev.map((b, i) => 
         i === index ? { ...b, downloading: false, progress: 100, exists: true, hasUpdate: false } : b
@@ -495,7 +598,7 @@ const DownloadBanks: React.FC = () => {
             {renderBankList(
               userBanks,
               '用户题库',
-              `https://github.com/${GITHUB_REPO}/tree/main/Question%20bank`,
+              `https://github.com/${GITHUB_REPO}/tree/main/Question_bank`,
               userExistingCount,
               userUpdateCount,
               'user'

@@ -49,3 +49,8 @@ src-tauri/gen/android/buildSrc/build
 src-tauri/gen/android/local.properties
 src-tauri/gen/android/app/release-key.jks
 src-tauri/gen/android/app/keystore.properties
+
+# Build summary and reference files
+gguf-build-summary.md
+import-local-model-lag.md
+参考.md
