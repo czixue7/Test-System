@@ -452,14 +452,14 @@ sdk.dir=C:\\Users\\<用户名>\\AppData\\Local\\Android\\Sdk
 
 ## 下载安装
 
-### Windows 桌面端 v0.3.3
-- **安装包**: `答题测试库_0.3.3_x64-setup.exe` (~5MB)
+### Windows 桌面端 v0.3.4
+- **安装包**: `答题测试库_0.3.4_x64-setup.exe` (~5MB)
 - 支持 Windows 10/11 64位系统
 - 下载地址：[Releases](https://github.com/czixue7/Test-System/releases)
 
-### Android 移动端 v0.3.3
-- **ARM64 版本**: `Answer_Test_v0.3.3-arm64-release.apk` (~11MB) - 推荐，性能更好
-- **Universal 版本**: `Answer_Test_v0.3.3-universal-release.apk` (~38MB) - 兼容所有架构
+### Android 移动端 v0.3.4
+- **ARM64 版本**: `Answer_Test_v0.3.4-arm64-release.apk` (~11MB) - 推荐，性能更好
+- **Universal 版本**: `Answer_Test_v0.3.4-universal-release.apk` (~38MB) - 兼容所有架构
 - 支持 Android 8.0+ 系统
 - 下载地址：[Releases](https://github.com/czixue7/Test-System/releases)
 
