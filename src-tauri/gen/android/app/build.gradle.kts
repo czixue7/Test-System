@@ -68,6 +68,18 @@ android {
             )
         }
     }
+    
+    // 配置APK输出文件名
+    applicationVariants.all {
+        val variant = this
+        variant.outputs
+            .map { it as com.android.build.gradle.internal.api.ApkVariantOutputImpl }
+            .forEach { output ->
+                val abiName = output.getFilter(com.android.build.OutputFile.ABI) ?: "universal"
+                val version = variant.versionName
+                output.outputFileName = "Answer_Test_v${version}-${abiName}-${variant.buildType.name}.apk"
+            }
+    }
     kotlinOptions {
         jvmTarget = "1.8"
     }
