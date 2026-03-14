@@ -5,6 +5,182 @@ import { useSwipeElement } from '../hooks/useSwipe';
 import { useKeyboard } from '../hooks/useKeyboard';
 import { useSafeArea } from '../hooks/useSafeArea';
 
+// 图片查看器组件
+interface ImageViewerProps {
+  images: string[];
+  onClose: () => void;
+  initialIndex?: number;
+  sourceRect?: DOMRect | null;
+}
+
+const ImageViewer: React.FC<ImageViewerProps> = ({ 
+  images, 
+  onClose, 
+  initialIndex = 0,
+  sourceRect = null
+}) => {
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const [isVisible, setIsVisible] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+  const [animationStyle, setAnimationStyle] = useState<React.CSSProperties>({});
+  const swipeRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    if (sourceRect) {
+      // 第一步：设置初始状态（无动画）
+      setAnimationStyle({
+        position: 'fixed',
+        left: sourceRect.left,
+        top: sourceRect.top,
+        width: sourceRect.width,
+        height: sourceRect.height,
+        objectFit: 'contain',
+        transition: 'none',
+        zIndex: 101,
+      });
+      
+      // 第二步：在下一帧启用动画并设置最终状态
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setIsVisible(true);
+          setAnimationStyle({
+            position: 'fixed',
+            left: '50%',
+            top: '50%',
+            width: '90vw',
+            height: '90vh',
+            objectFit: 'contain',
+            transform: 'translate(-50%, -50%)',
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            zIndex: 101,
+          });
+        });
+      });
+    } else {
+      // 没有源位置信息，使用默认动画
+      requestAnimationFrame(() => {
+        setIsVisible(true);
+      });
+    }
+  }, [sourceRect]);
+
+  const handleClose = () => {
+    setIsClosing(true);
+    setIsVisible(false);
+    
+    if (sourceRect) {
+      // 缩回到原位置
+      setAnimationStyle({
+        position: 'fixed',
+        left: sourceRect.left,
+        top: sourceRect.top,
+        width: sourceRect.width,
+        height: sourceRect.height,
+        objectFit: 'contain',
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        zIndex: 101,
+      });
+    }
+    
+    // 等待动画完成后再关闭
+    setTimeout(() => {
+      onClose();
+    }, 300);
+  };
+  
+  useSwipeElement(swipeRef, {
+    onSwipeLeft: () => {
+      if (currentIndex < images.length - 1) {
+        setCurrentIndex(currentIndex + 1);
+      }
+    },
+    onSwipeRight: () => {
+      if (currentIndex > 0) {
+        setCurrentIndex(currentIndex - 1);
+      }
+    },
+    threshold: 50,
+  });
+
+  const currentImage = images[currentIndex];
+
+  return (
+    <div 
+      className={`fixed inset-0 z-[100] flex items-center justify-center transition-all duration-300 ${
+        isVisible ? 'bg-black/70' : 'bg-black/0'
+      }`}
+      onClick={handleClose}
+    >
+      {/* 使用独立动画的图片元素 */}
+      <img 
+        src={currentImage}
+        alt=""
+        style={animationStyle}
+        className={`${isClosing ? 'opacity-100' : isVisible ? 'opacity-100' : 'opacity-0'}`}
+        onClick={(e) => e.stopPropagation()}
+      />
+      
+      {/* 控制按钮容器 */}
+      <div 
+        ref={swipeRef}
+        className={`absolute inset-0 transition-all duration-300 ${
+          isVisible ? 'opacity-100' : 'opacity-0'
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* 关闭按钮 */}
+        <button 
+          onClick={handleClose}
+          className={`absolute top-4 right-4 z-10 w-10 h-10 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-white transition-all duration-300 ${
+            isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'
+          }`}
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+        
+        {/* 图片计数器 */}
+        {images.length > 1 && (
+          <div className={`absolute top-4 left-4 z-10 px-3 py-1 bg-white/20 rounded-full text-white text-sm transition-all duration-300 ${
+            isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'
+          }`}>
+            {currentIndex + 1} / {images.length}
+          </div>
+        )}
+        
+        {/* 左右切换按钮 */}
+        {images.length > 1 && (
+          <>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setCurrentIndex(Math.max(0, currentIndex - 1)); }}
+              disabled={currentIndex === 0}
+              className={`absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/20 hover:bg-white/30 disabled:opacity-30 rounded-full flex items-center justify-center text-white transition-all duration-300 ${
+                isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'
+              }`}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setCurrentIndex(Math.min(images.length - 1, currentIndex + 1)); }}
+              disabled={currentIndex === images.length - 1}
+              className={`absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/20 hover:bg-white/30 disabled:opacity-30 rounded-full flex items-center justify-center text-white transition-all duration-300 ${
+                isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-4'
+              }`}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const Result: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -13,10 +189,25 @@ const Result: React.FC = () => {
   const record = getRecord(id!);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showDetail, setShowDetail] = useState(false);
+  const [viewerImages, setViewerImages] = useState<string[] | null>(null);
+  const [viewerInitialIndex, setViewerInitialIndex] = useState(0);
+  const [sourceRect, setSourceRect] = useState<DOMRect | null>(null);
   const navRef = useRef<HTMLDivElement>(null);
   const swipeRef = useRef<HTMLDivElement>(null);
   const { isOpen: isKeyboardOpen, bottom: keyboardBottom } = useKeyboard();
   const safeArea = useSafeArea();
+
+  const openImageViewer = (images: string[], initialIndex: number = 0, rect?: DOMRect) => {
+    setViewerImages(images);
+    setViewerInitialIndex(initialIndex);
+    setSourceRect(rect || null);
+  };
+
+  const closeImageViewer = () => {
+    setViewerImages(null);
+    setViewerInitialIndex(0);
+    setSourceRect(null);
+  };
 
   const handleGoBack = () => {
     if (window.history.length > 1 && location.key !== 'default') {
@@ -29,40 +220,36 @@ const Result: React.FC = () => {
   if (!record) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="text-center p-4">
-          <p className="text-gray-500 dark:text-gray-400 mb-4">测试记录不存在</p>
-          <button onClick={handleGoBack} className="px-4 py-2 bg-blue-500 text-white rounded-lg">返回</button>
+        <div className="text-center">
+          <div className="text-gray-500 dark:text-gray-400">未找到考试记录</div>
+          <button 
+            onClick={() => navigate('/')}
+            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg"
+          >
+            返回首页
+          </button>
         </div>
       </div>
     );
   }
 
-  const correctCount = record.answers.filter(a => a.isCorrect).length;
-  const wrongCount = record.answers.filter(a => !a.isCorrect && a.answer !== '' && (!Array.isArray(a.answer) || a.answer.length > 0)).length;
-  const unansweredCount = record.answers.filter(a => a.answer === '' || (Array.isArray(a.answer) && a.answer.length === 0)).length;
-
-  useEffect(() => {
-    if (navRef.current && showDetail) {
-      const currentBtn = navRef.current.children[currentIndex] as HTMLElement;
-      if (currentBtn) {
-        currentBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-      }
-    }
-  }, [currentIndex, showDetail]);
-
   useSwipeElement(swipeRef, {
     onSwipeLeft: () => {
-      if (currentIndex < record.questions.length - 1) {
-        setCurrentIndex(currentIndex + 1);
+      if (showDetail) {
+        setCurrentIndex(Math.min(record.questions.length - 1, currentIndex + 1));
       }
     },
     onSwipeRight: () => {
-      if (currentIndex > 0) {
-        setCurrentIndex(currentIndex - 1);
+      if (showDetail) {
+        setCurrentIndex(Math.max(0, currentIndex - 1));
       }
     },
     threshold: 50,
   });
+
+  const correctCount = record.answers.filter(a => a.isCorrect).length;
+  const wrongCount = record.answers.filter(a => !a.isCorrect && a.answer !== '' && (!Array.isArray(a.answer) || a.answer.length > 0)).length;
+  const unansweredCount = record.answers.filter(a => a.answer === '' || (Array.isArray(a.answer) && a.answer.length === 0)).length;
 
   if (showDetail) {
     const currentQuestion = record.questions[currentIndex];
@@ -74,13 +261,6 @@ const Result: React.FC = () => {
       return (
         <div className="space-y-4">
           <div className="text-lg font-medium text-gray-800 dark:text-gray-200 selectable">{currentQuestion.content}</div>
-          {currentQuestion.images && currentQuestion.images.length > 0 && (
-            <div className="grid grid-cols-2 gap-2">
-              {currentQuestion.images.map((img, idx) => (
-                <img key={idx} src={img} alt="" className="rounded-lg max-h-40 object-contain" />
-              ))}
-            </div>
-          )}
 
           {currentQuestion.type === 'single-choice' && currentQuestion.options && (
             <div className="space-y-2">
@@ -89,16 +269,23 @@ const Result: React.FC = () => {
                 const isCorrect = currentQuestion.correctAnswer === option.id;
                 let bgClass = 'bg-gray-50 dark:bg-gray-800';
                 if (isCorrect) bgClass = 'bg-green-50 border-green-500 dark:bg-green-900/30 dark:border-green-400';
-                else if (isSelected && !isCorrect) bgClass = 'bg-red-50 border-red-500 dark:bg-red-900/30 dark:border-red-400';
+                else if (isSelected) bgClass = 'bg-red-50 border-red-500 dark:bg-red-900/30 dark:border-red-400';
+                
                 return (
-                  <div
+                  <div 
                     key={option.id}
-                    className={`w-full p-3 rounded-lg text-left border-2 text-gray-800 dark:text-gray-200 ${bgClass}`}
+                    className={`p-3 border-2 rounded-lg ${bgClass} ${isCorrect ? 'border-green-500' : isSelected ? 'border-red-500' : 'border-transparent'}`}
                   >
-                    <span className="font-medium mr-2">{option.id}.</span>
-                    <span className="selectable">{option.content}</span>
-                    {isCorrect && <span className="ml-2 text-green-600 dark:text-green-400 text-sm">✓ 正确答案</span>}
-                    {isSelected && !isCorrect && <span className="ml-2 text-red-600 dark:text-red-400 text-sm">✗ 你的选择</span>}
+                    <div className="flex items-center gap-2">
+                      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-sm ${
+                        isCorrect ? 'bg-green-500 text-white' : 
+                        isSelected ? 'bg-red-500 text-white' : 
+                        'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                      }`}>
+                        {option.id}
+                      </span>
+                      <span className="text-gray-800 dark:text-gray-200">{option.content}</span>
+                    </div>
                   </div>
                 );
               })}
@@ -112,18 +299,26 @@ const Result: React.FC = () => {
                 const isSelected = selected.includes(option.id);
                 const correct = currentQuestion.correctAnswer as string[];
                 const isCorrect = correct.includes(option.id);
+                
                 let bgClass = 'bg-gray-50 dark:bg-gray-800';
                 if (isCorrect) bgClass = 'bg-green-50 border-green-500 dark:bg-green-900/30 dark:border-green-400';
-                else if (isSelected && !isCorrect) bgClass = 'bg-red-50 border-red-500 dark:bg-red-900/30 dark:border-red-400';
+                else if (isSelected) bgClass = 'bg-red-50 border-red-500 dark:bg-red-900/30 dark:border-red-400';
+                
                 return (
-                  <div
+                  <div 
                     key={option.id}
-                    className={`w-full p-3 rounded-lg text-left border-2 text-gray-800 dark:text-gray-200 ${bgClass}`}
+                    className={`p-3 border-2 rounded-lg ${bgClass} ${isCorrect ? 'border-green-500' : isSelected ? 'border-red-500' : 'border-transparent'}`}
                   >
-                    <span className="font-medium mr-2">{option.id}.</span>
-                    <span className="selectable">{option.content}</span>
-                    {isCorrect && <span className="ml-2 text-green-600 dark:text-green-400 text-sm">✓ 正确答案</span>}
-                    {isSelected && !isCorrect && <span className="ml-2 text-red-600 dark:text-red-400 text-sm">✗ 你的选择</span>}
+                    <div className="flex items-center gap-2">
+                      <span className={`w-6 h-6 rounded flex items-center justify-center text-sm ${
+                        isCorrect ? 'bg-green-500 text-white' : 
+                        isSelected ? 'bg-red-500 text-white' : 
+                        'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                      }`}>
+                        {isCorrect ? '✓' : isSelected ? '✗' : option.id}
+                      </span>
+                      <span className="text-gray-800 dark:text-gray-200">{option.content}</span>
+                    </div>
                   </div>
                 );
               })}
@@ -153,63 +348,77 @@ const Result: React.FC = () => {
                     return Array.isArray(answer) ? answer.join('、') : answer;
                   })()}
                 </div>
+                {/* 显示参考答案图片 */}
+                {(() => {
+                  const answer = currentQuestion.correctAnswer;
+                  if (typeof answer === 'object' && answer !== null && 'images' in answer && Array.isArray(answer.images) && answer.images.length > 0) {
+                    return (
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        {answer.images.map((img: string, idx: number) => (
+                          <img 
+                            key={idx} 
+                            src={img} 
+                            alt="" 
+                            className="rounded-lg max-h-32 object-contain cursor-pointer hover:opacity-80 transition-opacity"
+                            onClick={(e) => {
+                              const rect = (e.target as HTMLImageElement).getBoundingClientRect();
+                              openImageViewer(answer.images as string[], idx, rect);
+                            }}
+                          />
+                        ))}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
             </div>
           )}
 
           {currentQuestion.type === 'subjective' && (
             <div className="space-y-3">
-              <div className={`p-4 border-2 rounded-lg ${userAnswer?.isCorrect ? 'bg-green-50 border-green-500 dark:bg-green-900/30 dark:border-green-400' : 'bg-red-50 border-red-500 dark:bg-red-900/30 dark:border-red-400'}`}>
-                <div className={`text-sm font-medium mb-1 ${userAnswer?.isCorrect ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
-                  {userAnswer?.isCorrect ? '你的答案（正确）' : '你的答案（错误）'}
+              <div className="p-4 bg-blue-50 border-2 border-blue-500 rounded-lg dark:bg-blue-900/30 dark:border-blue-400">
+                <div className="text-sm font-medium text-blue-700 dark:text-blue-400 mb-1">参考答案</div>
+                <div className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
+                  {(() => {
+                    const answer = currentQuestion.correctAnswer;
+                    if (typeof answer === 'object' && answer !== null && 'text' in answer) {
+                      return answer.text;
+                    }
+                    return answer;
+                  })()}
                 </div>
-                <div className="text-gray-800 dark:text-gray-200">
-                  {userAnswer?.answer && userAnswer.answer !== '' && (!Array.isArray(userAnswer.answer) || userAnswer.answer.length > 0)
-                    ? (Array.isArray(userAnswer.answer) ? userAnswer.answer.join('、') : userAnswer.answer)
-                    : '未作答'}
-                </div>
-              </div>
-              <div className="p-4 bg-green-50 border-2 border-green-500 rounded-lg dark:bg-green-900/30 dark:border-green-400">
-                <div className="text-sm font-medium text-green-700 dark:text-green-400 mb-1">参考答案</div>
-                <div className="text-gray-800 dark:text-gray-200">
-                  {typeof currentQuestion.correctAnswer === 'object' && currentQuestion.correctAnswer !== null && 'text' in currentQuestion.correctAnswer
-                    ? currentQuestion.correctAnswer.text
-                    : currentQuestion.correctAnswer}
-                </div>
+                {/* 显示参考答案图片 */}
+                {(() => {
+                  const answer = currentQuestion.correctAnswer;
+                  if (typeof answer === 'object' && answer !== null && 'images' in answer && Array.isArray(answer.images) && answer.images.length > 0) {
+                    return (
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        {answer.images.map((img: string, idx: number) => (
+                          <img 
+                            key={idx} 
+                            src={img} 
+                            alt="" 
+                            className="rounded-lg max-h-32 object-contain cursor-pointer hover:opacity-80 transition-opacity"
+                            onClick={(e) => {
+                              const rect = (e.target as HTMLImageElement).getBoundingClientRect();
+                              openImageViewer(answer.images as string[], idx, rect);
+                            }}
+                          />
+                        ))}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
             </div>
           )}
 
           {currentQuestion.explanation && (
-            <div className="p-4 bg-blue-50 rounded-lg dark:bg-blue-900/30">
-              <div className="text-sm font-medium text-blue-700 dark:text-blue-400 mb-1">解析</div>
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg dark:bg-yellow-900/20 dark:border-yellow-700">
+              <div className="text-sm font-medium text-yellow-700 dark:text-yellow-400 mb-1">解析</div>
               <div className="text-gray-700 dark:text-gray-300">{currentQuestion.explanation}</div>
-            </div>
-          )}
-          
-          {(userAnswer?.aiFeedback || userAnswer?.aiExplanation) && (
-            <div className={`p-4 rounded-lg border ${
-              record.gradingMode === 'ai'
-                ? 'bg-purple-50 dark:bg-purple-900/30 border-purple-200 dark:border-purple-700'
-                : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700'
-            }`}>
-              <div className="flex items-center gap-2 mb-2">
-                <svg className={`w-4 h-4 ${
-                  record.gradingMode === 'ai' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-600 dark:text-gray-400'
-                }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                </svg>
-                <div className={`text-sm font-medium ${
-                  record.gradingMode === 'ai' ? 'text-purple-700 dark:text-purple-400' : 'text-gray-700 dark:text-gray-400'
-                }`}>
-                  {record.gradingMode === 'ai' ? 'AI 智能判题解析' : '固定规则判题解析'}
-                </div>
-              </div>
-              {userAnswer.aiExplanation ? (
-                <div className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{userAnswer.aiExplanation}</div>
-              ) : (
-                <div className="text-gray-700 dark:text-gray-300">{userAnswer.aiFeedback}</div>
-              )}
             </div>
           )}
         </div>
@@ -217,27 +426,37 @@ const Result: React.FC = () => {
     };
 
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 safe-header flex flex-col">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <header 
-          className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg dark:from-blue-700 dark:to-blue-800 transition-colors flex-shrink-0"
+          className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg dark:from-blue-700 dark:to-blue-800 transition-colors"
           style={{ paddingTop: safeArea.top }}
         >
-          <div className="max-w-lg mx-auto px-4 pt-1 pb-1 flex items-center justify-between">
+          <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
             <button onClick={() => setShowDetail(false)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
             </button>
-            <div className="flex items-center gap-4">
-              <span className="text-sm font-medium">{currentIndex + 1}/{record.questions.length}</span>
-            </div>
+            <h1 className="text-lg font-semibold">答题详情</h1>
             <div className="w-8 h-8" />
           </div>
         </header>
 
-        <div ref={swipeRef} className="flex-1 overflow-y-auto touch-pan-y">
-          <div 
-            className={`max-w-lg mx-auto px-4 py-4 transition-all duration-300 ${isKeyboardOpen ? 'pb-24' : 'pb-40'}`}
-            style={{ paddingTop: safeArea.top + 48 }}
-          >
+        <div 
+          ref={swipeRef}
+          className="max-w-lg mx-auto px-4 py-6"
+          style={{ paddingTop: safeArea.top + 72, paddingBottom: safeArea.bottom + 100 }}
+        >
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-sm text-gray-500 dark:text-gray-400">第 {currentIndex + 1} 题 / 共 {record.questions.length} 题</span>
+              <span className={`px-2 py-1 rounded text-xs font-medium ${
+                userAnswer?.isCorrect 
+                  ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400' 
+                  : 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400'
+              }`}>
+                {userAnswer?.isCorrect ? '正确' : '错误'}
+              </span>
+            </div>
+            
             {renderQuestionContent()}
           </div>
         </div>
@@ -302,6 +521,16 @@ const Result: React.FC = () => {
             </div>
           </div>
         </div>
+        
+        {/* 图片查看器 */}
+        {viewerImages && (
+          <ImageViewer 
+            images={viewerImages} 
+            onClose={closeImageViewer}
+            initialIndex={viewerInitialIndex}
+            sourceRect={sourceRect}
+          />
+        )}
       </div>
     );
   }

@@ -16,6 +16,182 @@ const shuffleArray = <T,>(array: T[]): T[] => {
   return shuffled;
 };
 
+// 图片查看器组件
+interface ImageViewerProps {
+  images: string[];
+  onClose: () => void;
+  initialIndex?: number;
+  sourceRect?: DOMRect | null;
+}
+
+const ImageViewer: React.FC<ImageViewerProps> = ({ 
+  images, 
+  onClose, 
+  initialIndex = 0,
+  sourceRect = null
+}) => {
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const [isVisible, setIsVisible] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+  const [animationStyle, setAnimationStyle] = useState<React.CSSProperties>({});
+  const swipeRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    if (sourceRect) {
+      // 第一步：设置初始状态（无动画）
+      setAnimationStyle({
+        position: 'fixed',
+        left: sourceRect.left,
+        top: sourceRect.top,
+        width: sourceRect.width,
+        height: sourceRect.height,
+        objectFit: 'contain',
+        transition: 'none',
+        zIndex: 101,
+      });
+      
+      // 第二步：在下一帧启用动画并设置最终状态
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setIsVisible(true);
+          setAnimationStyle({
+            position: 'fixed',
+            left: '50%',
+            top: '50%',
+            width: '90vw',
+            height: '90vh',
+            objectFit: 'contain',
+            transform: 'translate(-50%, -50%)',
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            zIndex: 101,
+          });
+        });
+      });
+    } else {
+      // 没有源位置信息，使用默认动画
+      requestAnimationFrame(() => {
+        setIsVisible(true);
+      });
+    }
+  }, [sourceRect]);
+
+  const handleClose = () => {
+    setIsClosing(true);
+    setIsVisible(false);
+    
+    if (sourceRect) {
+      // 缩回到原位置
+      setAnimationStyle({
+        position: 'fixed',
+        left: sourceRect.left,
+        top: sourceRect.top,
+        width: sourceRect.width,
+        height: sourceRect.height,
+        objectFit: 'contain',
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        zIndex: 101,
+      });
+    }
+    
+    // 等待动画完成后再关闭
+    setTimeout(() => {
+      onClose();
+    }, 300);
+  };
+  
+  useSwipeElement(swipeRef, {
+    onSwipeLeft: () => {
+      if (currentIndex < images.length - 1) {
+        setCurrentIndex(currentIndex + 1);
+      }
+    },
+    onSwipeRight: () => {
+      if (currentIndex > 0) {
+        setCurrentIndex(currentIndex - 1);
+      }
+    },
+    threshold: 50,
+  });
+
+  const currentImage = images[currentIndex];
+
+  return (
+    <div 
+      className={`fixed inset-0 z-[100] flex items-center justify-center transition-all duration-300 ${
+        isVisible ? 'bg-black/70' : 'bg-black/0'
+      }`}
+      onClick={handleClose}
+    >
+      {/* 使用独立动画的图片元素 */}
+      <img 
+        src={currentImage}
+        alt=""
+        style={animationStyle}
+        className={`${isClosing ? 'opacity-100' : isVisible ? 'opacity-100' : 'opacity-0'}`}
+        onClick={(e) => e.stopPropagation()}
+      />
+      
+      {/* 控制按钮容器 */}
+      <div 
+        ref={swipeRef}
+        className={`absolute inset-0 transition-all duration-300 ${
+          isVisible ? 'opacity-100' : 'opacity-0'
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* 关闭按钮 */}
+        <button 
+          onClick={handleClose}
+          className={`absolute top-4 right-4 z-10 w-10 h-10 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-white transition-all duration-300 ${
+            isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'
+          }`}
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+        
+        {/* 图片计数器 */}
+        {images.length > 1 && (
+          <div className={`absolute top-4 left-4 z-10 px-3 py-1 bg-white/20 rounded-full text-white text-sm transition-all duration-300 ${
+            isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'
+          }`}>
+            {currentIndex + 1} / {images.length}
+          </div>
+        )}
+        
+        {/* 左右切换按钮 */}
+        {images.length > 1 && (
+          <>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setCurrentIndex(Math.max(0, currentIndex - 1)); }}
+              disabled={currentIndex === 0}
+              className={`absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/20 hover:bg-white/30 disabled:opacity-30 rounded-full flex items-center justify-center text-white transition-all duration-300 ${
+                isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'
+              }`}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setCurrentIndex(Math.min(images.length - 1, currentIndex + 1)); }}
+              disabled={currentIndex === images.length - 1}
+              className={`absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/20 hover:bg-white/30 disabled:opacity-30 rounded-full flex items-center justify-center text-white transition-all duration-300 ${
+                isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-4'
+              }`}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const Practice: React.FC = () => {
   const { bankId, mode } = useParams<{ bankId: string; mode: string }>();
   const navigate = useNavigate();
@@ -30,10 +206,25 @@ const Practice: React.FC = () => {
   const [favoriteQuestions, setFavoriteQuestions] = useState<Question[]>([]);
   const [commonQuestions, setCommonQuestions] = useState<Question[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [viewerImages, setViewerImages] = useState<string[] | null>(null);
+  const [viewerInitialIndex, setViewerInitialIndex] = useState(0);
+  const [sourceRect, setSourceRect] = useState<DOMRect | null>(null);
   const navRef = useRef<HTMLDivElement>(null);
   const swipeRef = useRef<HTMLDivElement>(null);
   const { isOpen: isKeyboardOpen, bottom: keyboardBottom } = useKeyboard();
   const safeArea = useSafeArea();
+
+  const openImageViewer = (images: string[], initialIndex: number = 0, rect?: DOMRect) => {
+    setViewerImages(images);
+    setViewerInitialIndex(initialIndex);
+    setSourceRect(rect || null);
+  };
+
+  const closeImageViewer = () => {
+    setViewerImages(null);
+    setViewerInitialIndex(0);
+    setSourceRect(null);
+  };
 
   const bank = getBank(bankId!);
   const practiceMode = mode as PracticeMode;
@@ -242,13 +433,6 @@ const Practice: React.FC = () => {
     return (
       <div className="space-y-4">
         <div className="text-lg font-medium text-gray-800 dark:text-gray-100 selectable">{currentQuestion.content}</div>
-        {currentQuestion.images && currentQuestion.images.length > 0 && (
-          <div className="grid grid-cols-2 gap-2">
-            {currentQuestion.images.map((img, idx) => (
-              <img key={idx} src={img} alt="" className="rounded-lg max-h-40 object-contain" />
-            ))}
-          </div>
-        )}
 
         {currentQuestion.type === 'single-choice' && currentQuestion.options && (
           <div className="space-y-2">
@@ -332,6 +516,29 @@ const Practice: React.FC = () => {
                     return Array.isArray(answer) ? answer.join('、') : answer;
                   })()}
                 </div>
+                {/* 显示参考答案图片 */}
+                {(() => {
+                  const answer = currentQuestion.correctAnswer;
+                  if (typeof answer === 'object' && answer !== null && 'images' in answer && Array.isArray(answer.images) && answer.images.length > 0) {
+                    return (
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        {answer.images.map((img: string, idx: number) => (
+                          <img 
+                            key={idx} 
+                            src={img} 
+                            alt="" 
+                            className="rounded-lg max-h-32 object-contain cursor-pointer hover:opacity-80 transition-opacity"
+                            onClick={(e) => {
+                              const rect = (e.target as HTMLImageElement).getBoundingClientRect();
+                              openImageViewer(answer.images as string[], idx, rect);
+                            }}
+                          />
+                        ))}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
             ) : (
               Array.isArray(currentQuestion.correctAnswer) && currentQuestion.correctAnswer.map((correctAns, idx) => {
@@ -396,8 +603,31 @@ const Practice: React.FC = () => {
                   ? (currentQuestion.correctAnswer as any).text
                   : currentQuestion.correctAnswer}
               </div>
-            </div>
-          ) : (() => {
+              {/* 显示参考答案图片 */}
+              {(() => {
+                const answer = currentQuestion.correctAnswer;
+                if (typeof answer === 'object' && answer !== null && 'images' in answer && Array.isArray(answer.images) && answer.images.length > 0) {
+                  return (
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      {answer.images.map((img: string, idx: number) => (
+                        <img 
+                            key={idx} 
+                            src={img} 
+                            alt="" 
+                            className="rounded-lg max-h-32 object-contain cursor-pointer hover:opacity-80 transition-opacity"
+                            onClick={(e) => {
+                              const rect = (e.target as HTMLImageElement).getBoundingClientRect();
+                              openImageViewer(answer.images as string[], idx, rect);
+                            }}
+                          />
+                        ))}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
+            ) : (() => {
             const userAnswer = currentAnswer as string || '';
             const hasInput = userAnswer.trim().length > 0;
             
@@ -583,6 +813,16 @@ const Practice: React.FC = () => {
           </div>
         </div>
       </div>
+      
+      {/* 图片查看器 */}
+      {viewerImages && (
+        <ImageViewer 
+          images={viewerImages} 
+          onClose={closeImageViewer}
+          initialIndex={viewerInitialIndex}
+          sourceRect={sourceRect}
+        />
+      )}
     </div>
   );
 };
