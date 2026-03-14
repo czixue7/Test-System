@@ -56,6 +56,11 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
   // 用于记录双指缩放时的中心点和上次缩放比例
   const pinchCenterRef = useRef<{ x: number; y: number } | null>(null);
   const lastScaleRef = useRef<number>(1);
+  
+  // 用于区分点击和拖动
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const isPinchingRef = useRef<boolean>(false);
+  
   const safeArea = useSafeArea();
 
   // 同步 ref 和 state
@@ -74,6 +79,19 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     }
   }, []);
 
+  // 关闭处理
+  const handleClose = useCallback(() => {
+    log('Closing viewer');
+    setIsClosing(true);
+    setIsVisible(false);
+    setTransform({ scale: 1, translateX: 0, translateY: 0 });
+    transformRef.current = { scale: 1, translateX: 0, translateY: 0 };
+
+    setTimeout(() => {
+      onClose();
+    }, isAndroid ? 250 : 300); // 安卓使用更短的动画时间
+  }, [sourceRect, onClose]);
+
   // 初始化动画 - 使用 CSS 类而不是内联样式变化
   useEffect(() => {
     log('Initializing animation', { hasSourceRect: !!sourceRect, isAndroid });
@@ -88,18 +106,27 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     return () => clearTimeout(timer);
   }, [sourceRect]);
 
-  // 关闭处理
-  const handleClose = useCallback(() => {
-    log('Closing viewer');
-    setIsClosing(true);
-    setIsVisible(false);
-    setTransform({ scale: 1, translateX: 0, translateY: 0 });
-    transformRef.current = { scale: 1, translateX: 0, translateY: 0 };
+  // 监听返回键（安卓系统导航返回）
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      // 如果图片查看器打开，关闭它而不是退出页面
+      if (isVisible && !isClosing) {
+        e.preventDefault();
+        log('Back button pressed, closing image viewer');
+        handleClose();
+        // 阻止默认的返回行为
+        window.history.pushState(null, '', window.location.href);
+      }
+    };
 
-    setTimeout(() => {
-      onClose();
-    }, isAndroid ? 250 : 300); // 安卓使用更短的动画时间
-  }, [sourceRect, onClose]);
+    // 添加历史记录，使返回键触发 popstate 事件
+    window.history.pushState(null, '', window.location.href);
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [isVisible, isClosing, handleClose]);
 
   // 获取图片在容器中的实际位置和尺寸
   const getImageBounds = useCallback(() => {
@@ -153,66 +180,61 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     }
   }, [isVisible, isClosing]);
 
-  // 双击放大/缩小
-  const handleDoubleClick = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
+  // 处理双击
+  const handleDoubleTap = useCallback((clientX: number, clientY: number) => {
+    const bounds = getImageBounds();
+    if (!bounds) return;
 
-    const now = Date.now();
-    let clientX: number, clientY: number;
-
-    if ('touches' in e) {
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
+    let newTransform: Transform;
+    if (transformRef.current.scale > 1.1) {
+      // 缩小回原状
+      newTransform = { scale: 1, translateX: 0, translateY: 0 };
     } else {
-      clientX = (e as React.MouseEvent).clientX;
-      clientY = (e as React.MouseEvent).clientY;
+      // 从点击位置放大
+      const clickX = clientX - bounds.left;
+      const clickY = clientY - bounds.top;
+      const scale = DOUBLE_TAP_SCALE;
+      const translateX = (bounds.width / 2 - clickX) * (scale - 1);
+      const translateY = (bounds.height / 2 - clickY) * (scale - 1);
+      newTransform = { scale, translateX, translateY };
     }
-
-    // 检测双击
-    if (doubleTapRef.current && now - doubleTapRef.current.time < 300) {
-      const bounds = getImageBounds();
-      if (!bounds) return;
-
-      let newTransform: Transform;
-      if (transform.scale > 1.1) {
-        // 缩小回原状
-        newTransform = { scale: 1, translateX: 0, translateY: 0 };
-      } else {
-        // 从点击位置放大
-        const clickX = clientX - bounds.left;
-        const clickY = clientY - bounds.top;
-        const scale = DOUBLE_TAP_SCALE;
-        const translateX = (bounds.width / 2 - clickX) * (scale - 1);
-        const translateY = (bounds.height / 2 - clickY) * (scale - 1);
-        newTransform = { scale, translateX, translateY };
-      }
-      
-      transformRef.current = newTransform;
-      setTransform(newTransform);
-      updateImageTransform(newTransform);
-      doubleTapRef.current = null;
-    } else {
-      doubleTapRef.current = { time: now, x: clientX, y: clientY };
-    }
-  }, [transform.scale, getImageBounds, updateImageTransform]);
+    
+    transformRef.current = newTransform;
+    setTransform(newTransform);
+    updateImageTransform(newTransform);
+  }, [getImageBounds, updateImageTransform]);
 
   // 触摸开始
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    // 禁用浏览器默认行为
-    if (e.touches.length > 1) {
-      e.preventDefault();
-    }
-
+    // 不要禁用默认行为，让按钮可以正常点击
+    
     if (e.touches.length === 1) {
+      touchStartRef.current = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+        time: Date.now()
+      };
       lastTouchRef.current = {
         x: e.touches[0].clientX,
         y: e.touches[0].clientY
       };
+      
+      // 检测双击
+      if (doubleTapRef.current && Date.now() - doubleTapRef.current.time < 300) {
+        handleDoubleTap(e.touches[0].clientX, e.touches[0].clientY);
+        doubleTapRef.current = null;
+        return;
+      }
+      doubleTapRef.current = { time: Date.now(), x: e.touches[0].clientX, y: e.touches[0].clientY };
+      
       if (transformRef.current.scale > 1) {
         setIsDragging(true);
       }
     } else if (e.touches.length === 2) {
+      // 双指缩放开始
+      isPinchingRef.current = true;
+      setIsDragging(false);
+      
       const distance = Math.hypot(
         e.touches[0].clientX - e.touches[1].clientX,
         e.touches[0].clientY - e.touches[1].clientY
@@ -231,14 +253,16 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         };
       }
     }
-  }, []);
+  }, [handleDoubleTap]);
 
   // 触摸移动 - 直接操作 DOM，无延迟
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    // 禁用浏览器默认行为（防止页面滚动）
-    e.preventDefault();
+    // 双指缩放时禁用默认行为
+    if (e.touches.length === 2) {
+      e.preventDefault();
+    }
 
-    if (e.touches.length === 1 && isDragging && lastTouchRef.current) {
+    if (e.touches.length === 1 && isDragging && lastTouchRef.current && !isPinchingRef.current) {
       const deltaX = e.touches[0].clientX - lastTouchRef.current.x;
       const deltaY = e.touches[0].clientY - lastTouchRef.current.y;
 
@@ -260,18 +284,23 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         y: e.touches[0].clientY
       };
     } else if (e.touches.length === 2) {
+      e.preventDefault();
+      
       const distance = Math.hypot(
         e.touches[0].clientX - e.touches[1].clientX,
         e.touches[0].clientY - e.touches[1].clientY
       );
 
       if (lastDistanceRef.current > 0 && pinchCenterRef.current) {
+        // 计算相对于初始触摸点的缩放比例
         const scaleDelta = distance / lastDistanceRef.current;
         const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, lastScaleRef.current * scaleDelta));
         
         // 以双指中心为基准进行缩放
         const center = pinchCenterRef.current;
-        const scaleRatio = newScale / transformRef.current.scale;
+        // 使用当前缩放比例计算新的偏移
+        const currentScale = transformRef.current.scale;
+        const scaleRatio = newScale / currentScale;
         const newTranslateX = center.x - (center.x - transformRef.current.translateX) * scaleRatio;
         const newTranslateY = center.y - (center.y - transformRef.current.translateY) * scaleRatio;
         
@@ -285,13 +314,16 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         setTransform(newTransform);
         updateImageTransform(newTransform);
       }
-      lastDistanceRef.current = distance;
     }
   }, [isDragging, updateImageTransform]);
 
   // 触摸结束
-  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
-    e.preventDefault();
+  const handleTouchEnd = useCallback(() => {
+    // 延迟重置，避免和点击冲突
+    setTimeout(() => {
+      isPinchingRef.current = false;
+    }, 100);
+    
     setIsDragging(false);
     lastTouchRef.current = null;
     lastDistanceRef.current = 0;
@@ -492,26 +524,27 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
           style={imageTransformStyle}
           className={`${isClosing || !isVisible ? 'opacity-0' : 'opacity-100'} select-none`}
           onClick={(e) => e.stopPropagation()}
-          onDoubleClick={handleDoubleClick}
           draggable={false}
           onDragStart={(e) => e.preventDefault()} // 禁用拖动
         />
       </div>
 
-      {/* 控制按钮容器 */}
+      {/* 控制按钮容器 - 使用 pointer-events-auto 确保按钮可点击 */}
       <div
         ref={swipeRef}
         className={`absolute inset-0 ${isVisible ? 'opacity-100' : 'opacity-0'}`}
         style={{
           transition: isAndroid ? 'opacity 0.2s ease' : 'opacity 0.3s ease',
           touchAction: 'none',
+          pointerEvents: 'none', // 默认不拦截触摸事件
         }}
-        onClick={(e) => e.stopPropagation()}
       >
-        {/* 关闭按钮 */}
+        {/* 关闭按钮 - 明确启用 pointer events */}
         <button
           onClick={(e) => {
             e.stopPropagation();
+            e.preventDefault();
+            log('Close button clicked');
             handleClose();
           }}
           className={`fixed right-4 z-[110] w-10 h-10 bg-white/20 active:bg-white/40 rounded-full flex items-center justify-center text-white ${
@@ -520,6 +553,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
           style={{
             top: `${safeArea.top + 16}px`,
             touchAction: 'manipulation',
+            pointerEvents: 'auto', // 确保按钮可点击
             transition: isAndroid ? 'opacity 0.2s ease, background-color 0.15s' : 'opacity 0.3s ease, background-color 0.2s',
           }}
         >
@@ -536,6 +570,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             }`}
             style={{
               top: `${safeArea.top + 16}px`,
+              pointerEvents: 'auto',
               transition: isAndroid ? 'opacity 0.2s ease' : 'opacity 0.3s ease',
             }}
           >
@@ -545,7 +580,10 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
 
         {/* 缩放提示 */}
         {transform.scale > 1 && (
-          <div className="fixed bottom-8 left-1/2 -translate-x-1/2 px-3 py-1 bg-black/50 rounded-full text-white text-xs">
+          <div 
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 px-3 py-1 bg-black/50 rounded-full text-white text-xs"
+            style={{ pointerEvents: 'auto' }}
+          >
             {transform.scale.toFixed(1)}x
           </div>
         )}
@@ -565,7 +603,10 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
               className={`absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/20 active:bg-white/40 disabled:opacity-30 rounded-full flex items-center justify-center text-white ${
                 isVisible ? 'opacity-100' : 'opacity-0'
               }`}
-              style={{ transition: isAndroid ? 'opacity 0.2s ease' : 'opacity 0.3s ease' }}
+              style={{ 
+                pointerEvents: 'auto',
+                transition: isAndroid ? 'opacity 0.2s ease' : 'opacity 0.3s ease' 
+              }}
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -583,7 +624,10 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
               className={`absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/20 active:bg-white/40 disabled:opacity-30 rounded-full flex items-center justify-center text-white ${
                 isVisible ? 'opacity-100' : 'opacity-0'
               }`}
-              style={{ transition: isAndroid ? 'opacity 0.2s ease' : 'opacity 0.3s ease' }}
+              style={{ 
+                pointerEvents: 'auto',
+                transition: isAndroid ? 'opacity 0.2s ease' : 'opacity 0.3s ease' 
+              }}
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -593,7 +637,10 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         )}
 
         {/* 操作提示 */}
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 text-white/50 text-xs text-center">
+        <div 
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 text-white/50 text-xs text-center"
+          style={{ pointerEvents: 'auto' }}
+        >
           双击放大 · 拖动移动
         </div>
       </div>
