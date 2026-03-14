@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useThemeStore, Theme } from '../store/themeStore';
 import { useSafeArea } from '../hooks/useSafeArea';
+import { checkUpdate, downloadApk, installApk, isTauri, isAndroid, UpdateInfo, DownloadProgress } from '../utils/updater';
 
-type DownloadStatus = 'idle' | 'downloading' | 'downloaded';
+type DownloadStatus = 'idle' | 'downloading' | 'downloaded' | 'installing';
 
 const Profile: React.FC = () => {
   const navigate = useNavigate();
@@ -14,11 +15,34 @@ const Profile: React.FC = () => {
   const [activeModal, setActiveModal] = useState<'about' | 'theme' | null>(null);
   const { theme, setTheme } = useThemeStore();
   const [checkingUpdate, setCheckingUpdate] = useState(false);
-  const [updateInfo, setUpdateInfo] = useState<{ hasUpdate: boolean; latestVersion: string; message: string; downloadUrl?: string } | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [downloadStatus, setDownloadStatus] = useState<DownloadStatus>('idle');
-  const [downloadProgress, setDownloadProgress] = useState(0);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress>({
+    downloaded: 0,
+    total: 0,
+    percentage: 0
+  });
+  const [downloadedFilePath, setDownloadedFilePath] = useState<string>('');
+  const [logs, setLogs] = useState<string[]>([]);
   const safeArea = useSafeArea();
+
+  // 日志容器引用，用于自动滚动
+  const logsContainerRef = useRef<HTMLDivElement>(null);
+
+  // 添加日志
+  const addLog = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    const logMessage = `[${timestamp}] ${message}`;
+    console.log(logMessage);
+    setLogs(prev => [...prev.slice(-49), logMessage]); // 保留最近50条日志
+  };
+
+  // 日志自动滚动到底部
+  useEffect(() => {
+    if (logsContainerRef.current) {
+      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
+    }
+  }, [logs]);
 
   useEffect(() => {
     if (showAboutModal || showThemeModal) {
@@ -42,166 +66,117 @@ const Profile: React.FC = () => {
     setCheckingUpdate(true);
     setUpdateInfo(null);
     setDownloadStatus('idle');
-    setDownloadProgress(0);
-    try {
-      const response = await fetch('https://api.github.com/repos/czixue7/Test-System/releases/latest');
-      if (!response.ok) {
-        throw new Error('无法获取版本信息');
-      }
-      const data = await response.json();
-      const latestVersion = data.tag_name?.replace(/^v/, '') || '0.0.0';
-      
-      const compareVersions = (v1: string, v2: string) => {
-        const parts1 = v1.split('.').map(Number);
-        const parts2 = v2.split('.').map(Number);
-        for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
-          const p1 = parts1[i] || 0;
-          const p2 = parts2[i] || 0;
-          if (p1 > p2) return 1;
-          if (p1 < p2) return -1;
-        }
-        return 0;
-      };
+    setDownloadProgress({ downloaded: 0, total: 0, percentage: 0 });
+    setLogs([]);
 
-      const hasUpdate = compareVersions(latestVersion, currentVersion) > 0;
-      
-      if (hasUpdate) {
-        const getPlatformAsset = (assets: { name: string; browser_download_url: string }[]) => {
-          const platform = navigator.platform.toLowerCase();
-          const userAgent = navigator.userAgent.toLowerCase();
-          
-          if (userAgent.includes('android') || platform.includes('android')) {
-            const isArm64 = userAgent.includes('aarch64') || userAgent.includes('arm64');
-            
-            if (isArm64) {
-              const arm64Apk = assets.find(a => 
-                a.name.includes('arm64') && a.name.endsWith('.apk')
-              );
-              if (arm64Apk) return arm64Apk;
-            }
-            
-            const universalApk = assets.find(a => 
-              a.name.includes('universal') && a.name.endsWith('.apk')
-            );
-            if (universalApk) return universalApk;
-            
-            return null;
-          }
-          
-          if (platform.includes('win') || userAgent.includes('windows')) {
-            return assets.find(a => a.name.endsWith('.exe')) || 
-                   assets.find(a => a.name.includes('windows') && a.name.endsWith('.zip'));
-          }
-          if (platform.includes('mac') || userAgent.includes('mac')) {
-            return assets.find(a => a.name.endsWith('.dmg')) || 
-                   assets.find(a => a.name.includes('macos') && a.name.endsWith('.zip'));
-          }
-          if (platform.includes('linux') || userAgent.includes('linux')) {
-            return assets.find(a => a.name.endsWith('.AppImage')) || 
-                   assets.find(a => a.name.includes('linux') && a.name.endsWith('.zip'));
-          }
-          return null;
-        };
-        
-        const asset = data.assets ? getPlatformAsset(data.assets) : null;
-        
-        if (asset) {
-          setUpdateInfo({
-            hasUpdate: true,
-            latestVersion,
-            message: `发现新版本 v${latestVersion}`,
-            downloadUrl: asset.browser_download_url
-          });
-        } else {
-          setUpdateInfo({
-            hasUpdate: false,
-            latestVersion,
-            message: '当前已是最新版本'
-          });
-        }
-      } else {
-        setUpdateInfo({
-          hasUpdate: false,
-          latestVersion,
-          message: '当前已是最新版本'
-        });
+    addLog('开始检查更新...');
+
+    try {
+      const info = await checkUpdate();
+      setUpdateInfo(info);
+      addLog(`检查结果: ${info.message}`);
+
+      if (info.downloadUrl) {
+        addLog(`下载链接: ${info.downloadUrl}`);
       }
     } catch (error) {
-      setUpdateInfo({
-        hasUpdate: false,
-        latestVersion: currentVersion,
-        message: error instanceof Error ? error.message : '检查更新失败'
-      });
+      addLog(`检查更新失败: ${error instanceof Error ? error.message : '未知错误'}`);
     } finally {
       setCheckingUpdate(false);
     }
   };
 
   const handleDownload = async () => {
-    if (!updateInfo?.downloadUrl) return;
-    
+    if (!updateInfo?.downloadUrl) {
+      addLog('错误: 没有可用的下载链接');
+      return;
+    }
+
+    // 检查是否在 Tauri Android 环境
+    if (!isTauri()) {
+      addLog('错误: 不在 Tauri 环境中，无法使用原生下载');
+      // 回退到浏览器下载
+      window.open(updateInfo.downloadUrl, '_blank');
+      return;
+    }
+
+    if (!isAndroid()) {
+      addLog('错误: 不在 Android 环境中');
+      // 回退到浏览器下载
+      window.open(updateInfo.downloadUrl, '_blank');
+      return;
+    }
+
     setDownloadStatus('downloading');
-    setDownloadProgress(0);
-    abortControllerRef.current = new AbortController();
-    
+    addLog('开始下载 APK...');
+
     try {
-      const response = await fetch(updateInfo.downloadUrl, {
-        signal: abortControllerRef.current.signal
-      });
-      
-      if (!response.ok) throw new Error('下载失败');
-      
-      const contentLength = response.headers.get('content-length');
-      const total = contentLength ? parseInt(contentLength, 10) : 0;
-      
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('无法读取响应');
-      
-      const chunks: BlobPart[] = [];
-      let received = 0;
-      
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        received += value.length;
-        if (total > 0) {
-          setDownloadProgress(Math.round((received / total) * 100));
+      const filename = `app-update-${updateInfo.latestVersion}.apk`;
+      addLog(`文件名: ${filename}`);
+
+      const filePath = await downloadApk(
+        updateInfo.downloadUrl,
+        filename,
+        (progress) => {
+          setDownloadProgress(progress);
+          addLog(`下载进度: ${progress.percentage.toFixed(1)}%`);
         }
-      }
-      
-      const blob = new Blob(chunks);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = updateInfo.downloadUrl.split('/').pop() || 'update';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
+      );
+
+      addLog(`下载完成: ${filePath}`);
+      setDownloadedFilePath(filePath);
       setDownloadStatus('downloaded');
     } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        setDownloadStatus('idle');
-        setDownloadProgress(0);
+      addLog(`下载失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      setDownloadStatus('idle');
+    }
+  };
+
+  const handleInstall = async () => {
+    if (!downloadedFilePath) {
+      addLog('错误: 没有下载好的文件');
+      return;
+    }
+
+    // 检查是否在 Tauri Android 环境
+    if (!isTauri()) {
+      addLog('错误: 不在 Tauri 环境中');
+      return;
+    }
+
+    if (!isAndroid()) {
+      addLog('错误: 不在 Android 环境中');
+      return;
+    }
+
+    setDownloadStatus('installing');
+    addLog('开始安装 APK...');
+    addLog(`文件路径: ${downloadedFilePath}`);
+
+    try {
+      const result = await installApk(downloadedFilePath);
+      addLog(`安装结果: ${result}`);
+      
+      // 检查是否成功调用了安装器
+      if (result.includes('已尝试打开') || result.includes('成功')) {
+        addLog('✅ 系统安装器已启动，请查看系统界面');
+        addLog('提示: 如果未弹出安装界面，请检查是否允许安装未知来源应用');
       } else {
-        setDownloadStatus('idle');
-        setDownloadProgress(0);
+        addLog('⚠️ 自动安装可能未成功');
+        addLog('请手动到下载目录中找到 APK 文件并点击安装');
+        addLog(`文件位置: ${downloadedFilePath}`);
       }
+    } catch (error) {
+      addLog(`❌ 安装失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      addLog('请手动到下载目录中找到 APK 文件并点击安装');
+      setDownloadStatus('downloaded');
     }
   };
 
   const handleCancelDownload = () => {
-    abortControllerRef.current?.abort();
+    addLog('用户取消下载');
     setDownloadStatus('idle');
-    setDownloadProgress(0);
-  };
-
-  const handleInstall = () => {
-    if (updateInfo?.downloadUrl) {
-      window.open(updateInfo.downloadUrl, '_blank');
-    }
+    setDownloadProgress({ downloaded: 0, total: 0, percentage: 0 });
   };
 
   const menuItems = [
@@ -256,7 +231,7 @@ const Profile: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 safe-header">
-      <header 
+      <header
         className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg dark:from-blue-700 dark:to-blue-800 transition-colors"
         style={{ paddingTop: safeArea.top }}
       >
@@ -267,7 +242,7 @@ const Profile: React.FC = () => {
         </div>
       </header>
 
-      <div 
+      <div
         className="max-w-lg mx-auto px-4 py-4 pb-24"
         style={{ paddingTop: safeArea.top + 48 }}
       >
@@ -299,7 +274,7 @@ const Profile: React.FC = () => {
         </div>
       </div>
 
-      <nav 
+      <nav
         className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 shadow-lg"
         style={{ paddingBottom: safeArea.bottom }}
       >
@@ -326,12 +301,12 @@ const Profile: React.FC = () => {
       </nav>
 
       {(showAboutModal || (modalVisible && activeModal === 'about')) && (
-        <div 
+        <div
           className={`fixed inset-0 bg-black flex items-center justify-center z-50 p-4 transition-all duration-300 ease-in-out ${isClosing ? 'bg-opacity-0' : 'bg-opacity-50'}`}
-          onClick={() => { setShowAboutModal(false); setUpdateInfo(null); setDownloadStatus('idle'); setDownloadProgress(0); }}
+          onClick={() => { setShowAboutModal(false); setUpdateInfo(null); setDownloadStatus('idle'); setLogs([]); }}
         >
-          <div 
-            className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl transform transition-all duration-300 ease-in-out"
+          <div
+            className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl transform transition-all duration-300 ease-in-out max-h-[90vh] overflow-y-auto"
             style={{
               transform: isClosing || !modalVisible ? 'scale(0)' : 'scale(1)',
               opacity: isClosing || !modalVisible ? 0 : 1
@@ -351,9 +326,9 @@ const Profile: React.FC = () => {
                 <p>支持题库管理、模拟测试、错题回顾等功能</p>
                 <p>支持 AI 智能判题（API 云端 / WebLLM 本地）</p>
                 <div className="pt-2 mt-2 border-t border-gray-200 dark:border-gray-700">
-                  <a 
-                    href="https://github.com/czixue7/Test-System" 
-                    target="_blank" 
+                  <a
+                    href="https://github.com/czixue7/Test-System"
+                    target="_blank"
                     rel="noopener noreferrer"
                     className="text-blue-600 dark:text-blue-400 hover:underline flex items-center justify-center gap-1"
                   >
@@ -364,17 +339,37 @@ const Profile: React.FC = () => {
                   </a>
                 </div>
               </div>
+
+              {/* 日志显示区域 */}
+              {logs.length > 0 && (
+                <div className="mb-4 bg-gray-100 dark:bg-gray-700 rounded-lg p-3 text-left">
+                  <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
+                    调试日志 ({logs.length}条):
+                  </div>
+                  <div 
+                    ref={logsContainerRef}
+                    className="max-h-40 overflow-y-auto text-xs font-mono space-y-1 scroll-smooth"
+                  >
+                    {logs.map((log, index) => (
+                      <div key={index} className="text-gray-600 dark:text-gray-300 break-all">
+                        {log}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="mb-4">
                 {downloadStatus === 'downloading' ? (
                   <div className="w-full py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-medium flex items-center gap-2 overflow-hidden">
                     <div className="flex-1 flex items-center gap-2 px-3">
                       <div className="flex-1 h-2 bg-white/30 rounded-full overflow-hidden">
-                        <div 
+                        <div
                           className="h-full bg-white transition-all duration-300"
-                          style={{ width: `${downloadProgress}%` }}
+                          style={{ width: `${downloadProgress.percentage}%` }}
                         />
                       </div>
-                      <span className="text-sm whitespace-nowrap">{downloadProgress}%</span>
+                      <span className="text-sm whitespace-nowrap">{downloadProgress.percentage.toFixed(0)}%</span>
                     </div>
                     <button
                       onClick={handleCancelDownload}
@@ -393,26 +388,33 @@ const Profile: React.FC = () => {
                     </svg>
                     点击安装
                   </button>
+                ) : downloadStatus === 'installing' ? (
+                  <div className="w-full py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg font-medium flex items-center justify-center gap-2">
+                    <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    正在启动安装...
+                  </div>
                 ) : (
                   <button
                     onClick={updateInfo?.hasUpdate ? handleDownload : handleCheckUpdate}
                     disabled={checkingUpdate}
                     className={`w-full py-2.5 text-white rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${
-                      updateInfo?.hasUpdate 
-                        ? 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700' 
+                      updateInfo?.hasUpdate
+                        ? 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700'
                         : 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700'
                     }`}
                   >
                     <svg className={`w-4 h-4 ${checkingUpdate ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                     </svg>
-                    {checkingUpdate ? '检查中...' : updateInfo?.hasUpdate ? '可更新' : updateInfo && !updateInfo.hasUpdate ? '当前已是最新版本' : '检查更新'}
+                    {checkingUpdate ? '检查中...' : updateInfo?.hasUpdate ? '立即更新' : updateInfo && !updateInfo.hasUpdate ? '当前已是最新版本' : '检查更新'}
                   </button>
                 )}
               </div>
             </div>
             <button
-              onClick={() => { setShowAboutModal(false); setUpdateInfo(null); setDownloadStatus('idle'); setDownloadProgress(0); }}
+              onClick={() => { setShowAboutModal(false); setUpdateInfo(null); setDownloadStatus('idle'); setLogs([]); }}
               className="w-full py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg font-medium hover:from-blue-600 hover:to-blue-700 transition-all"
             >
               确定
@@ -422,11 +424,11 @@ const Profile: React.FC = () => {
       )}
 
       {(showThemeModal || (modalVisible && activeModal === 'theme')) && (
-        <div 
+        <div
           className={`fixed inset-0 bg-black flex items-center justify-center z-50 p-4 transition-all duration-300 ease-in-out ${isClosing ? 'bg-opacity-0' : 'bg-opacity-50'}`}
           onClick={() => setShowThemeModal(false)}
         >
-          <div 
+          <div
             className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl transform transition-all duration-300 ease-in-out"
             style={{
               transform: isClosing || !modalVisible ? 'scale(0)' : 'scale(1)',
@@ -439,18 +441,18 @@ const Profile: React.FC = () => {
             </div>
             <div className="space-y-2">
               {[
-                { 
-                  value: 'light' as Theme, 
-                  label: '浅色', 
+                {
+                  value: 'light' as Theme,
+                  label: '浅色',
                   icon: (
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
                     </svg>
                   )
                 },
-                { 
-                  value: 'dark' as Theme, 
-                  label: '深色', 
+                {
+                  value: 'dark' as Theme,
+                  label: '深色',
                   icon: (
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
