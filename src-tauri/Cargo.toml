@@ -1,12 +1,12 @@
 [package]
-name = "exam-test-system"
+name = "Answer_Test"
 version = "0.3.3"
 description = "答题测试库"
 authors = ["you"]
 edition = "2021"
 
 [lib]
-name = "exam_test_system_lib"
+name = "answer_test_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

@@ -3,6 +3,28 @@
 version = 4
 
 [[package]]
+name = "Answer_Test"
+version = "0.3.3"
+dependencies = [
+ "android_logger 0.14.1",
+ "jni",
+ "log",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-fs",
+ "tauri-plugin-http",
+ "tauri-plugin-log",
+ "tauri-plugin-os",
+ "tauri-plugin-sql",
+ "tauri-plugin-store",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -970,28 +992,6 @@ dependencies = [
  "concurrent-queue",
  "parking",
  "pin-project-lite",
-]
-
-[[package]]
-name = "exam-test-system"
-version = "0.3.3"
-dependencies = [
- "android_logger 0.14.1",
- "jni",
- "log",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-fs",
- "tauri-plugin-http",
- "tauri-plugin-log",
- "tauri-plugin-os",
- "tauri-plugin-sql",
- "tauri-plugin-store",
- "thiserror 2.0.18",
- "tokio",
 ]
 
 [[package]]

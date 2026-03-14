@@ -1,6 +1,5 @@
 use tauri_plugin_sql::{Migration, MigrationKind};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DownloadProgress {
@@ -74,7 +73,8 @@ async fn download_apk(
 }
 
 #[cfg(target_os = "android")]
-fn get_android_download_dir() -> Result<PathBuf, String> {
+fn get_android_download_dir() -> Result<std::path::PathBuf, String> {
+    use std::path::PathBuf;
     // 在 Android 上，使用外部存储的 Download 目录
     // /storage/emulated/0/Download/
     let download_dir = PathBuf::from("/storage/emulated/0/Download");
