@@ -48,8 +48,12 @@
 - **图片查看器关闭问题**：
   - 修复安卓上关闭按钮被状态栏遮挡的问题
   - 修复图片打开/关闭动画位置不对齐的问题
+  - 修复安卓系统导航返回键无法关闭图片的问题（改为关闭图片而非退出答题）
 - **答题详情页面滑动**：
   - 修复空白区域无法触发滑动切换的问题
+- **双指缩放问题**：
+  - 修复双指缩放比例计算错误的问题
+  - 优化双指缩放时的偏移计算，以双指中心为基准
 
 ### 技术细节
 
@@ -83,6 +87,31 @@ const newTranslateY = center.y - (center.y - transform.translateY) * scaleRatio;
 
 - 将 `swipeRef` 从内容容器移动到页面根容器
 - 使整个页面区域都可触发滑动事件
+
+#### 安卓返回键处理
+
+**修改文件：** `src/components/ImageViewer.tsx`
+
+监听 `popstate` 事件捕获安卓系统导航返回键：
+
+```typescript
+useEffect(() => {
+  const handlePopState = (e: PopStateEvent) => {
+    if (isVisible && !isClosing) {
+      e.preventDefault();
+      handleClose();
+      window.history.pushState(null, '', window.location.href);
+    }
+  };
+
+  window.history.pushState(null, '', window.location.href);
+  window.addEventListener('popstate', handlePopState);
+  
+  return () => {
+    window.removeEventListener('popstate', handlePopState);
+  };
+}, [isVisible, isClosing, handleClose]);
+```
 
 ---
 

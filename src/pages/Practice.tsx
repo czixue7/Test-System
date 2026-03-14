@@ -334,21 +334,12 @@ const Practice: React.FC = () => {
             {isViewMode ? (
               <div className="p-4 bg-green-50 border-2 border-green-500 rounded-lg dark:bg-green-900/30 dark:border-green-500">
                 <div className="text-sm font-medium text-green-700 dark:text-green-400 mb-1">参考答案</div>
-                <div className="text-gray-800 dark:text-gray-100">
-                  {(() => {
-                    const answer = currentQuestion.correctAnswer;
-                    if (typeof answer === 'object' && answer !== null && 'text' in answer) {
-                      return answer.text;
-                    }
-                    return Array.isArray(answer) ? answer.join('、') : answer;
-                  })()}
-                </div>
                 {/* 显示参考答案图片 */}
                 {(() => {
                   const answer = currentQuestion.correctAnswer;
                   if (typeof answer === 'object' && answer !== null && 'images' in answer && Array.isArray(answer.images) && answer.images.length > 0) {
                     return (
-                      <div className="mt-3 space-y-2">
+                      <div className="mb-3 space-y-2">
                         {answer.images.map((img: string, idx: number) => (
                           <img 
                             key={idx} 
@@ -366,6 +357,15 @@ const Practice: React.FC = () => {
                   }
                   return null;
                 })()}
+                <div className="text-gray-800 dark:text-gray-100">
+                  {(() => {
+                    const answer = currentQuestion.correctAnswer;
+                    if (typeof answer === 'object' && answer !== null && 'text' in answer) {
+                      return answer.text;
+                    }
+                    return Array.isArray(answer) ? answer.join('、') : answer;
+                  })()}
+                </div>
               </div>
             ) : (
               Array.isArray(currentQuestion.correctAnswer) && currentQuestion.correctAnswer.map((correctAns, idx) => {
@@ -425,17 +425,12 @@ const Practice: React.FC = () => {
           isViewMode ? (
             <div className="p-4 bg-green-50 border-2 border-green-500 rounded-lg dark:bg-green-900/30 dark:border-green-500">
               <div className="text-sm font-medium text-green-700 dark:text-green-400 mb-1">参考答案</div>
-              <div className="text-gray-800 dark:text-gray-100">
-                {typeof currentQuestion.correctAnswer === 'object' && currentQuestion.correctAnswer !== null && 'text' in currentQuestion.correctAnswer
-                  ? (currentQuestion.correctAnswer as any).text
-                  : currentQuestion.correctAnswer}
-              </div>
               {/* 显示参考答案图片 */}
               {(() => {
                 const answer = currentQuestion.correctAnswer;
                 if (typeof answer === 'object' && answer !== null && 'images' in answer && Array.isArray(answer.images) && answer.images.length > 0) {
                   return (
-                    <div className="mt-3 space-y-2">
+                    <div className="mb-3 space-y-2">
                       {answer.images.map((img: string, idx: number) => (
                         <img 
                             key={idx} 
@@ -453,8 +448,13 @@ const Practice: React.FC = () => {
                   }
                   return null;
                 })()}
+              <div className="text-gray-800 dark:text-gray-100">
+                {typeof currentQuestion.correctAnswer === 'object' && currentQuestion.correctAnswer !== null && 'text' in currentQuestion.correctAnswer
+                  ? (currentQuestion.correctAnswer as any).text
+                  : currentQuestion.correctAnswer}
               </div>
-            ) : (() => {
+            </div>
+          ) : (() => {
             const userAnswer = currentAnswer as string || '';
             const hasInput = userAnswer.trim().length > 0;
             
@@ -509,20 +509,12 @@ const Practice: React.FC = () => {
               })()}
               {isConfirmed && <span className="text-gray-500 dark:text-gray-400">得分: {result?.score}/{currentQuestion.score}</span>}
             </div>
-            <div className="text-sm text-gray-600 dark:text-gray-300">
-              <span className="font-medium">参考答案: </span>
-              {Array.isArray(currentQuestion.correctAnswer)
-                ? currentQuestion.correctAnswer.join(', ')
-                : typeof currentQuestion.correctAnswer === 'object'
-                  ? (currentQuestion.correctAnswer as any).text
-                  : currentQuestion.correctAnswer}
-            </div>
             {/* 显示参考答案图片 */}
             {(() => {
               const answer = currentQuestion.correctAnswer;
               if (typeof answer === 'object' && answer !== null && 'images' in answer && Array.isArray(answer.images) && answer.images.length > 0) {
                 return (
-                  <div className="mt-3 space-y-2">
+                  <div className="mb-3 space-y-2">
                     {answer.images.map((img: string, idx: number) => (
                       <img 
                         key={idx} 
@@ -540,6 +532,14 @@ const Practice: React.FC = () => {
               }
               return null;
             })()}
+            <div className="text-sm text-gray-600 dark:text-gray-300">
+              <span className="font-medium">参考答案: </span>
+              {Array.isArray(currentQuestion.correctAnswer)
+                ? currentQuestion.correctAnswer.join(', ')
+                : typeof currentQuestion.correctAnswer === 'object'
+                  ? (currentQuestion.correctAnswer as any).text
+                  : currentQuestion.correctAnswer}
+            </div>
             {currentQuestion.explanation && (
               <div className="text-sm text-gray-600 dark:text-gray-300 mt-2">
                 <span className="font-medium">解析: </span>

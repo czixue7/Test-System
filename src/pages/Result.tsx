@@ -164,6 +164,29 @@ const Result: React.FC = () => {
               </div>
               <div className="p-4 bg-green-50 border-2 border-green-500 rounded-lg dark:bg-green-900/30 dark:border-green-400">
                 <div className="text-sm font-medium text-green-700 dark:text-green-400 mb-1">参考答案</div>
+                {/* 显示参考答案图片 */}
+                {(() => {
+                  const answer = currentQuestion.correctAnswer;
+                  if (typeof answer === 'object' && answer !== null && 'images' in answer && Array.isArray(answer.images) && answer.images.length > 0) {
+                    return (
+                      <div className="mb-3 space-y-2">
+                        {answer.images.map((img: string, idx: number) => (
+                          <img 
+                            key={idx} 
+                            src={img} 
+                            alt="" 
+                            className="w-full rounded-lg object-contain cursor-pointer hover:opacity-80 transition-opacity"
+                            onClick={(e) => {
+                              const rect = (e.target as HTMLImageElement).getBoundingClientRect();
+                              openImageViewer(answer.images as string[], idx, rect);
+                            }}
+                          />
+                        ))}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
                 <div className="text-gray-800 dark:text-gray-200">
                   {(() => {
                     const answer = currentQuestion.correctAnswer;
@@ -173,12 +196,20 @@ const Result: React.FC = () => {
                     return Array.isArray(answer) ? answer.join('、') : answer;
                   })()}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {currentQuestion.type === 'subjective' && (
+            <div className="space-y-3">
+              <div className="p-4 bg-green-50 border-2 border-green-500 rounded-lg dark:bg-green-900/30 dark:border-green-400">
+                <div className="text-sm font-medium text-green-700 dark:text-green-400 mb-1">参考答案</div>
                 {/* 显示参考答案图片 */}
                 {(() => {
                   const answer = currentQuestion.correctAnswer;
                   if (typeof answer === 'object' && answer !== null && 'images' in answer && Array.isArray(answer.images) && answer.images.length > 0) {
                     return (
-                      <div className="mt-3 space-y-2">
+                      <div className="mb-3 space-y-2">
                         {answer.images.map((img: string, idx: number) => (
                           <img 
                             key={idx} 
@@ -196,14 +227,6 @@ const Result: React.FC = () => {
                   }
                   return null;
                 })()}
-              </div>
-            </div>
-          )}
-
-          {currentQuestion.type === 'subjective' && (
-            <div className="space-y-3">
-              <div className="p-4 bg-green-50 border-2 border-green-500 rounded-lg dark:bg-green-900/30 dark:border-green-400">
-                <div className="text-sm font-medium text-green-700 dark:text-green-400 mb-1">参考答案</div>
                 <div className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
                   {(() => {
                     const answer = currentQuestion.correctAnswer;
@@ -213,29 +236,6 @@ const Result: React.FC = () => {
                     return answer;
                   })()}
                 </div>
-                {/* 显示参考答案图片 */}
-                {(() => {
-                  const answer = currentQuestion.correctAnswer;
-                  if (typeof answer === 'object' && answer !== null && 'images' in answer && Array.isArray(answer.images) && answer.images.length > 0) {
-                    return (
-                      <div className="mt-3 space-y-2">
-                        {answer.images.map((img: string, idx: number) => (
-                          <img 
-                            key={idx} 
-                            src={img} 
-                            alt="" 
-                            className="w-full rounded-lg object-contain cursor-pointer hover:opacity-80 transition-opacity"
-                            onClick={(e) => {
-                              const rect = (e.target as HTMLImageElement).getBoundingClientRect();
-                              openImageViewer(answer.images as string[], idx, rect);
-                            }}
-                          />
-                        ))}
-                      </div>
-                    );
-                  }
-                  return null;
-                })()}
               </div>
             </div>
           )}
