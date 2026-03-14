@@ -31,18 +31,22 @@ interface BankInfo {
   progress: number;
 }
 
-const BUILT_IN_BANK_FILES = [
-  '01第一周考题（答案）.json',
-  '02第二周考题（答案）.json',
-  '03第三周考题（答案）.json',
-  '04第四周考题（答案）.json',
-  '05第五周考题（答案）.json',
-  '06第六周考题（答案）.json',
-  '07第七周考题（答案）.json',
-  '08第八周考题（答案）.json',
-  '09第九周考题（答案）.json',
-  '10第十周考题（答案）.json',
+// 系统题库配置 - 新的目录结构：每个题库一个文件夹
+const BUILT_IN_BANKS_CONFIG = [
+  { folder: '第一周考题', file: '第一周考题.json' },
+  { folder: '第二周考题', file: '第二周考题.json' },
+  { folder: '第三周考题', file: '第三周考题.json' },
+  { folder: '第四周考题', file: '第四周考题.json' },
+  { folder: '第五周考题', file: '第五周考题.json' },
+  { folder: '第六周考题', file: '第六周考题.json' },
+  { folder: '第七周考题', file: '第七周考题.json' },
+  { folder: '第八周考题', file: '第八周考题.json' },
+  { folder: '第九周考题', file: '第九周考题.json' },
+  { folder: '第十周考题', file: '第十周考题.json' },
 ];
+
+// 兼容旧代码的导出
+const BUILT_IN_BANK_FILES = BUILT_IN_BANKS_CONFIG.map(b => b.file);
 
 const DownloadBanks: React.FC = () => {
   const navigate = useNavigate();
@@ -64,7 +68,9 @@ const DownloadBanks: React.FC = () => {
   const USER_BANKS_PATH = 'Question_bank';
 
   const isBuiltInBankFile = (filename: string): boolean => {
-    return BUILT_IN_BANK_FILES.includes(filename);
+    // 兼容新旧文件名格式
+    return BUILT_IN_BANK_FILES.includes(filename) || 
+           BUILT_IN_BANKS_CONFIG.some(b => b.file === filename || filename.includes(b.folder));
   };
 
   const checkBankStatus = useCallback((bankName: string, remoteSha: string, filename: string, source: 'system' | 'user'): { exists: boolean; hasUpdate: boolean; isBuiltIn: boolean } => {

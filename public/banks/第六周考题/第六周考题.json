@@ -71,7 +71,7 @@
       "content": "请画出逆卡诺循环图？",
       "correctAnswer": {
         "text": "逆卡诺循环由两个等温过程和两个绝热过程组成，在压焓图上表现为：等温压缩、绝热压缩、等温膨胀、绝热膨胀。",
-        "images": ["/images/6-1.jpg"]
+        "images": ["/banks/第六周考题/image/11-1.jpg"]
       },
       "score": 10
     },
@@ -80,7 +80,7 @@
       "content": "风冷空调的构成是什么样的？",
       "correctAnswer": {
         "text": "风冷空调主要由压缩机、冷凝器、膨胀阀、蒸发器四大部件组成，以及风机、电控等辅助部分。室外机包含冷凝器和风机，室内机包含蒸发器和风机。",
-        "images": ["/images/6-2.jpg"]
+        "images": ["/banks/第六周考题/image/12-1.jpg"]
       },
       "score": 10
     },
