@@ -150,40 +150,65 @@ const DownloadBanks: React.FC = () => {
     return userBankInfos;
   }, [checkBankStatus]);
 
+  const fetchSystemBankDir = useCallback(async (): Promise<BankInfo[]> => {
+    const systemBankInfos: BankInfo[] = [];
+    try {
+      const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${SYSTEM_BANKS_PATH}`);
+      if (!response.ok) return systemBankInfos;
+
+      const dirs: GitHubFile[] = await response.json();
+
+      for (const dir of dirs) {
+        if (dir.type === 'dir') {
+          try {
+            const dirResponse = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${dir.path}`);
+            if (!dirResponse.ok) continue;
+
+            const dirContents: GitHubFile[] = await dirResponse.json();
+            const expectedJsonFileName = `${dir.name}.json`;
+            const jsonFile = dirContents.find(f => f.type === 'file' && f.name === expectedJsonFileName);
+
+            if (jsonFile) {
+              const bankName = jsonFile.name.replace('.json', '');
+              const status = checkBankStatus(bankName, jsonFile.sha, jsonFile.name, 'system');
+
+              const imageDir = dirContents.find(f => f.type === 'dir' && f.name === 'image');
+
+              systemBankInfos.push({
+                name: bankName,
+                filename: jsonFile.name,
+                downloadUrl: jsonFile.download_url || '',
+                imagePath: imageDir ? `${dir.path}/image` : undefined,
+                sha: jsonFile.sha,
+                source: 'system',
+                exists: status.exists,
+                hasUpdate: status.hasUpdate,
+                isBuiltIn: status.isBuiltIn,
+                downloading: false,
+                progress: 0
+              });
+            }
+          } catch (err) {
+            console.warn(`Error processing system bank directory ${dir.path}:`, err);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Error fetching system banks directory:', err);
+    }
+
+    return systemBankInfos;
+  }, [checkBankStatus]);
+
   const fetchBankList = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [systemResponse, userBankInfos] = await Promise.all([
-        fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${SYSTEM_BANKS_PATH}`),
+      const [systemBankInfos, userBankInfos] = await Promise.all([
+        fetchSystemBankDir(),
         fetchUserBankDir()
       ]);
 
-      if (!systemResponse.ok) {
-        throw new Error('无法获取题库列表');
-      }
-
-      const systemData: GitHubFile[] = await systemResponse.json();
-      
-      const systemJsonFiles = systemData.filter(file => file.name.endsWith('.json') && file.type === 'file' && file.size > 100);
-      
-      const systemBankInfos: BankInfo[] = systemJsonFiles.map(file => {
-        const bankName = file.name.replace('.json', '');
-        const status = checkBankStatus(bankName, file.sha, file.name, 'system');
-        return {
-          name: bankName,
-          filename: file.name,
-          downloadUrl: file.download_url || '',
-          sha: file.sha,
-          source: 'system',
-          exists: status.exists,
-          hasUpdate: status.hasUpdate,
-          isBuiltIn: status.isBuiltIn,
-          downloading: false,
-          progress: 0
-        };
-      });
-      
       setBankList([...systemBankInfos, ...userBankInfos]);
     } catch (err) {
       setError(err instanceof Error ? err.message : '获取题库列表失败');
@@ -191,7 +216,7 @@ const DownloadBanks: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [checkBankStatus, fetchUserBankDir, showError]);
+  }, [fetchSystemBankDir, fetchUserBankDir, showError]);
 
   useEffect(() => {
     fetchBankList();
@@ -530,7 +555,7 @@ const DownloadBanks: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 safe-header">
-      <header 
+      <header
         className="fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-800 text-gray-800 dark:text-white shadow dark:shadow-gray-700 transition-colors border-b border-gray-200 dark:border-gray-700"
         style={{ paddingTop: safeArea.top }}
       >
@@ -539,7 +564,21 @@ const DownloadBanks: React.FC = () => {
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
           </button>
           <h1 className="text-lg font-semibold">下载题库</h1>
-          <div className="w-8 h-8" />
+          <button
+            onClick={fetchBankList}
+            disabled={loading}
+            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+            title="刷新题库列表"
+          >
+            <svg
+              className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
         </div>
       </header>
 

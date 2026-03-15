@@ -9,6 +9,8 @@ import { useSafeArea } from '../hooks/useSafeArea';
 interface GitHubFile {
   name: string;
   sha: string;
+  type: string;
+  path: string;
 }
 
 interface RemoteBankInfo {
@@ -36,7 +38,7 @@ const ManageBanks: React.FC = () => {
 
   const GITHUB_REPO = 'czixue7/Test-System';
   const SYSTEM_BANKS_PATH = 'public/banks';
-  const USER_BANKS_PATH = 'Question%20bank';
+  const USER_BANKS_PATH = 'Question_bank';
 
   const fetchRemoteBanks = useCallback(async () => {
     setLoadingRemote(true);
@@ -48,30 +50,56 @@ const ManageBanks: React.FC = () => {
 
       const remoteBankInfos: RemoteBankInfo[] = [];
 
+      // 获取系统题库（子目录结构）
       if (systemResponse.ok) {
         const systemData: GitHubFile[] = await systemResponse.json();
-        systemData
-          .filter(file => file.name.endsWith('.json'))
-          .forEach(file => {
-            remoteBankInfos.push({
-              filename: file.name,
-              sha: file.sha,
-              source: 'system'
-            });
-          });
+        // 遍历每个子目录
+        for (const dir of systemData.filter(item => item.type === 'dir')) {
+          try {
+            const dirResponse = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${dir.path}`);
+            if (dirResponse.ok) {
+              const dirContents: GitHubFile[] = await dirResponse.json();
+              // 查找与目录名匹配的 JSON 文件
+              const expectedJsonFileName = `${dir.name}.json`;
+              const jsonFile = dirContents.find(f => f.type === 'file' && f.name === expectedJsonFileName);
+              if (jsonFile) {
+                remoteBankInfos.push({
+                  filename: jsonFile.name,
+                  sha: jsonFile.sha,
+                  source: 'system'
+                });
+              }
+            }
+          } catch (err) {
+            console.warn(`Error fetching system bank directory ${dir.path}:`, err);
+          }
+        }
       }
 
+      // 获取用户题库（子目录结构）
       if (userResponse.ok) {
         const userData: GitHubFile[] = await userResponse.json();
-        userData
-          .filter(file => file.name.endsWith('.json'))
-          .forEach(file => {
-            remoteBankInfos.push({
-              filename: file.name,
-              sha: file.sha,
-              source: 'user'
-            });
-          });
+        // 遍历每个子目录
+        for (const dir of userData.filter(item => item.type === 'dir')) {
+          try {
+            const dirResponse = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${dir.path}`);
+            if (dirResponse.ok) {
+              const dirContents: GitHubFile[] = await dirResponse.json();
+              // 查找与目录名匹配的 JSON 文件
+              const expectedJsonFileName = `${dir.name}.json`;
+              const jsonFile = dirContents.find(f => f.type === 'file' && f.name === expectedJsonFileName);
+              if (jsonFile) {
+                remoteBankInfos.push({
+                  filename: jsonFile.name,
+                  sha: jsonFile.sha,
+                  source: 'user'
+                });
+              }
+            }
+          } catch (err) {
+            console.warn(`Error fetching user bank directory ${dir.path}:`, err);
+          }
+        }
       }
 
       setRemoteBanks(remoteBankInfos);
@@ -153,8 +181,10 @@ const ManageBanks: React.FC = () => {
     showInfo(`正在更新「${bank.name}」...`);
 
     try {
+      const pathPrefix = bank.sourceType === 'system' ? 'public/banks' : 'Question_bank';
+      const bankFolder = bank.sourceFilename?.replace('.json', '');
       const response = await fetch(
-        `https://raw.githubusercontent.com/${GITHUB_REPO}/main/${bank.sourceType === 'system' ? 'public/banks' : 'Question%20bank'}/${bank.sourceFilename}`
+        `https://raw.githubusercontent.com/${GITHUB_REPO}/main/${pathPrefix}/${bankFolder}/${bank.sourceFilename}`
       );
 
       if (!response.ok) {

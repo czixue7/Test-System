@@ -1,0 +1,19 @@
+{
+  "name": "数据中心基础知识测试（第一周）",
+  "description": "数据中心基础概念、组成、分级标准（国标与Uptime）、能效指标及常见问题。",
+  "questions": [
+    {
+      "type": "fill-in-blank",
+      "content": "什么是数据中心：______",
+      "correctAnswer": ["指一个能够持续供电，保证计算、储存、网络设备正常运行的基础设施物理空间"],
+      "score": 1
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "数据中心的组成：______、______、______、______",
+      "correctAnswer": ["主机房", "辅助区", "行政区", "支持区"],
+      "score": 4,
+      "allowDisorder": true
+    }
+  ]
+}
