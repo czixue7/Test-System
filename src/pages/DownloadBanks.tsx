@@ -105,25 +105,25 @@ const DownloadBanks: React.FC = () => {
     try {
       const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${USER_BANKS_PATH}`);
       if (!response.ok) return userBankInfos;
-      
+
       const dirs: GitHubFile[] = await response.json();
-      
+
       for (const dir of dirs) {
         if (dir.type === 'dir') {
           try {
             const dirResponse = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${dir.path}`);
             if (!dirResponse.ok) continue;
-            
+
             const dirContents: GitHubFile[] = await dirResponse.json();
-            const expectedJsonFileName = `${dir.name}.json`;
-            const jsonFile = dirContents.find(f => f.type === 'file' && f.name === expectedJsonFileName);
-            
-            if (jsonFile) {
+            // 查找目录下的任意 .json 文件（不限制文件名）
+            const jsonFiles = dirContents.filter(f => f.type === 'file' && f.name.endsWith('.json'));
+
+            for (const jsonFile of jsonFiles) {
               const bankName = jsonFile.name.replace('.json', '');
               const status = checkBankStatus(bankName, jsonFile.sha, jsonFile.name, 'user');
-              
+
               const imageDir = dirContents.find(f => f.type === 'dir' && f.name === 'image');
-              
+
               userBankInfos.push({
                 name: bankName,
                 filename: jsonFile.name,
@@ -146,7 +146,7 @@ const DownloadBanks: React.FC = () => {
     } catch (err) {
       console.warn('Error fetching user banks directory:', err);
     }
-    
+
     return userBankInfos;
   }, [checkBankStatus]);
 

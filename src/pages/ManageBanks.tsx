@@ -85,10 +85,9 @@ const ManageBanks: React.FC = () => {
             const dirResponse = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${dir.path}`);
             if (dirResponse.ok) {
               const dirContents: GitHubFile[] = await dirResponse.json();
-              // 查找与目录名匹配的 JSON 文件
-              const expectedJsonFileName = `${dir.name}.json`;
-              const jsonFile = dirContents.find(f => f.type === 'file' && f.name === expectedJsonFileName);
-              if (jsonFile) {
+              // 查找目录下的任意 .json 文件（不限制文件名）
+              const jsonFiles = dirContents.filter(f => f.type === 'file' && f.name.endsWith('.json'));
+              for (const jsonFile of jsonFiles) {
                 remoteBankInfos.push({
                   filename: jsonFile.name,
                   sha: jsonFile.sha,
