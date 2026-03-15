@@ -536,6 +536,20 @@ button, input, textarea, select {
   }
 }
 
+/* 扫描动画效果 */
+@keyframes scan {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-scan {
+  animation: scan 2s linear infinite;
+}
+
 html {
   overflow-x: hidden;
   max-width: 100vw;

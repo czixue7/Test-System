@@ -41,10 +41,11 @@ export interface UserAnswer {
   answer: string | string[];
   score?: number;
   similarity?: number;
-  isCorrect: boolean;
+  isCorrect: 0 | 1 | 2; // 0=错误, 1=部分正确, 2=正确
   aiFeedback?: string;
   aiExplanation?: string;
   gradingMode?: GradingMode;
+  blankResults?: BlankResult[];
 }
 
 export interface ExamRecord {
@@ -63,16 +64,23 @@ export interface ExamRecord {
   gradingMode?: GradingMode;
 }
 
-export type QuestionStatus = 'unanswered' | 'correct' | 'incorrect';
+export type QuestionStatus = 'unanswered' | 'correct' | 'incorrect' | 'partial';
+
+export interface BlankResult {
+  userAnswer: string;
+  correctAnswer: string;
+  isCorrect: boolean;
+}
 
 export interface QuestionResult {
   answer: string | string[];
   isConfirmed: boolean;
-  isCorrect: boolean;
+  isCorrect: 0 | 1 | 2; // 0=错误, 1=部分正确, 2=正确
   score: number;
   aiFeedback?: string;
   aiExplanation?: string;
   gradingMode?: GradingMode;
+  blankResults?: BlankResult[];
 }
 
 export interface ExamState {

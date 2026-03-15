@@ -382,7 +382,7 @@ const Practice: React.FC = () => {
                   isMatch = userAnswer.trim() === String(correctAns).trim();
                 }
                 
-                let inputClass = 'w-full p-3 border-2 rounded-lg text-gray-800 dark:text-gray-100 dark:placeholder-gray-400 transition-colors outline-none';
+                let inputClass = 'w-full p-3 border-2 border-transparent rounded-lg text-gray-800 dark:text-gray-100 dark:placeholder-gray-400 transition-colors duration-300 outline-none focus:border-blue-300 focus:outline-none';
                 
                 if (isConfirmed) {
                   if (result?.isCorrect) {
@@ -397,7 +397,7 @@ const Practice: React.FC = () => {
                     inputClass += ' border-orange-400 bg-orange-50 dark:bg-orange-900/20 dark:border-orange-500';
                   }
                 } else {
-                  inputClass += ' border-gray-300 bg-gray-50 dark:bg-gray-800 dark:border-gray-600';
+                  inputClass += ' bg-gray-100 dark:bg-gray-700';
                 }
                 
                 return (
@@ -458,7 +458,7 @@ const Practice: React.FC = () => {
             const userAnswer = currentAnswer as string || '';
             const hasInput = userAnswer.trim().length > 0;
             
-            let textareaClass = 'w-full p-3 border-2 rounded-lg text-gray-800 dark:text-gray-100 dark:placeholder-gray-400 transition-colors outline-none';
+            let textareaClass = 'w-full p-3 border-2 border-transparent rounded-lg text-gray-800 dark:text-gray-100 dark:placeholder-gray-400 transition-colors duration-300 outline-none focus:border-blue-300 focus:outline-none';
             
             if (isConfirmed) {
               if (result?.isCorrect) {
@@ -469,7 +469,7 @@ const Practice: React.FC = () => {
             } else if (hasInput) {
               textareaClass += ' border-orange-400 bg-orange-50 dark:bg-orange-900/20 dark:border-orange-500';
             } else {
-              textareaClass += ' border-gray-300 bg-gray-50 dark:bg-gray-800 dark:border-gray-600';
+              textareaClass += ' bg-gray-100 dark:bg-gray-700';
             }
             
             return (

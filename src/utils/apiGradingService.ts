@@ -51,6 +51,11 @@ class APIGradingService {
     }
   }
 
+  async warmUp(): Promise<boolean> {
+    const result = await this.testConnection();
+    return result.success;
+  }
+
   async gradeWithStream(
     prompt: string,
     maxTokens: number,
@@ -166,6 +171,32 @@ class APIGradingService {
     console.log('[API判题] 响应内容:', content.substring(0, 200) + '...');
     
     return content;
+  }
+
+  async callAPIBatch(prompts: string[], maxTokens: number): Promise<string> {
+    if (!this.config) {
+      throw new Error('API未配置');
+    }
+
+    // 如果只有一个prompt，直接调用callAPI
+    if (prompts.length === 1) {
+      console.log('[API批量判题] 只有1个prompt，直接调用callAPI');
+      return this.callAPI(prompts[0], maxTokens);
+    }
+
+    // 多个prompt合并为一个
+    console.log(`[API批量判题] 合并 ${prompts.length} 个prompt为一次请求`);
+
+    const separator = '\n\n========== 批量请求分隔线 ==========\n\n';
+    const combinedPrompt = prompts.map((prompt, index) => {
+      return `【请求 ${index + 1}】\n${prompt}`;
+    }).join(separator);
+
+    const finalPrompt = `以下包含 ${prompts.length} 个独立的判题请求，请分别处理并返回每个请求的结果。\n\n${combinedPrompt}\n\n请确保返回所有 ${prompts.length} 个请求的结果，每个请求的结果用【请求 X 结果】标识。`;
+
+    const response = await this.callAPI(finalPrompt, maxTokens * prompts.length);
+
+    return response;
   }
 }
 

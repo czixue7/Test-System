@@ -4,7 +4,7 @@ import { useQuestionBankStore } from '../store/questionBankStore';
 import { useExamStore } from '../store/examStore';
 import { useRecordStore } from '../store/recordStore';
 import { useSettingsStore } from '../store/settingsStore';
-import { checkAnswerWithAI } from '../store/examStore';
+
 import { Question } from '../types';
 import ConfirmModal from '../components/ConfirmModal';
 import { useSwipeElement } from '../hooks/useSwipe';
@@ -20,18 +20,24 @@ const shuffleArray = <T,>(array: T[]): T[] => {
   return shuffled;
 };
 
-const GradingText: React.FC<{ step: number; total: number }> = ({ step, total }) => {
-  const [displayText, setDisplayText] = React.useState('正在连接AI服务...');
+const GradingText: React.FC<{ isConnecting: boolean; isProcessing: boolean; isGenerating: boolean }> = ({ 
+  isConnecting, 
+  isProcessing, 
+  isGenerating 
+}) => {
+  const [displayText, setDisplayText] = React.useState('正在准备判题...');
   const [isAnimating, setIsAnimating] = React.useState(false);
 
   React.useEffect(() => {
     let text = '';
-    if (step === 0) {
+    if (isConnecting) {
       text = '正在连接AI服务...';
-    } else if (step <= total) {
-      text = `正在判断第 ${step}/${total} 题...`;
-    } else {
+    } else if (isProcessing) {
+      text = '正在智能判题中...';
+    } else if (isGenerating) {
       text = '正在生成判题结果...';
+    } else {
+      text = '正在准备判题...';
     }
     
     setDisplayText(text);
@@ -39,7 +45,7 @@ const GradingText: React.FC<{ step: number; total: number }> = ({ step, total })
     
     const timer = setTimeout(() => setIsAnimating(false), 200);
     return () => clearTimeout(timer);
-  }, [step, total]);
+  }, [isConnecting, isProcessing, isGenerating]);
 
   return (
     <p className={`text-sm font-medium text-blue-700 dark:text-blue-300 transition-all duration-200 ${isAnimating ? 'opacity-0' : 'opacity-100'}`}>
@@ -53,7 +59,7 @@ const Exam: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { getBank } = useQuestionBankStore();
-  const { startExam, examState, setAnswer, getAnswer, nextQuestion, prevQuestion, goToQuestion, getCurrentQuestion, resetExam } = useExamStore();
+  const { startExam, examState, setAnswer, getAnswer, nextQuestion, prevQuestion, goToQuestion, getCurrentQuestion, resetExam, finishExam } = useExamStore();
   const { addRecord } = useRecordStore();
 
   const [examStartTime, setExamStartTime] = useState<number>(0);
@@ -62,7 +68,7 @@ const Exam: React.FC = () => {
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [submitType, setSubmitType] = useState<'partial' | 'complete' | null>(null);
   const [isGrading, setIsGrading] = useState(false);
-  const [gradingStep, setGradingStep] = useState(0);
+  const [gradingPhase, setGradingPhase] = useState<'connecting' | 'processing' | 'generating'>('connecting');
   const navRef = useRef<HTMLDivElement>(null);
   const swipeRef = useRef<HTMLDivElement>(null);
   const safeArea = useSafeArea();
@@ -145,52 +151,19 @@ const Exam: React.FC = () => {
   const handleSubmitConfirm = async () => {
     setShowSubmitConfirm(false);
     setIsGrading(true);
-    setGradingStep(0);
+    setGradingPhase('connecting');
     
     try {
       const questions = examState?.questions || [];
-      const answers = examState?.answers || new Map();
-      const results = examState?.results || new Map();
-      const userAnswers: any[] = [];
       
-      for (let i = 0; i < questions.length; i++) {
-        const question = questions[i];
-        setGradingStep(i + 1);
-        
-        const existingResult = results.get(question.id);
-        const answer = answers.get(question.id);
-        
-        if (existingResult) {
-          userAnswers.push({
-            questionId: question.id,
-            answer: existingResult.answer,
-            score: existingResult.score,
-            isCorrect: existingResult.isCorrect,
-            aiFeedback: existingResult.aiFeedback,
-            aiExplanation: existingResult.aiExplanation,
-            gradingMode: existingResult.gradingMode
-          });
-        } else if (answer !== undefined) {
-          const { score, isCorrect, aiFeedback, aiExplanation } = await checkAnswerWithAI(question, answer, true);
-          const gradingMode = useSettingsStore.getState().gradingMode;
-          userAnswers.push({
-            questionId: question.id,
-            answer,
-            score,
-            isCorrect,
-            aiFeedback,
-            aiExplanation,
-            gradingMode: gradingMode === 'ai' ? 'ai' : 'fixed'
-          });
-        } else {
-          userAnswers.push({
-            questionId: question.id,
-            answer: '',
-            score: 0,
-            isCorrect: false
-          });
-        }
-      }
+      // 短暂显示连接状态，然后进入处理状态
+      setTimeout(() => setGradingPhase('processing'), 500);
+      
+      // 使用 finishExam 进行批量判题（包含快速预检和批量AI判题）
+      const userAnswers = await finishExam(true);
+      
+      // 判题完成，进入生成结果状态
+      setGradingPhase('generating');
       
       const maxScore = questions.reduce((sum, q) => sum + q.score, 0) || 0;
       
@@ -243,7 +216,7 @@ const Exam: React.FC = () => {
       navigate(`/result/${recordId}`);
     } finally {
       setIsGrading(false);
-      setGradingStep(0);
+      setGradingPhase('connecting');
     }
   };
 
@@ -360,7 +333,7 @@ const Exam: React.FC = () => {
                 }}
                 disabled={isGrading}
                 placeholder={`空 ${idx + 1}`}
-                className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-800 dark:text-gray-200 dark:bg-gray-800 dark:border-gray-600 ${isGrading ? 'cursor-not-allowed opacity-70' : ''}`}
+                className={`w-full p-3 border-2 border-transparent rounded-lg bg-gray-100 dark:bg-gray-700 focus:border-blue-300 focus:outline-none text-gray-800 dark:text-gray-200 transition-colors duration-300 ${isGrading ? 'cursor-not-allowed opacity-70' : ''}`}
               />
             ))}
           </div>
@@ -373,7 +346,7 @@ const Exam: React.FC = () => {
             disabled={isGrading}
             placeholder="请输入答案"
             rows={4}
-            className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-800 dark:text-gray-200 dark:bg-gray-800 dark:border-gray-600 ${isGrading ? 'cursor-not-allowed opacity-70' : ''}`}
+            className={`w-full p-3 border-2 border-transparent rounded-lg bg-gray-100 dark:bg-gray-700 focus:border-blue-300 focus:outline-none text-gray-800 dark:text-gray-200 transition-colors duration-300 ${isGrading ? 'cursor-not-allowed opacity-70' : ''}`}
           />
         )}
       </div>
@@ -404,8 +377,22 @@ const Exam: React.FC = () => {
           style={{ paddingTop: safeArea.top + 48 }}
         >
           {isGrading && (
-            <div className="mb-3 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg">
-              <GradingText step={gradingStep} total={examState.questions.length} />
+            <div className="mb-3 px-3 py-2 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg overflow-hidden relative">
+              {/* 动态扫描效果 */}
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-blue-200/50 to-transparent dark:via-blue-500/30 w-full h-full animate-scan" />
+              <div className="relative z-10 flex items-center justify-center gap-2">
+                {/* 加载动画点 */}
+                <div className="flex gap-1">
+                  <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+                <GradingText 
+                  isConnecting={gradingPhase === 'connecting'} 
+                  isProcessing={gradingPhase === 'processing'} 
+                  isGenerating={gradingPhase === 'generating'} 
+                />
+              </div>
             </div>
           )}
           {renderQuestionContent()}

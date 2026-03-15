@@ -24,61 +24,16 @@ function generateQuestionId(bankId: string, questionIndex: number): string {
   return `${bankId}-q-${questionIndex}`;
 }
 
-/**
- * 加载题库图片
- * 从 /banks/{folder}/image/ 目录加载图片
- * 图片命名格式：{题号}-{序号}.jpg（如 6-1.jpg 表示第6题的第1张图）
- */
-async function loadBankImages(folder: string): Promise<Map<string, string[]>> {
-  const questionImagesMap = new Map<string, string[]>();
-  
-  try {
-    // 尝试加载图片清单或直接加载已知图片
-    // 图片路径格式：/banks/{folder}/image/{questionIndex}-{imageIndex}.jpg
-    const imagePromises: Promise<void>[] = [];
-    
-    // 预加载前20道题的图片，每道题最多5张图
-    for (let qIndex = 0; qIndex < 20; qIndex++) {
-      for (let imgIndex = 1; imgIndex <= 5; imgIndex++) {
-        const imagePath = `/banks/${encodeURIComponent(folder)}/image/${qIndex + 1}-${imgIndex}.jpg`;
-        
-        const promise = fetch(imagePath, { method: 'HEAD' })
-          .then(response => {
-            if (response.ok) {
-              if (!questionImagesMap.has(qIndex.toString())) {
-                questionImagesMap.set(qIndex.toString(), []);
-              }
-              questionImagesMap.get(qIndex.toString())?.push(imagePath);
-            }
-          })
-          .catch(() => {
-            // 图片不存在，忽略错误
-          });
-        
-        imagePromises.push(promise);
-      }
-    }
-    
-    await Promise.all(imagePromises);
-  } catch (error) {
-    console.warn(`Error loading images for bank ${folder}:`, error);
-  }
-  
-  return questionImagesMap;
-}
-
 function convertJsonToBuiltInBank(
-  data: JsonBankData, 
-  bankId: string, 
-  questionImagesMap: Map<string, string[]>
+  data: JsonBankData,
+  bankId: string
 ): QuestionBank {
   const now = new Date().toISOString();
   const questions: Question[] = data.questions.map((q, index) => {
-    // 获取该题的图片
-    const images = questionImagesMap.has(index.toString()) 
-      ? questionImagesMap.get(index.toString()) 
-      : q.images;
-    
+    // 只使用JSON中显式定义的question.images作为题目图片
+    // image/文件夹中的图片是答案图片，不应该作为题目图片显示
+    const images = q.images;
+
     return {
       id: generateQuestionId(bankId, index),
       type: q.type as QuestionType,
@@ -116,14 +71,13 @@ export async function loadBuiltInBanks(): Promise<QuestionBank[]> {
         console.warn(`Failed to load built-in bank: ${bankInfo.folder}/${bankInfo.file}`);
         continue;
       }
-      
+
       const data: JsonBankData = await response.json();
-      
-      // 加载题库图片
-      const questionImagesMap = await loadBankImages(bankInfo.folder);
-      
+
       // 转换并创建题库对象
-      const bank = convertJsonToBuiltInBank(data, bankInfo.id, questionImagesMap);
+      // 注意：不再自动加载image/文件夹中的图片作为题目图片
+      // 因为这些图片实际上是答案图片，应该在答案区域显示
+      const bank = convertJsonToBuiltInBank(data, bankInfo.id);
       banks.push(bank);
     } catch (error) {
       console.warn(`Error loading built-in bank ${bankInfo.folder}/${bankInfo.file}:`, error);

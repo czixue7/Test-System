@@ -152,14 +152,56 @@ const Result: React.FC = () => {
 
           {currentQuestion.type === 'fill-in-blank' && (
             <div className="space-y-3">
-              <div className={`p-4 border-2 rounded-lg ${userAnswer?.isCorrect ? 'bg-green-50 border-green-500 dark:bg-green-900/30 dark:border-green-400' : 'bg-red-50 border-red-500 dark:bg-red-900/30 dark:border-red-400'}`}>
-                <div className={`text-sm font-medium mb-1 ${userAnswer?.isCorrect ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
-                  {userAnswer?.isCorrect ? '你的答案（正确）' : '你的答案（错误）'}
+              <div className={`p-4 border-2 rounded-lg ${
+                userAnswer?.isCorrect === 2
+                  ? 'bg-green-50 border-green-500 dark:bg-green-900/30 dark:border-green-400'
+                  : userAnswer?.isCorrect === 1
+                    ? 'bg-yellow-50 border-yellow-500 dark:bg-yellow-900/30 dark:border-yellow-400'
+                    : 'bg-red-50 border-red-500 dark:bg-red-900/30 dark:border-red-400'
+              }`}>
+                <div className={`text-sm font-medium mb-1 ${
+                  userAnswer?.isCorrect === 2
+                    ? 'text-green-700 dark:text-green-400'
+                    : userAnswer?.isCorrect === 1
+                      ? 'text-yellow-700 dark:text-yellow-400'
+                      : 'text-red-700 dark:text-red-400'
+                }`}>
+                  {userAnswer?.isCorrect === 2
+                    ? '你的答案（正确）'
+                    : userAnswer?.isCorrect === 1
+                      ? `你的答案（部分正确，得分：${userAnswer.score}分）`
+                      : '你的答案（错误）'}
                 </div>
-                <div className="text-gray-800 dark:text-gray-200">
-                  {userAnswer?.answer && userAnswer.answer !== '' && (!Array.isArray(userAnswer.answer) || userAnswer.answer.length > 0)
-                    ? (Array.isArray(userAnswer.answer) ? userAnswer.answer.join('、') : userAnswer.answer)
-                    : '未作答'}
+                <div className="text-gray-800 dark:text-gray-200 space-y-1">
+                  {userAnswer?.blankResults ? (
+                    // 有逐空判题结果，分别显示每空
+                    userAnswer.blankResults.map((blank, index) => (
+                      <div key={index} className="flex items-center gap-2">
+                        <span className="text-sm text-gray-500 dark:text-gray-400">第{index + 1}空：</span>
+                        {blank.isCorrect ? (
+                          // 答案正确：显示绿色
+                          <span className="text-green-600 dark:text-green-400">
+                            {blank.userAnswer || '（未填写）'}
+                          </span>
+                        ) : (
+                          // 答案错误：显示红色，并提示正确答案
+                          <>
+                            <span className="text-red-600 dark:text-red-400 line-through">
+                              {blank.userAnswer || '（未填写）'}
+                            </span>
+                            <span className="text-sm text-gray-500 dark:text-gray-400">
+                              {blank.correctAnswer ? `（正确答案：${blank.correctAnswer}）` : '（答案错误）'}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    // 没有逐空结果，简单显示
+                    userAnswer?.answer && userAnswer.answer !== '' && (!Array.isArray(userAnswer.answer) || userAnswer.answer.length > 0)
+                      ? (Array.isArray(userAnswer.answer) ? userAnswer.answer.join('、') : userAnswer.answer)
+                      : '未作答'
+                  )}
                 </div>
               </div>
               <div className="p-4 bg-green-50 border-2 border-green-500 rounded-lg dark:bg-green-900/30 dark:border-green-400">
@@ -246,6 +288,33 @@ const Result: React.FC = () => {
               <div className="text-gray-700 dark:text-gray-300">{currentQuestion.explanation}</div>
             </div>
           )}
+
+          {/* AI判题解析 */}
+          {(userAnswer?.aiFeedback || userAnswer?.aiExplanation) && (
+            <div className={`p-4 rounded-lg border ${
+              userAnswer?.gradingMode === 'ai'
+                ? 'bg-purple-50 dark:bg-purple-900/30 border-purple-200 dark:border-purple-700'
+                : 'bg-gray-100 dark:bg-gray-700 border-gray-200 dark:border-gray-600'
+            }`}>
+              <div className="flex items-center gap-2 mb-2">
+                <svg className={`w-4 h-4 ${
+                  userAnswer?.gradingMode === 'ai' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-600 dark:text-gray-400'
+                }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+                <span className={`text-sm font-medium ${
+                  userAnswer?.gradingMode === 'ai' ? 'text-purple-700 dark:text-purple-400' : 'text-gray-700 dark:text-gray-400'
+                }`}>
+                  {userAnswer?.gradingMode === 'ai' ? 'AI 智能判题解析' : '判题解析'}
+                </span>
+              </div>
+              {userAnswer?.aiExplanation ? (
+                <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{userAnswer.aiExplanation}</div>
+              ) : (
+                <div className="text-sm text-gray-700 dark:text-gray-300">{userAnswer?.aiFeedback}</div>
+              )}
+            </div>
+          )}
         </div>
       );
     };
@@ -276,11 +345,17 @@ const Result: React.FC = () => {
             <div className="flex items-center justify-between mb-4">
               <span className="text-sm text-gray-500 dark:text-gray-400">第 {currentIndex + 1} 题 / 共 {record.questions.length} 题</span>
               <span className={`px-2 py-1 rounded text-xs font-medium ${
-                userAnswer?.isCorrect 
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400' 
-                  : 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400'
+                userAnswer?.isCorrect === 2
+                  ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400'
+                  : userAnswer?.isCorrect === 1
+                    ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-400'
+                    : 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400'
               }`}>
-                {userAnswer?.isCorrect ? '正确' : '错误'}
+                {userAnswer?.isCorrect === 2
+                  ? '正确'
+                  : userAnswer?.isCorrect === 1
+                    ? '部分正确'
+                    : '错误'}
               </span>
             </div>
             
@@ -310,19 +385,22 @@ const Result: React.FC = () => {
             >
               {record.questions.map((q, idx) => {
                 const ans = record.answers.find(a => a.questionId === q.id);
+                // 判断题目状态：正确(2)、部分正确(1)、错误(0)、未答
+                const getStatusClass = () => {
+                  if (idx === currentIndex) return 'bg-blue-500 text-white';
+                  if (!ans) return 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400';
+                  if (ans.isCorrect === 2) return 'bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400';
+                  if (ans.isCorrect === 1) return 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/50 dark:text-yellow-400';
+                  if (ans.answer !== '' && (!Array.isArray(ans.answer) || ans.answer.length > 0)) {
+                    return 'bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-400';
+                  }
+                  return 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400';
+                };
                 return (
                   <button
                     key={q.id}
                     onClick={() => setCurrentIndex(idx)}
-                    className={`w-8 h-8 rounded text-xs font-medium flex-shrink-0 ${
-                      idx === currentIndex
-                        ? 'bg-blue-500 text-white'
-                        : ans?.isCorrect
-                          ? 'bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400'
-                          : ans?.answer && ans.answer !== '' && (!Array.isArray(ans.answer) || ans.answer.length > 0)
-                            ? 'bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-400'
-                            : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
-                    }`}
+                    className={`w-8 h-8 rounded text-xs font-medium flex-shrink-0 ${getStatusClass()}`}
                   >
                     {idx + 1}
                   </button>

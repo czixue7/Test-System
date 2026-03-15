@@ -112,6 +112,16 @@ class ModelLoaderService {
     return this.loadModel(lastModelId, onProgress);
   }
 
+  async warmUp(onProgress?: (progress: number, status: string) => void): Promise<boolean> {
+    if (this.isModelReady()) {
+      onProgress?.(100, '模型已加载');
+      return true;
+    }
+
+    onProgress?.(0, '开始预热模型...');
+    return this.autoLoadLastModel(onProgress);
+  }
+
   private async detectDeviceCapabilities(): Promise<void> {
     if ('deviceMemory' in navigator) {
       this.deviceMemory = (navigator as Navigator & { deviceMemory: number }).deviceMemory || 4;
