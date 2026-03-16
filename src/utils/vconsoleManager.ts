@@ -52,7 +52,16 @@ export const isVConsoleReady = (): boolean => {
   return vconsoleInstance !== null;
 };
 
+const isTauri = (): boolean => {
+  return typeof window !== 'undefined' && '__TAURI__' in window;
+};
+
 const getVconsoleEnabled = (): boolean => {
+  // PC 版本(Tauri)不启用 vConsole
+  if (isTauri()) {
+    return false;
+  }
+  
   try {
     const stored = localStorage.getItem('settings-storage');
     if (stored) {

@@ -361,9 +361,12 @@ const Practice: React.FC = () => {
                   {(() => {
                     const answer = currentQuestion.correctAnswer;
                     if (typeof answer === 'object' && answer !== null && 'text' in answer) {
-                      return answer.text;
+                      return answer.text as string;
                     }
-                    return Array.isArray(answer) ? answer.join('、') : answer;
+                    if (Array.isArray(answer)) {
+                      return answer.join('、');
+                    }
+                    return String(answer);
                   })()}
                 </div>
               </div>

@@ -1,4 +1,3 @@
-import { APIModelConfig } from '../types';
 import { modelConfigLoader } from './modelConfigLoader';
 
 export interface APIGradingConfig {

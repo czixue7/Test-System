@@ -1,27 +1,108 @@
-export type QuestionType = 'fill-in-blank' | 'single-choice' | 'multiple-choice' | 'subjective';
-
-export type PracticeMode = 'sequential' | 'wrong' | 'favorites' | 'common' | 'view';
-
-export interface AnswerWithImages {
-  text: string;
-  images?: string[];
-}
+export type QuestionType = 'single-choice' | 'multiple-choice' | 'fill-in-blank' | 'true-false' | 'subjective';
 
 export interface Question {
   id: string;
   type: QuestionType;
-  content: string;
-  options?: QuestionOption[];
-  correctAnswer: string | string[] | AnswerWithImages;
+  question: string;
+  content?: string;
+  options?: Array<{ id: string; content: string }>;
+  correctAnswer: string | string[];
   score: number;
+  category: string;
+  difficulty: 'easy' | 'medium' | 'hard';
   explanation?: string;
-  images?: string[];
   allowDisorder?: boolean;
+  images?: string[];
 }
 
-export interface QuestionOption {
+export interface Exam {
   id: string;
-  content: string;
+  name: string;
+  description: string;
+  questions: Question[];
+  timeLimit: number;
+  totalScore: number;
+  category: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface QuestionResult {
+  questionId?: string;
+  question?: string;
+  userAnswer?: string | string[];
+  correctAnswer?: string | string[];
+  answer?: string | string[];
+  isCorrect: number;
+  score: number;
+  maxScore?: number;
+  explanation?: string;
+  aiFeedback?: string;
+  aiExplanation?: string;
+  gradingMode?: 'ai' | 'fixed' | 'ai-fallback';
+  isConfirmed?: boolean;
+  blankResults?: BlankResult[];
+}
+
+export interface UserAnswer {
+  questionId?: string;
+  answer: string | string[];
+  answerImages?: string[];
+  isCorrect?: boolean | number;
+  score?: number;
+  blankResults?: BlankResult[];
+  aiFeedback?: string;
+  aiExplanation?: string;
+  gradingMode?: 'ai' | 'fixed' | 'ai-fallback';
+}
+
+export interface ExamResult {
+  examId: string;
+  examName: string;
+  score: number;
+  totalScore: number;
+  correctCount: number;
+  totalCount: number;
+  timeSpent: number;
+  answers: UserAnswer[];
+  questionResults: QuestionResult[];
+  submittedAt: string;
+}
+
+export interface ExamRecord {
+  id: string;
+  examId: string;
+  examName: string;
+  bankName?: string;
+  bankId?: string;
+  score: number;
+  totalScore: number;
+  maxScore?: number;
+  correctCount: number;
+  wrongCount: number;
+  unansweredCount: number;
+  timeSpent: number;
+  duration?: number;
+  answers: UserAnswer[];
+  questions: Question[];
+  submittedAt: string;
+  finishedAt?: string;
+  startedAt?: string;
+  gradingMode?: 'fixed' | 'ai';
+  gradingProvider?: GradingProvider;
+  percentage?: number;
+  aiEvaluation?: string;
+}
+
+export type GradingProvider = 'api' | 'fixed';
+
+export type GradingMode = 'fixed' | 'ai';
+
+export interface BlankResult {
+  userAnswer: string;
+  correctAnswer: string;
+  isCorrect: boolean;
 }
 
 export interface QuestionBank {
@@ -36,73 +117,19 @@ export interface QuestionBank {
   sourceType?: 'system' | 'user';
 }
 
-export interface UserAnswer {
-  questionId: string;
-  answer: string | string[];
-  score?: number;
-  similarity?: number;
-  isCorrect: 0 | 1 | 2; // 0=错误, 1=部分正确, 2=正确
-  aiFeedback?: string;
-  aiExplanation?: string;
-  gradingMode?: GradingMode;
-  blankResults?: BlankResult[];
-}
-
-export interface ExamRecord {
-  id: string;
-  bankId: string;
-  bankName: string;
-  questions: Question[];
-  answers: UserAnswer[];
-  totalScore: number;
-  maxScore: number;
-  percentage: number;
-  duration: number;
-  startedAt: string;
-  finishedAt: string;
-  aiEvaluation?: string;
-  gradingMode?: GradingMode;
-}
-
-export type QuestionStatus = 'unanswered' | 'correct' | 'incorrect' | 'partial';
-
-export interface BlankResult {
-  userAnswer: string;
-  correctAnswer: string;
-  isCorrect: boolean;
-}
-
-export interface QuestionResult {
-  answer: string | string[];
-  isConfirmed: boolean;
-  isCorrect: 0 | 1 | 2; // 0=错误, 1=部分正确, 2=正确
-  score: number;
-  aiFeedback?: string;
-  aiExplanation?: string;
-  gradingMode?: GradingMode;
-  blankResults?: BlankResult[];
-}
-
-export interface ExamState {
-  bankId: string;
-  bankName: string;
-  questions: Question[];
-  currentIndex: number;
-  answers: Map<string, string | string[]>;
-  results: Map<string, QuestionResult>;
-  startTime: number;
-  isFinished: boolean;
-}
-
 export interface JsonQuestionData {
+  id?: string;
   type: string;
-  content: string;
-  options?: { id: string; content: string }[];
-  correctAnswer: string | string[] | AnswerWithImages;
+  question: string;
+  content?: string;
+  options?: Array<{ id: string; content: string }>;
+  correctAnswer: string | string[];
   score?: number;
+  category?: string;
+  difficulty?: string;
   explanation?: string;
-  images?: string[];
   allowDisorder?: boolean;
+  images?: string[];
 }
 
 export interface JsonBankData {
@@ -111,23 +138,29 @@ export interface JsonBankData {
   questions: JsonQuestionData[];
 }
 
-export type GradingMode = 'ai' | 'fixed' | 'ai-fallback';
-
-export type GradingProvider = 'webllm' | 'api' | 'fixed';
-
-export interface AIGradingResult {
-  score: number;
-  isCorrect: boolean;
-  similarity?: number;
-  feedback?: string;
+export interface AnswerWithImages {
+  text: string;
+  images: string[];
 }
 
-export interface APIModelConfig {
-  id: string;
-  name: string;
-  maxTokens: number;
+export interface ExamState {
+  examId?: string;
+  examName?: string;
+  bankId?: string;
+  bankName?: string;
+  questions: Question[];
+  currentQuestionIndex?: number;
+  currentIndex: number;
+  answers: Map<string, string | string[]>;
+  results: Map<string, QuestionResult>;
+  status?: 'idle' | 'in-progress' | 'completed';
+  startTime: number;
+  endTime?: number;
+  isFinished?: boolean;
 }
 
-// 从 models.json 动态加载
-export const API_MODELS: APIModelConfig[] = [];
-export const VOLCENGINE_MODELS: APIModelConfig[] = [];
+export type QuestionStatus = 'unanswered' | 'answered' | 'marked' | 'correct' | 'incorrect';
+
+export type PracticeMode = 'all' | 'wrong' | 'marked' | 'sequential' | 'view' | 'favorites' | 'common';
+
+

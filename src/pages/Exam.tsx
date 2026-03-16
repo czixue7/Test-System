@@ -248,7 +248,7 @@ const Exam: React.FC = () => {
         }));
       }
       
-      const recordId = addRecord(
+      const recordId = await addRecord(
         examState?.bankId || '',
         examState?.bankName || '',
         questions,

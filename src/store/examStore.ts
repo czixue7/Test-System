@@ -516,12 +516,13 @@ export const useExamStore = create<ExamStore>((set, get) => ({
         // 已确认的题目，直接使用已有结果
         confirmedAnswers.push({
           questionId: question.id,
-          answer: result.answer,
+          answer: result.answer ?? '',
           score: result.score,
           isCorrect: result.isCorrect,
           aiFeedback: result.aiFeedback,
           aiExplanation: result.aiExplanation,
-          gradingMode: result.gradingMode
+          gradingMode: result.gradingMode,
+          blankResults: result.blankResults
         });
       } else if (answer !== undefined) {
         // 有答案但未确认的题目
@@ -960,7 +961,7 @@ export const useExamStore = create<ExamStore>((set, get) => ({
       questionIdOrder.set(q.id, index);
     });
     userAnswers.sort((a, b) => {
-      return (questionIdOrder.get(a.questionId) ?? 0) - (questionIdOrder.get(b.questionId) ?? 0);
+      return (questionIdOrder.get(a.questionId!) ?? 0) - (questionIdOrder.get(b.questionId!) ?? 0);
     });
 
     set((state) => ({

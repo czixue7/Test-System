@@ -93,6 +93,7 @@ export function convertJsonToBank(data: JsonBankData): QuestionBank {
   const questions: Question[] = data.questions.map(q => ({
     id: generateId(),
     type: q.type as QuestionType,
+    question: q.question,
     content: q.content,
     options: q.options?.map(opt => ({
       id: opt.id,
@@ -100,6 +101,8 @@ export function convertJsonToBank(data: JsonBankData): QuestionBank {
     })),
     correctAnswer: q.correctAnswer,
     score: q.score ?? 10,
+    category: q.category ?? 'default',
+    difficulty: (q.difficulty as 'easy' | 'medium' | 'hard') ?? 'medium',
     explanation: q.explanation,
     allowDisorder: q.allowDisorder
   }));
