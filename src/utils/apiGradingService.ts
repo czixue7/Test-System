@@ -38,8 +38,12 @@ class APIGradingService {
   }
 
   // 根据模型ID查找提供商
-  private findProviderByModel(modelId: string): { providerId: string; endpoint: string } | null {
-    const config = modelConfigLoader.getConfig();
+  private async findProviderByModel(modelId: string): Promise<{ providerId: string; endpoint: string } | null> {
+    let config = modelConfigLoader.getConfig();
+    // 如果配置未加载，尝试加载
+    if (!config) {
+      config = await modelConfigLoader.loadConfig();
+    }
     if (!config) return null;
 
     for (const provider of config.providers) {
@@ -80,7 +84,7 @@ class APIGradingService {
     }
 
     // 从配置文件获取端点
-    const providerInfo = this.findProviderByModel(this.config.model);
+    const providerInfo = await this.findProviderByModel(this.config.model);
     if (!providerInfo) {
       throw new Error('未找到模型配置');
     }
@@ -164,7 +168,7 @@ class APIGradingService {
     }
 
     // 从配置文件获取端点
-    const providerInfo = this.findProviderByModel(this.config.model);
+    const providerInfo = await this.findProviderByModel(this.config.model);
     if (!providerInfo) {
       throw new Error('未找到模型配置');
     }
