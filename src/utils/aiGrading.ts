@@ -41,12 +41,11 @@ function getGradingProvider(): GradingProvider {
   return useSettingsStore.getState().gradingProvider;
 }
 
-function getAPIConfig(): { apiKey: string | null; apiModel: string; apiEndpoint: string } {
+function getAPIConfig(): { apiKey: string | null; apiModel: string } {
   const state = useSettingsStore.getState();
   return {
     apiKey: state.apiKey,
     apiModel: state.apiModel,
-    apiEndpoint: state.apiEndpoint,
   };
 }
 
@@ -59,7 +58,6 @@ export async function checkModelAvailability(): Promise<boolean> {
       apiGradingService.setConfig({
         apiKey: config.apiKey,
         model: config.apiModel,
-        endpoint: config.apiEndpoint || undefined,
       });
     }
     return apiGradingService.isConfigured();
@@ -76,7 +74,6 @@ export async function isModelReady(): Promise<boolean> {
       apiGradingService.setConfig({
         apiKey: config.apiKey,
         model: config.apiModel,
-        endpoint: config.apiEndpoint || undefined,
       });
     }
     return apiGradingService.isConfigured();
@@ -216,7 +213,7 @@ function fallbackSubjective(
 
 async function generateWithProvider(prompt: string, maxTokens: number): Promise<string> {
   const provider = getGradingProvider();
-  
+
   if (provider === 'api') {
     const config = getAPIConfig();
     if (!config.apiKey) {
@@ -225,22 +222,21 @@ async function generateWithProvider(prompt: string, maxTokens: number): Promise<
     apiGradingService.setConfig({
       apiKey: config.apiKey,
       model: config.apiModel,
-      endpoint: config.apiEndpoint || undefined,
     });
     return apiGradingService.callAPI(prompt, maxTokens);
   }
-  
+
   return modelLoader.generate(prompt, { maxTokens, temperature: 0.1 });
 }
 
 // 流式生成，支持实时回调
 async function generateWithProviderStream(
-  prompt: string, 
+  prompt: string,
   maxTokens: number,
   onChunk: (chunk: string) => void
 ): Promise<string> {
   const provider = getGradingProvider();
-  
+
   if (provider === 'api') {
     const config = getAPIConfig();
     if (!config.apiKey) {
@@ -249,14 +245,13 @@ async function generateWithProviderStream(
     apiGradingService.setConfig({
       apiKey: config.apiKey,
       model: config.apiModel,
-      endpoint: config.apiEndpoint || undefined,
     });
     return apiGradingService.gradeWithStream(prompt, maxTokens, {
       onChunk,
       onComplete: () => {},
     });
   }
-  
+
   // WebLLM 不支持流式，回退到普通生成
   const result = await modelLoader.generate(prompt, { maxTokens, temperature: 0.1 });
   onChunk(result);

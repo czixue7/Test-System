@@ -17,7 +17,8 @@ interface SettingsState {
   selectedModelId: string | null;
   apiKey: string | null;
   apiModel: string;
-  apiEndpoint: string;
+  apiProvider: string;
+  apiPassword: string;
   vconsoleEnabled: boolean;
   setGradingMode: (mode: GradingMode) => void;
   setGradingProvider: (provider: GradingProvider) => void;
@@ -29,7 +30,8 @@ interface SettingsState {
   setSelectedModelId: (id: string | null) => void;
   setApiKey: (key: string | null) => void;
   setApiModel: (model: string) => void;
-  setApiEndpoint: (endpoint: string) => void;
+  setApiProvider: (provider: string) => void;
+  setApiPassword: (password: string) => void;
   setVconsoleEnabled: (enabled: boolean) => void;
   resetModelState: () => void;
   resetApiConfig: () => void;
@@ -47,8 +49,9 @@ export const useSettingsStore = create<SettingsState>()(
       downloadedModelId: null,
       selectedModelId: null,
       apiKey: null,
-      apiModel: 'glm-4-flash',
-      apiEndpoint: '',
+      apiModel: '',
+      apiProvider: '',
+      apiPassword: '',
       vconsoleEnabled: false,
       setGradingMode: (mode) => set({ gradingMode: mode }),
       setGradingProvider: (provider) => set({ gradingProvider: provider }),
@@ -60,7 +63,8 @@ export const useSettingsStore = create<SettingsState>()(
       setSelectedModelId: (id) => set({ selectedModelId: id }),
       setApiKey: (key) => set({ apiKey: key }),
       setApiModel: (model) => set({ apiModel: model }),
-      setApiEndpoint: (endpoint) => set({ apiEndpoint: endpoint }),
+      setApiProvider: (provider) => set({ apiProvider: provider }),
+      setApiPassword: (password) => set({ apiPassword: password }),
       setVconsoleEnabled: (enabled) => set({ vconsoleEnabled: enabled }),
       resetModelState: () => set({
         modelState: 'not-downloaded',
@@ -69,8 +73,9 @@ export const useSettingsStore = create<SettingsState>()(
       }),
       resetApiConfig: () => set({
         apiKey: null,
-        apiModel: 'glm-4-flash',
-        apiEndpoint: '',
+        apiModel: '',
+        apiProvider: '',
+        apiPassword: '',
       }),
     }),
     {

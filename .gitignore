@@ -55,3 +55,6 @@ gguf-build-summary.md
 import-local-model-lag.md
 参考.md
 火山引擎流式输出.md
+
+# Encryption tool (contains sensitive API keys and passwords)
+encrypt-tool/

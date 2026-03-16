@@ -4,12 +4,12 @@ import { useSettingsStore, ModelState } from '../store/settingsStore';
 import { webllmDownloadManager, WebLLMDownloadTask } from '../utils/webllmDownloadManager';
 import { initializeModel, isModelReady } from '../utils/aiGrading';
 import { SUPPORTED_MODELS, ModelConfig, modelLoader } from '../utils/modelLoader';
-import { apiGradingService, detectAPIProvider, getProviderConfig, APIProvider } from '../utils/apiGradingService';
-import { API_MODELS, VOLCENGINE_MODELS } from '../types';
+import { apiGradingService, APIProvider } from '../utils/apiGradingService';
 import { useToast } from '../hooks/useToast';
 import { GradingProvider } from '../types';
 import { initVConsole, destroyVConsole } from '../utils/vconsoleManager';
 import { useSafeArea } from '../hooks/useSafeArea';
+import { modelConfigLoader, ProviderConfig, ProviderModel } from '../utils/modelConfigLoader';
 
 const Settings: React.FC = () => {
   const navigate = useNavigate();
@@ -30,10 +30,12 @@ const Settings: React.FC = () => {
     setDownloadedModelId,
     apiKey,
     apiModel,
-    apiEndpoint,
+    apiProvider,
+    apiPassword,
     setApiKey,
     setApiModel,
-    setApiEndpoint,
+    setApiProvider,
+    setApiPassword,
     vconsoleEnabled,
     setVconsoleEnabled,
   } = useSettingsStore();
@@ -45,10 +47,13 @@ const Settings: React.FC = () => {
   const [loadingModelId, setLoadingModelId] = useState<string | null>(null);
   const [loadStatusText, setLoadStatusText] = useState<string>('');
   const [cachedWebLLMModels, setCachedWebLLMModels] = useState<Set<string>>(new Set());
-  const [tempApiKey, setTempApiKey] = useState<string>('');
+  const [tempPassword, setTempPassword] = useState<string>('');
   const [apiTesting, setApiTesting] = useState<boolean>(false);
   const [apiTestResult, setApiTestResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [detectedProvider, setDetectedProvider] = useState<APIProvider>('unknown');
+  const [availableModels, setAvailableModels] = useState<{ provider: ProviderConfig; model: ProviderModel }[]>([]);
+  const [selectedProviderId, setSelectedProviderId] = useState<string>('');
+  const [selectedModelId, setSelectedModelId] = useState<string>('');
+  const [passwordVerified, setPasswordVerified] = useState<boolean>(false);
 
   useEffect(() => {
     const unsubscribe = webllmDownloadManager.subscribe((tasks) => {
@@ -81,38 +86,38 @@ const Settings: React.FC = () => {
     checkModelState();
   }, [setDownloadedModelId, setModelState]);
 
+  // 加载模型配置
   useEffect(() => {
-    if (apiKey) {
-      setTempApiKey(apiKey);
-      setDetectedProvider(detectAPIProvider(apiKey));
-    }
-  }, [apiKey]);
+    const loadModelConfig = async () => {
+      await modelConfigLoader.loadConfig();
+      const models = modelConfigLoader.getAllModels();
+      setAvailableModels(models);
+    };
+    loadModelConfig();
+  }, []);
 
-  // 当临时 API Key 变化时，自动检测提供商并切换模型
+  // 初始化时恢复已保存的配置
   useEffect(() => {
-    if (tempApiKey) {
-      const provider = detectAPIProvider(tempApiKey);
-      setDetectedProvider(provider);
-      // 自动切换到对应提供商的默认模型
-      if (provider === 'volcengine') {
-        setApiModel('doubao-seed-1-6-flash-250828');
-      } else if (provider === 'zhipu') {
-        setApiModel('glm-4-flash');
-      }
-    } else {
-      setDetectedProvider('unknown');
+    if (apiPassword) {
+      setTempPassword(apiPassword);
+      setPasswordVerified(true);
     }
-  }, [tempApiKey, setApiModel]);
+    if (apiProvider) {
+      setSelectedProviderId(apiProvider);
+    }
+    if (apiModel) {
+      setSelectedModelId(apiModel);
+    }
+  }, [apiPassword, apiProvider, apiModel]);
 
   useEffect(() => {
-    if (apiKey) {
+    if (apiKey && apiModel) {
       apiGradingService.setConfig({
         apiKey,
         model: apiModel,
-        endpoint: apiEndpoint || undefined,
       });
     }
-  }, [apiKey, apiModel, apiEndpoint]);
+  }, [apiKey, apiModel]);
 
   const getGradingModeLabel = () => {
     return gradingMode === 'fixed' ? '固定判断' : 'AI判断';
@@ -147,19 +152,60 @@ const Settings: React.FC = () => {
     setGradingExpanded(!gradingExpanded);
   };
 
-  const handleSaveApiKey = () => {
-    if (!tempApiKey.trim()) {
-      showError('请输入API 密钥', 3000);
+  const handleVerifyPassword = () => {
+    if (!tempPassword.trim() || tempPassword.length !== 6) {
+      showError('请输入6位密钥', 3000);
       return;
     }
-    setApiKey(tempApiKey.trim());
-    setApiTestResult(null);
-    showSuccess('API 密钥已保存', 3000);
+    
+    const isValid = modelConfigLoader.verifyPassword(tempPassword);
+    if (isValid) {
+      setPasswordVerified(true);
+      setApiPassword(tempPassword);
+      
+      // 解密并保存第一个模型的 API Key
+      const firstModel = availableModels[0];
+      if (firstModel) {
+        const decryptedKey = modelConfigLoader.getDecryptedApiKey(
+          firstModel.provider.id,
+          firstModel.model.id,
+          tempPassword
+        );
+        if (decryptedKey) {
+          setApiKey(decryptedKey);
+          setSelectedProviderId(firstModel.provider.id);
+          setSelectedModelId(firstModel.model.id);
+          setApiProvider(firstModel.provider.id);
+          setApiModel(firstModel.model.id);
+        }
+      }
+      
+      setApiTestResult(null);
+      showSuccess('密钥验证成功', 3000);
+    } else {
+      showError('密钥错误', 3000);
+      setPasswordVerified(false);
+    }
+  };
+
+  const handleModelChange = (providerId: string, modelId: string) => {
+    setSelectedProviderId(providerId);
+    setSelectedModelId(modelId);
+    setApiProvider(providerId);
+    setApiModel(modelId);
+    
+    // 解密并更新 API Key
+    if (tempPassword) {
+      const decryptedKey = modelConfigLoader.getDecryptedApiKey(providerId, modelId, tempPassword);
+      if (decryptedKey) {
+        setApiKey(decryptedKey);
+      }
+    }
   };
 
   const handleTestApiConnection = async () => {
     if (!apiKey) {
-      showError('请先保存 API 密钥', 3000);
+      showError('请先验证密钥', 3000);
       return;
     }
 
@@ -170,7 +216,6 @@ const Settings: React.FC = () => {
       apiGradingService.setConfig({
         apiKey,
         model: apiModel,
-        endpoint: apiEndpoint || undefined,
       });
       const result = await apiGradingService.testConnection();
       setApiTestResult(result);
@@ -814,97 +859,103 @@ const Settings: React.FC = () => {
                   <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-600 space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
-                        API 密钥
+                        API 模型
                       </label>
-                      <div className="flex gap-2">
-                        <input
-                          type="password"
-                          value={tempApiKey}
-                          onChange={(e) => setTempApiKey(e.target.value)}
-                          placeholder="请输入API密钥"
-                          className="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
+                      <div className="flex gap-2 items-stretch">
+                        <select
+                          value={selectedModelId}
+                          onChange={(e) => {
+                            const modelId = e.target.value;
+                            const modelInfo = availableModels.find(m => m.model.id === modelId);
+                            if (modelInfo) {
+                              handleModelChange(modelInfo.provider.id, modelId);
+                            }
+                            // 切换模型时清除测试结果
+                            setApiTestResult(null);
+                          }}
+                          disabled={!passwordVerified}
+                          className="flex-1 h-10 px-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {availableModels.map(({ provider, model }) => (
+                            <option key={`${provider.id}-${model.id}`} value={model.id}>
+                              {provider.name} - {model.name}
+                            </option>
+                          ))}
+                        </select>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleSaveApiKey();
+                            handleTestApiConnection();
                           }}
-                          className="px-4 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600"
+                          disabled={apiTesting || !apiKey}
+                          className={`h-10 w-20 px-2 text-sm rounded-lg whitespace-nowrap ${
+                            apiTesting || !apiKey
+                              ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                              : 'bg-green-500 text-white hover:bg-green-600'
+                          }`}
                         >
-                          保存
+                          {apiTesting ? '测试中' : '测试'}
                         </button>
                       </div>
-                      {detectedProvider !== 'unknown' && (
-                        <div className="mt-2 flex items-center gap-2">
-                          <span className="text-xs text-gray-500 dark:text-gray-400">检测到提供商:</span>
-                          <span className={`text-xs font-medium px-2 py-0.5 rounded ${
-                            detectedProvider === 'volcengine'
-                              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                              : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                          }`}>
-                            {detectedProvider === 'volcengine' ? '火山引擎' : '智谱 AI'}
-                          </span>
-                          <span className="text-xs text-gray-400 dark:text-gray-500">
-                            将使用 {getProviderConfig(detectedProvider).defaultModel}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
-                        API 模型
-                      </label>
-                      <select
-                        value={apiModel}
-                        onChange={(e) => setApiModel(e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        {(detectedProvider === 'volcengine' ? VOLCENGINE_MODELS : API_MODELS).map((model) => (
-                          <option key={model.id} value={model.id}>
-                            {model.name}
-                          </option>
-                        ))}
-                      </select>
-                      {detectedProvider === 'volcengine' && (
+                      {!passwordVerified && (
                         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                          已切换至火山引擎模型列表
+                          请先输入密钥解锁模型选择
+                        </p>
+                      )}
+                      {apiTestResult && (
+                        <p className={`mt-1 text-xs ${apiTestResult.success ? 'text-green-500' : 'text-red-500'}`}>
+                          {apiTestResult.message}
                         </p>
                       )}
                     </div>
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
-                        API 端点 (可选)
+                        密钥
                       </label>
-                      <input
-                        type="text"
-                        value={apiEndpoint}
-                        onChange={(e) => setApiEndpoint(e.target.value)}
-                        placeholder="默认：https://open.bigmodel.cn/api/paas/v4/chat/completions"
-                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleTestApiConnection();
-                        }}
-                        disabled={apiTesting || !apiKey}
-                        className={`px-4 py-2 text-sm rounded-lg ${
-                          apiTesting || !apiKey
-                            ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-                            : 'bg-green-500 text-white hover:bg-green-600'
-                        }`}
-                      >
-                        {apiTesting ? '测试中...' : '测试连接'}
-                      </button>
-                      {apiTestResult && (
-                        <span className={`text-xs ${apiTestResult.success ? 'text-green-500' : 'text-red-500'}`}>
-                          {apiTestResult.message}
-                        </span>
+                      <div className="flex gap-2 items-stretch">
+                        <input
+                          type="password"
+                          value={tempPassword}
+                          onChange={(e) => {
+                            setTempPassword(e.target.value);
+                            // 修改密钥时清除测试结果
+                            setApiTestResult(null);
+                          }}
+                          placeholder="请输入6位密钥"
+                          maxLength={6}
+                          disabled={passwordVerified}
+                          className="flex-1 h-10 px-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        />
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // 清除测试结果
+                            setApiTestResult(null);
+                            if (passwordVerified) {
+                              // 重置密钥
+                              setTempPassword('');
+                              setPasswordVerified(false);
+                              setApiPassword('');
+                              setApiKey(null);
+                              setSelectedProviderId('');
+                              setSelectedModelId('');
+                              setApiProvider('');
+                              setApiModel('');
+                              showSuccess('已重置密钥', 3000);
+                            } else {
+                              handleVerifyPassword();
+                            }
+                          }}
+                          className="h-10 w-20 px-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600"
+                        >
+                          {passwordVerified ? '重置' : '验证'}
+                        </button>
+                      </div>
+                      {passwordVerified && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className="text-xs text-green-600 dark:text-green-400">密钥已验证</span>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -928,10 +979,10 @@ const Settings: React.FC = () => {
                     </ul>
                   ) : (
                     <ul className="text-xs text-blue-600 dark:text-blue-400 space-y-1">
-                      <li>• API 判题需要配置有效的 API 密钥</li>
+                      <li>• API 判题需要输入密钥解锁模型</li>
                       <li>• 支持智谱AI GLM系列模型和火山引擎 Doubao 模型</li>
                       <li>• 无需本地资源，适合低配置设备</li>
-                      <li>• 请妥善保管您的 API 密钥</li>
+                      <li>• 请妥善保管您的密钥</li>
                     </ul>
                   )}
                 </div>
