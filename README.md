@@ -289,7 +289,7 @@ Low_Voltage_Electrician_Exam/
 | 文件/目录 | 说明 |
 |-----------|------|
 | `low-voltage-electrician-exam.exe` | 可直接运行的应用程序（无需安装） |
-| `bundle/nsis/答题测试库_0.3.0_x64-setup.exe` | NSIS 安装程序（带安装向导） |
+| `bundle/nsis/答题测试库_0.3.4_x64-setup.exe` | NSIS 安装程序（带安装向导） |
 
 ## NSIS 安装包汉化配置
 
