@@ -41,9 +41,12 @@ export const useQuestionBankStore = create<QuestionBankState>()(
         
         await setStoreValue('built-in-banks', builtInBanks);
         
-        // 按名称从低到高排序
+        // 内置题库按 id 排序（built-in-01, built-in-02...）
+        const sortBuiltInById = (a: QuestionBank, b: QuestionBank) => a.id.localeCompare(b.id);
+        // 用户题库按名称排序
         const sortByName = (a: QuestionBank, b: QuestionBank) => a.name.localeCompare(b.name, 'zh-CN');
-        const sortedBuiltInBanks = builtInBanks.sort(sortByName);
+        
+        const sortedBuiltInBanks = builtInBanks.sort(sortBuiltInById);
         const sortedUserBanks = userBanks.sort(sortByName);
         
         const allBanks = [...sortedBuiltInBanks, ...sortedUserBanks];

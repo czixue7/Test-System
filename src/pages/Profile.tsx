@@ -60,7 +60,7 @@ const Profile: React.FC = () => {
     }
   }, [showAboutModal, showThemeModal]);
 
-  const currentVersion = '0.3.3';
+  const currentVersion = '0.3.4';
 
   const handleCheckUpdate = async () => {
     setCheckingUpdate(true);
