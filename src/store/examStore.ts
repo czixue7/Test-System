@@ -6,10 +6,8 @@ import {
   gradeFillBlankQuestion,
   gradeSubjective,
   isModelReady,
-  gradeFillBlankBatch,
-  gradeSubjectiveBatch,
-  BatchGradingItem,
-  BatchGradingResult
+  gradeBatchWithStream,
+  BatchGradingItem
 } from '../utils/aiGrading';
 
 function isAnswerWithImages(answer: unknown): answer is AnswerWithImages {
@@ -33,11 +31,16 @@ interface ExamStore {
   getAnswer: (questionId: string) => string | string[] | undefined;
   confirmAnswer: (questionId: string, useAI?: boolean) => Promise<void>;
   getResult: (questionId: string) => QuestionResult | undefined;
+  setResult: (questionId: string, result: QuestionResult) => void;
   getQuestionStatus: (questionId: string) => QuestionStatus;
   nextQuestion: () => void;
   prevQuestion: () => void;
   goToQuestion: (index: number) => void;
-  finishExam: (useAI?: boolean) => Promise<UserAnswer[]>;
+  finishExam: (
+    useAI?: boolean, 
+    onProgress?: (current: number, total: number) => void,
+    onQuestionGraded?: (questionId: string, result: QuestionResult) => void
+  ) => Promise<UserAnswer[]>;
   resetExam: () => void;
   getCurrentQuestion: () => Question | undefined;
   getProgress: () => { answered: number; total: number };
@@ -424,6 +427,20 @@ export const useExamStore = create<ExamStore>((set, get) => ({
     return get().examState?.results.get(questionId);
   },
 
+  setResult: (questionId: string, result: QuestionResult) => {
+    set((state) => {
+      if (!state.examState) return state;
+      const newResults = new Map(state.examState.results);
+      newResults.set(questionId, result);
+      return {
+        examState: {
+          ...state.examState,
+          results: newResults
+        }
+      };
+    });
+  },
+
   getQuestionStatus: (questionId) => {
     const state = get();
     if (!state.examState) return 'unanswered';
@@ -476,7 +493,11 @@ export const useExamStore = create<ExamStore>((set, get) => ({
     });
   },
 
-  finishExam: async (useAI = true) => {
+  finishExam: async (
+    useAI = true, 
+    onProgress?: (current: number, total: number) => void,
+    onQuestionGraded?: (questionId: string, result: QuestionResult) => void
+  ) => {
     const state = get();
     if (!state.examState) return [];
 
@@ -517,7 +538,11 @@ export const useExamStore = create<ExamStore>((set, get) => ({
     }
 
     // 处理未确认的题目
-    let unconfirmedAnswers: UserAnswer[] = [];
+    const unconfirmedAnswers: UserAnswer[] = [];
+    let processedCount = 0;
+
+    // 通知进度：已确认的题数
+    onProgress?.(confirmedAnswers.length, state.examState.questions.length);
 
     if (unconfirmedQuestions.length > 0) {
       // 按题型分组
@@ -535,18 +560,32 @@ export const useExamStore = create<ExamStore>((set, get) => ({
         }
       }
 
-      // 处理选择题（使用原有逻辑）
+      // 处理选择题（使用原有逻辑）- 立即处理，不需要AI
       for (const question of otherQuestions) {
         const answer = state.examState.answers.get(question.id);
         if (answer !== undefined) {
           const { score, isCorrect } = checkAnswer(question, answer);
-          unconfirmedAnswers.push({
+          const userAnswer: UserAnswer = {
             questionId: question.id,
             answer,
             score,
             isCorrect,
             gradingMode: 'fixed'
-          });
+          };
+          unconfirmedAnswers.push(userAnswer);
+          
+          // 立即回调通知该题目已判题完成
+          const questionResult: QuestionResult = {
+            answer,
+            isConfirmed: true,
+            isCorrect,
+            score,
+            gradingMode: 'fixed'
+          };
+          onQuestionGraded?.(question.id, questionResult);
+          
+          processedCount++;
+          onProgress?.(confirmedAnswers.length + processedCount, state.examState.questions.length);
         }
       }
 
@@ -565,9 +604,10 @@ export const useExamStore = create<ExamStore>((set, get) => ({
         }
       }
 
-      // 批量处理填空题
+      // 处理填空题 - 使用流式批量判题
       if (fillBlankQuestions.length > 0) {
         if (aiAvailable) {
+          // 构建批量判题项目
           const fillBlankItems: BatchGradingItem[] = fillBlankQuestions.map(q => {
             const answer = state.examState!.answers.get(q.id)!;
             const rawCorrectAnswer = q.correctAnswer;
@@ -587,54 +627,67 @@ export const useExamStore = create<ExamStore>((set, get) => ({
           });
 
           try {
-            const batchResults = await gradeFillBlankBatch(fillBlankItems);
-            const resultMap = new Map<string, BatchGradingResult>();
-            for (const result of batchResults) {
-              resultMap.set(result.questionId, result);
-            }
-
-            for (const question of fillBlankQuestions) {
-              const answer = state.examState.answers.get(question.id)!;
-              const batchResult = resultMap.get(question.id);
-
-              if (batchResult) {
-                unconfirmedAnswers.push({
-                  questionId: question.id,
+            // 使用流式批量判题
+            await gradeBatchWithStream(fillBlankItems, {
+              onQuestionComplete: (questionId, aiResult) => {
+                const answer = state.examState!.answers.get(questionId)!;
+                const userAnswer: UserAnswer = {
+                  questionId,
                   answer,
-                  score: batchResult.result.score,
-                  isCorrect: batchResult.result.isCorrect,
-                  aiFeedback: batchResult.result.feedback,
-                  aiExplanation: batchResult.result.explanation,
-                  gradingMode: batchResult.result.gradingMode === 'ai' ? 'ai' : 'fixed',
-                  blankResults: batchResult.result.blankResults
-                });
-              } else {
-                // 批量判题失败，使用固定规则
-                const { score, isCorrect, blankResults } = checkAnswer(question, answer);
-                unconfirmedAnswers.push({
-                  questionId: question.id,
+                  score: aiResult.score,
+                  isCorrect: aiResult.isCorrect,
+                  aiFeedback: aiResult.feedback,
+                  aiExplanation: aiResult.explanation,
+                  gradingMode: aiResult.gradingMode === 'ai' ? 'ai' : 'fixed',
+                  blankResults: aiResult.blankResults
+                };
+                unconfirmedAnswers.push(userAnswer);
+                
+                // 立即回调通知该题目已判题完成
+                const questionResult: QuestionResult = {
                   answer,
-                  score,
-                  isCorrect,
-                  gradingMode: 'fixed',
-                  blankResults
-                });
+                  isConfirmed: true,
+                  isCorrect: aiResult.isCorrect,
+                  score: aiResult.score,
+                  aiFeedback: aiResult.feedback,
+                  aiExplanation: aiResult.explanation,
+                  gradingMode: aiResult.gradingMode === 'ai' ? 'ai' : 'fixed',
+                  blankResults: aiResult.blankResults
+                };
+                onQuestionGraded?.(questionId, questionResult);
+                
+                processedCount++;
+                onProgress?.(confirmedAnswers.length + processedCount, state.examState!.questions.length);
               }
-            }
+            });
           } catch (error) {
-            console.error('[finishExam] 填空题批量判题失败:', error);
+            console.error('[finishExam] 填空题流式批量判题失败:', error);
             // 降级到固定规则
             for (const question of fillBlankQuestions) {
-              const answer = state.examState.answers.get(question.id)!;
+              const answer = state.examState!.answers.get(question.id)!;
               const { score, isCorrect, blankResults } = checkAnswer(question, answer);
-              unconfirmedAnswers.push({
+              const userAnswer: UserAnswer = {
                 questionId: question.id,
                 answer,
                 score,
                 isCorrect,
                 gradingMode: 'fixed',
                 blankResults
-              });
+              };
+              unconfirmedAnswers.push(userAnswer);
+              
+              const questionResult: QuestionResult = {
+                answer,
+                isConfirmed: true,
+                isCorrect,
+                score,
+                gradingMode: 'fixed',
+                blankResults
+              };
+              onQuestionGraded?.(question.id, questionResult);
+              
+              processedCount++;
+              onProgress?.(confirmedAnswers.length + processedCount, state.examState.questions.length);
             }
           }
         } else {
@@ -642,63 +695,73 @@ export const useExamStore = create<ExamStore>((set, get) => ({
           for (const question of fillBlankQuestions) {
             const answer = state.examState.answers.get(question.id)!;
             const { score, isCorrect, blankResults } = checkAnswer(question, answer);
-            unconfirmedAnswers.push({
+            const userAnswer: UserAnswer = {
               questionId: question.id,
               answer,
               score,
               isCorrect,
               gradingMode: 'fixed',
               blankResults
-            });
+            };
+            unconfirmedAnswers.push(userAnswer);
+            
+            const questionResult: QuestionResult = {
+              answer,
+              isConfirmed: true,
+              isCorrect,
+              score,
+              gradingMode: 'fixed',
+              blankResults
+            };
+            onQuestionGraded?.(question.id, questionResult);
+            
+            processedCount++;
+            onProgress?.(confirmedAnswers.length + processedCount, state.examState.questions.length);
           }
         }
       }
 
-      // 批量处理主观题
+      // 批量处理主观题 - 逐题处理，实时更新进度
       if (subjectiveQuestions.length > 0) {
         if (aiAvailable) {
-          const subjectiveItems: BatchGradingItem[] = subjectiveQuestions.map(q => {
-            const answer = state.examState!.answers.get(q.id)!;
-            const correctAnswerText = getAnswerTextForComparison(q.correctAnswer);
+          // 逐题处理，而不是批量处理，以便实时更新进度
+          for (const question of subjectiveQuestions) {
+            const answer = state.examState.answers.get(question.id)!;
+            const correctAnswerText = getAnswerTextForComparison(question.correctAnswer);
 
-            return {
-              questionId: q.id,
-              userAnswer: answer as string,
-              correctAnswer: correctAnswerText,
-              maxScore: q.score,
-              question: q.content
-            };
-          });
+            try {
+              const { gradeSubjective } = await import('../utils/aiGrading');
+              const aiResult = await gradeSubjective(answer as string, correctAnswerText, question.score, question.content);
 
-          try {
-            const batchResults = await gradeSubjectiveBatch(subjectiveItems);
-            const resultMap = new Map<string, BatchGradingResult>();
-            for (const result of batchResults) {
-              resultMap.set(result.questionId, result);
-            }
-
-            for (const question of subjectiveQuestions) {
-              const answer = state.examState.answers.get(question.id)!;
-              const batchResult = resultMap.get(question.id);
-
-              if (batchResult) {
-                unconfirmedAnswers.push({
+              if (aiResult) {
+                const userAnswer: UserAnswer = {
                   questionId: question.id,
                   answer,
-                  score: batchResult.result.score,
-                  isCorrect: batchResult.result.isCorrect,
-                  aiFeedback: batchResult.result.feedback,
-                  aiExplanation: batchResult.result.explanation,
-                  gradingMode: batchResult.result.gradingMode === 'ai' ? 'ai' : 'fixed'
-                });
+                  score: aiResult.score,
+                  isCorrect: aiResult.isCorrect,
+                  aiFeedback: aiResult.feedback,
+                  aiExplanation: aiResult.explanation,
+                  gradingMode: aiResult.gradingMode === 'ai' ? 'ai' : 'fixed'
+                };
+                unconfirmedAnswers.push(userAnswer);
+                
+                const questionResult: QuestionResult = {
+                  answer,
+                  isConfirmed: true,
+                  isCorrect: aiResult.isCorrect,
+                  score: aiResult.score,
+                  aiFeedback: aiResult.feedback,
+                  aiExplanation: aiResult.explanation,
+                  gradingMode: aiResult.gradingMode === 'ai' ? 'ai' : 'fixed'
+                };
+                onQuestionGraded?.(question.id, questionResult);
               } else {
-                // 批量判题失败，使用固定规则
+                // AI返回null，使用固定规则
                 const result = calculateSubjectiveScore(
                   answer as string,
-                  getAnswerTextForComparison(question.correctAnswer),
+                  correctAnswerText,
                   question.score
                 );
-                // 根据相似度确定 isCorrect: 0=错误, 1=部分正确, 2=正确
                 let isCorrect: 0 | 1 | 2;
                 if (result.similarity >= 0.9) {
                   isCorrect = 2;
@@ -707,26 +770,32 @@ export const useExamStore = create<ExamStore>((set, get) => ({
                 } else {
                   isCorrect = 0;
                 }
-                unconfirmedAnswers.push({
+                const userAnswer: UserAnswer = {
                   questionId: question.id,
                   answer,
                   score: result.score,
                   isCorrect,
                   gradingMode: 'fixed'
-                });
+                };
+                unconfirmedAnswers.push(userAnswer);
+                
+                const questionResult: QuestionResult = {
+                  answer,
+                  isConfirmed: true,
+                  isCorrect,
+                  score: result.score,
+                  gradingMode: 'fixed'
+                };
+                onQuestionGraded?.(question.id, questionResult);
               }
-            }
-          } catch (error) {
-            console.error('[finishExam] 主观题批量判题失败:', error);
-            // 降级到固定规则
-            for (const question of subjectiveQuestions) {
-              const answer = state.examState.answers.get(question.id)!;
+            } catch (error) {
+              console.error(`[finishExam] 主观题 ${question.id} 判题失败:`, error);
+              // 降级到固定规则
               const result = calculateSubjectiveScore(
                 answer as string,
-                getAnswerTextForComparison(question.correctAnswer),
+                correctAnswerText,
                 question.score
               );
-              // 根据相似度确定 isCorrect: 0=错误, 1=部分正确, 2=正确
               let isCorrect: 0 | 1 | 2;
               if (result.similarity >= 0.9) {
                 isCorrect = 2;
@@ -735,14 +804,26 @@ export const useExamStore = create<ExamStore>((set, get) => ({
               } else {
                 isCorrect = 0;
               }
-              unconfirmedAnswers.push({
+              const userAnswer: UserAnswer = {
                 questionId: question.id,
                 answer,
                 score: result.score,
                 isCorrect,
                 gradingMode: 'fixed'
-              });
+              };
+              unconfirmedAnswers.push(userAnswer);
+              
+              const questionResult: QuestionResult = {
+                answer,
+                isConfirmed: true,
+                isCorrect,
+                score: result.score,
+                gradingMode: 'fixed'
+              };
+              onQuestionGraded?.(question.id, questionResult);
             }
+            processedCount++;
+            onProgress?.(confirmedAnswers.length + processedCount, state.examState.questions.length);
           }
         } else {
           // AI未启用，使用固定规则
@@ -753,7 +834,6 @@ export const useExamStore = create<ExamStore>((set, get) => ({
               getAnswerTextForComparison(question.correctAnswer),
               question.score
             );
-            // 根据相似度确定 isCorrect: 0=错误, 1=部分正确, 2=正确
             let isCorrect: 0 | 1 | 2;
             if (result.similarity >= 0.9) {
               isCorrect = 2;
@@ -762,13 +842,26 @@ export const useExamStore = create<ExamStore>((set, get) => ({
             } else {
               isCorrect = 0;
             }
-            unconfirmedAnswers.push({
+            const userAnswer: UserAnswer = {
               questionId: question.id,
               answer,
               score: result.score,
               isCorrect,
               gradingMode: 'fixed'
-            });
+            };
+            unconfirmedAnswers.push(userAnswer);
+            
+            const questionResult: QuestionResult = {
+              answer,
+              isConfirmed: true,
+              isCorrect,
+              score: result.score,
+              gradingMode: 'fixed'
+            };
+            onQuestionGraded?.(question.id, questionResult);
+            
+            processedCount++;
+            onProgress?.(confirmedAnswers.length + processedCount, state.examState.questions.length);
           }
         }
       }

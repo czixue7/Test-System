@@ -4,8 +4,8 @@ import { useSettingsStore, ModelState } from '../store/settingsStore';
 import { webllmDownloadManager, WebLLMDownloadTask } from '../utils/webllmDownloadManager';
 import { initializeModel, isModelReady } from '../utils/aiGrading';
 import { SUPPORTED_MODELS, ModelConfig, modelLoader } from '../utils/modelLoader';
-import { apiGradingService } from '../utils/apiGradingService';
-import { API_MODELS } from '../types';
+import { apiGradingService, detectAPIProvider, getProviderConfig, APIProvider } from '../utils/apiGradingService';
+import { API_MODELS, VOLCENGINE_MODELS } from '../types';
 import { useToast } from '../hooks/useToast';
 import { GradingProvider } from '../types';
 import { initVConsole, destroyVConsole } from '../utils/vconsoleManager';
@@ -48,6 +48,7 @@ const Settings: React.FC = () => {
   const [tempApiKey, setTempApiKey] = useState<string>('');
   const [apiTesting, setApiTesting] = useState<boolean>(false);
   const [apiTestResult, setApiTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [detectedProvider, setDetectedProvider] = useState<APIProvider>('unknown');
 
   useEffect(() => {
     const unsubscribe = webllmDownloadManager.subscribe((tasks) => {
@@ -83,8 +84,25 @@ const Settings: React.FC = () => {
   useEffect(() => {
     if (apiKey) {
       setTempApiKey(apiKey);
+      setDetectedProvider(detectAPIProvider(apiKey));
     }
   }, [apiKey]);
+
+  // 当临时 API Key 变化时，自动检测提供商并切换模型
+  useEffect(() => {
+    if (tempApiKey) {
+      const provider = detectAPIProvider(tempApiKey);
+      setDetectedProvider(provider);
+      // 自动切换到对应提供商的默认模型
+      if (provider === 'volcengine') {
+        setApiModel('doubao-seed-1-6-flash-250828');
+      } else if (provider === 'zhipu') {
+        setApiModel('glm-4-flash');
+      }
+    } else {
+      setDetectedProvider('unknown');
+    }
+  }, [tempApiKey, setApiModel]);
 
   useEffect(() => {
     if (apiKey) {
@@ -789,7 +807,7 @@ const Settings: React.FC = () => {
                     </div>
                   </div>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    配置智谱AI API密钥进行云端判题
+                    配置智谱AI或火山引擎API密钥进行云端判题
                   </p>
                 </div>
                 {apiExpanded && (
@@ -816,6 +834,21 @@ const Settings: React.FC = () => {
                           保存
                         </button>
                       </div>
+                      {detectedProvider !== 'unknown' && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className="text-xs text-gray-500 dark:text-gray-400">检测到提供商:</span>
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded ${
+                            detectedProvider === 'volcengine'
+                              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                              : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                          }`}>
+                            {detectedProvider === 'volcengine' ? '火山引擎' : '智谱 AI'}
+                          </span>
+                          <span className="text-xs text-gray-400 dark:text-gray-500">
+                            将使用 {getProviderConfig(detectedProvider).defaultModel}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     <div>
@@ -827,12 +860,17 @@ const Settings: React.FC = () => {
                         onChange={(e) => setApiModel(e.target.value)}
                         className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
-                        {API_MODELS.map((model) => (
+                        {(detectedProvider === 'volcengine' ? VOLCENGINE_MODELS : API_MODELS).map((model) => (
                           <option key={model.id} value={model.id}>
                             {model.name}
                           </option>
                         ))}
                       </select>
+                      {detectedProvider === 'volcengine' && (
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                          已切换至火山引擎模型列表
+                        </p>
+                      )}
                     </div>
 
                     <div>
@@ -891,7 +929,7 @@ const Settings: React.FC = () => {
                   ) : (
                     <ul className="text-xs text-blue-600 dark:text-blue-400 space-y-1">
                       <li>• API 判题需要配置有效的 API 密钥</li>
-                      <li>• 支持智谱AI GLM系列模型</li>
+                      <li>• 支持智谱AI GLM系列模型和火山引擎 Doubao 模型</li>
                       <li>• 无需本地资源，适合低配置设备</li>
                       <li>• 请妥善保管您的 API 密钥</li>
                     </ul>

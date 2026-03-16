@@ -12,7 +12,55 @@ export interface StreamCallbacks {
   onError?: (error: Error) => void;
 }
 
-const DEFAULT_ENDPOINT = 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
+// 流式判题回调，支持逐题解析完成通知
+export interface GradingStreamCallbacks {
+  onQuestionParsed?: (questionIndex: number, questionContent: string) => void;
+  onQuestionComplete?: (questionIndex: number, result: string) => void;
+  onComplete?: (fullResponse: string) => void;
+  onError?: (error: Error) => void;
+}
+
+// API 提供商配置
+const API_PROVIDERS = {
+  zhipu: {
+    endpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+    defaultModel: 'glm-4-flash',
+    // 智谱 key 特点：包含点号，格式为 xxx.xxx
+    keyPattern: /\./,
+  },
+  volcengine: {
+    endpoint: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
+    defaultModel: 'doubao-seed-1-6-flash-250828',
+    // 火山引擎 key 特点：UUID 格式，包含连字符
+    keyPattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+  },
+};
+
+export type APIProvider = 'zhipu' | 'volcengine' | 'unknown';
+
+// 根据 API Key 识别提供商
+export function detectAPIProvider(apiKey: string): APIProvider {
+  if (API_PROVIDERS.volcengine.keyPattern.test(apiKey)) {
+    return 'volcengine';
+  }
+  if (API_PROVIDERS.zhipu.keyPattern.test(apiKey)) {
+    return 'zhipu';
+  }
+  return 'unknown';
+}
+
+// 获取提供商的默认配置
+export function getProviderConfig(provider: APIProvider) {
+  switch (provider) {
+    case 'volcengine':
+      return API_PROVIDERS.volcengine;
+    case 'zhipu':
+    default:
+      return API_PROVIDERS.zhipu;
+  }
+}
+
+const DEFAULT_ENDPOINT = API_PROVIDERS.zhipu.endpoint;
 
 class APIGradingService {
   private config: APIGradingConfig | null = null;
@@ -65,9 +113,20 @@ class APIGradingService {
       throw new Error('API未配置');
     }
 
-    const endpoint = this.config.endpoint || DEFAULT_ENDPOINT;
-    const model = this.getModelConfig(this.config.model);
+    // 自动检测 API 提供商
+    const provider = detectAPIProvider(this.config.apiKey);
+    const providerConfig = getProviderConfig(provider);
+    
+    // 使用用户设置的 endpoint 或根据 key 自动选择
+    const endpoint = this.config.endpoint || providerConfig.endpoint;
+    // 使用用户设置的 model 或根据 key 自动选择默认模型
+    const modelId = this.config.model || providerConfig.defaultModel;
+    const model = this.getModelConfig(modelId);
     const actualMaxTokens = Math.min(maxTokens, model?.maxTokens || 4096);
+
+    console.log('[API判题] 检测到提供商:', provider);
+    console.log('[API判题] 发送流式请求到:', endpoint);
+    console.log('[API判题] 使用模型:', modelId);
 
     try {
       const response = await fetch(endpoint, {
@@ -77,7 +136,7 @@ class APIGradingService {
           'Authorization': `Bearer ${this.config.apiKey}`,
         },
         body: JSON.stringify({
-          model: this.config.model,
+          model: modelId,
           messages: [{ role: 'user', content: prompt }],
           max_tokens: actualMaxTokens,
           temperature: 0.1,
@@ -112,10 +171,13 @@ class APIGradingService {
 
             try {
               const parsed = JSON.parse(data);
+              // 支持 content 和 reasoning_content 两种字段
               const content = parsed.choices?.[0]?.delta?.content || '';
-              if (content) {
-                fullResponse += content;
-                callbacks?.onChunk?.(content);
+              const reasoningContent = parsed.choices?.[0]?.delta?.reasoning_content || '';
+              const actualContent = content || reasoningContent;
+              if (actualContent) {
+                fullResponse += actualContent;
+                callbacks?.onChunk?.(actualContent);
               }
             } catch {
               // 忽略解析错误
@@ -138,12 +200,20 @@ class APIGradingService {
       throw new Error('API未配置');
     }
 
-    const endpoint = this.config.endpoint || DEFAULT_ENDPOINT;
-    const model = this.getModelConfig(this.config.model);
+    // 自动检测 API 提供商
+    const provider = detectAPIProvider(this.config.apiKey);
+    const providerConfig = getProviderConfig(provider);
+    
+    // 使用用户设置的 endpoint 或根据 key 自动选择
+    const endpoint = this.config.endpoint || providerConfig.endpoint;
+    // 使用用户设置的 model 或根据 key 自动选择默认模型
+    const modelId = this.config.model || providerConfig.defaultModel;
+    const model = this.getModelConfig(modelId);
     const actualMaxTokens = Math.min(maxTokens, model?.maxTokens || 4096);
 
+    console.log('[API判题] 检测到提供商:', provider);
     console.log('[API判题] 发送请求到:', endpoint);
-    console.log('[API判题] 使用模型:', this.config.model);
+    console.log('[API判题] 使用模型:', modelId);
 
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -152,7 +222,7 @@ class APIGradingService {
         'Authorization': `Bearer ${this.config.apiKey}`,
       },
       body: JSON.stringify({
-        model: this.config.model,
+        model: modelId,
         messages: [{ role: 'user', content: prompt }],
         max_tokens: actualMaxTokens,
         temperature: 0.1,

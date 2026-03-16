@@ -20,17 +20,26 @@ const shuffleArray = <T,>(array: T[]): T[] => {
   return shuffled;
 };
 
-const GradingText: React.FC<{ isConnecting: boolean; isProcessing: boolean; isGenerating: boolean }> = ({ 
+const GradingText: React.FC<{ 
+  isConnecting: boolean; 
+  isProcessing: boolean; 
+  isGenerating: boolean;
+  progressText?: string;
+}> = ({ 
   isConnecting, 
   isProcessing, 
-  isGenerating 
+  isGenerating,
+  progressText
 }) => {
   const [displayText, setDisplayText] = React.useState('正在准备判题...');
   const [isAnimating, setIsAnimating] = React.useState(false);
 
   React.useEffect(() => {
     let text = '';
-    if (isConnecting) {
+    if (progressText) {
+      // 优先显示进度文字（如"已解析5题"）
+      text = progressText;
+    } else if (isConnecting) {
       text = '正在连接AI服务...';
     } else if (isProcessing) {
       text = '正在智能判题中...';
@@ -45,7 +54,7 @@ const GradingText: React.FC<{ isConnecting: boolean; isProcessing: boolean; isGe
     
     const timer = setTimeout(() => setIsAnimating(false), 200);
     return () => clearTimeout(timer);
-  }, [isConnecting, isProcessing, isGenerating]);
+  }, [isConnecting, isProcessing, isGenerating, progressText]);
 
   return (
     <p className={`text-sm font-medium text-blue-700 dark:text-blue-300 transition-all duration-200 ${isAnimating ? 'opacity-0' : 'opacity-100'}`}>
@@ -59,7 +68,7 @@ const Exam: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { getBank } = useQuestionBankStore();
-  const { startExam, examState, setAnswer, getAnswer, nextQuestion, prevQuestion, goToQuestion, getCurrentQuestion, resetExam, finishExam } = useExamStore();
+  const { startExam, examState, setAnswer, getAnswer, nextQuestion, prevQuestion, goToQuestion, getCurrentQuestion, resetExam, finishExam, setResult } = useExamStore();
   const { addRecord } = useRecordStore();
 
   const [examStartTime, setExamStartTime] = useState<number>(0);
@@ -69,6 +78,8 @@ const Exam: React.FC = () => {
   const [submitType, setSubmitType] = useState<'partial' | 'complete' | null>(null);
   const [isGrading, setIsGrading] = useState(false);
   const [gradingPhase, setGradingPhase] = useState<'connecting' | 'processing' | 'generating'>('connecting');
+  const [progressText, setProgressText] = useState<string>('');
+  const progressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navRef = useRef<HTMLDivElement>(null);
   const swipeRef = useRef<HTMLDivElement>(null);
   const safeArea = useSafeArea();
@@ -152,6 +163,13 @@ const Exam: React.FC = () => {
     setShowSubmitConfirm(false);
     setIsGrading(true);
     setGradingPhase('connecting');
+    setProgressText('');
+    
+    // 清除之前的定时器
+    if (progressTimerRef.current) {
+      clearTimeout(progressTimerRef.current);
+      progressTimerRef.current = null;
+    }
     
     try {
       const questions = examState?.questions || [];
@@ -160,7 +178,34 @@ const Exam: React.FC = () => {
       setTimeout(() => setGradingPhase('processing'), 500);
       
       // 使用 finishExam 进行批量判题（包含快速预检和批量AI判题）
-      const userAnswers = await finishExam(true);
+      // 传入进度回调函数，实时更新已解析题数
+      // 传入 onQuestionGraded 回调，每道题判题完成后立即更新状态
+      const userAnswers = await finishExam(
+        true, 
+        (current, total) => {
+          setProgressText(`已解析 ${current}/${total} 题`);
+          
+          // 清除之前的定时器
+          if (progressTimerRef.current) {
+            clearTimeout(progressTimerRef.current);
+          }
+          
+          // 1.5秒后恢复到默认状态文字
+          progressTimerRef.current = setTimeout(() => {
+            setProgressText('');
+          }, 1500);
+        },
+        (questionId, result) => {
+          // 每道题判题完成后立即更新到 store
+          setResult(questionId, result);
+        }
+      );
+      
+      // 清除最后的定时器
+      if (progressTimerRef.current) {
+        clearTimeout(progressTimerRef.current);
+        progressTimerRef.current = null;
+      }
       
       // 判题完成，进入生成结果状态
       setGradingPhase('generating');
@@ -256,6 +301,7 @@ const Exam: React.FC = () => {
 
   const renderQuestionContent = () => {
     const currentAnswer = getAnswer(currentQuestion.id);
+    const currentResult = examState.results.get(currentQuestion.id);
 
     return (
       <div className="space-y-4">
@@ -265,6 +311,63 @@ const Exam: React.FC = () => {
             {currentQuestion.images.map((img, idx) => (
               <img key={idx} src={img} alt="" className="rounded-lg max-h-40 object-contain" />
             ))}
+          </div>
+        )}
+
+        {/* 显示判题结果 */}
+        {currentResult && (
+          <div className={`p-4 rounded-lg border-2 ${
+            currentResult.isCorrect === 2 
+              ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-700' 
+              : currentResult.isCorrect === 1
+                ? 'bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700'
+                : 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-700'
+          }`}>
+            <div className="flex items-center justify-between mb-2">
+              <span className={`font-bold ${
+                currentResult.isCorrect === 2 
+                  ? 'text-green-700 dark:text-green-400' 
+                  : currentResult.isCorrect === 1
+                    ? 'text-yellow-700 dark:text-yellow-400'
+                    : 'text-red-700 dark:text-red-400'
+              }`}>
+                {currentResult.isCorrect === 2 ? '✓ 正确' : currentResult.isCorrect === 1 ? '◐ 部分正确' : '✗ 错误'}
+              </span>
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                得分: {currentResult.score}/{currentQuestion.score}
+              </span>
+            </div>
+            
+            {/* 逐空结果（填空题） */}
+            {currentResult.blankResults && currentResult.blankResults.length > 0 && (
+              <div className="space-y-1 mb-3">
+                {currentResult.blankResults.map((blank, idx) => (
+                  <div key={idx} className="flex items-center gap-2 text-sm">
+                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${
+                      blank.isCorrect 
+                        ? 'bg-green-100 text-green-600 dark:bg-green-900/50' 
+                        : 'bg-red-100 text-red-600 dark:bg-red-900/50'
+                    }`}>
+                      {blank.isCorrect ? '✓' : '✗'}
+                    </span>
+                    <span className="text-gray-600 dark:text-gray-400">第{idx + 1}空:</span>
+                    <span className="text-gray-800 dark:text-gray-200">{blank.userAnswer || '(未填写)'}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            {/* AI 解析 */}
+            {currentResult.aiExplanation && (
+              <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{currentResult.aiExplanation}</div>
+              </div>
+            )}
+            
+            {/* 判题模式标识 */}
+            <div className="mt-2 text-xs text-gray-500 dark:text-gray-500">
+              判题方式: {currentResult.gradingMode === 'ai' ? 'AI智能判题' : currentResult.gradingMode === 'ai-fallback' ? 'AI降级判题' : '固定规则判题'}
+            </div>
           </div>
         )}
 
@@ -391,6 +494,7 @@ const Exam: React.FC = () => {
                   isConnecting={gradingPhase === 'connecting'} 
                   isProcessing={gradingPhase === 'processing'} 
                   isGenerating={gradingPhase === 'generating'} 
+                  progressText={progressText}
                 />
               </div>
             </div>

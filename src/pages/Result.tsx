@@ -184,13 +184,10 @@ const Result: React.FC = () => {
                             {blank.userAnswer || '（未填写）'}
                           </span>
                         ) : (
-                          // 答案错误：显示红色，并提示正确答案
+                          // 答案错误：显示红色
                           <>
                             <span className="text-red-600 dark:text-red-400 line-through">
                               {blank.userAnswer || '（未填写）'}
-                            </span>
-                            <span className="text-sm text-gray-500 dark:text-gray-400">
-                              {blank.correctAnswer ? `（正确答案：${blank.correctAnswer}）` : '（答案错误）'}
                             </span>
                           </>
                         )}
@@ -244,6 +241,34 @@ const Result: React.FC = () => {
 
           {currentQuestion.type === 'subjective' && (
             <div className="space-y-3">
+              {/* 用户答案 */}
+              <div className={`p-4 border-2 rounded-lg ${
+                userAnswer?.isCorrect === 2
+                  ? 'bg-green-50 border-green-500 dark:bg-green-900/30 dark:border-green-400'
+                  : userAnswer?.isCorrect === 1
+                    ? 'bg-yellow-50 border-yellow-500 dark:bg-yellow-900/30 dark:border-yellow-400'
+                    : 'bg-red-50 border-red-500 dark:bg-red-900/30 dark:border-red-400'
+              }`}>
+                <div className={`text-sm font-medium mb-1 ${
+                  userAnswer?.isCorrect === 2
+                    ? 'text-green-700 dark:text-green-400'
+                    : userAnswer?.isCorrect === 1
+                      ? 'text-yellow-700 dark:text-yellow-400'
+                      : 'text-red-700 dark:text-red-400'
+                }`}>
+                  {userAnswer?.isCorrect === 2
+                    ? '你的答案（正确）'
+                    : userAnswer?.isCorrect === 1
+                      ? `你的答案（部分正确，得分：${userAnswer.score}分）`
+                      : '你的答案（错误）'}
+                </div>
+                <div className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
+                  {userAnswer?.answer && userAnswer.answer !== ''
+                    ? userAnswer.answer
+                    : '未作答'}
+                </div>
+              </div>
+
               <div className="p-4 bg-green-50 border-2 border-green-500 rounded-lg dark:bg-green-900/30 dark:border-green-400">
                 <div className="text-sm font-medium text-green-700 dark:text-green-400 mb-1">参考答案</div>
                 {/* 显示参考答案图片 */}
@@ -455,9 +480,9 @@ const Result: React.FC = () => {
         </div>
       </header>
 
-      <div 
-        className="max-w-lg mx-auto px-4 py-6"
-        style={{ paddingTop: safeArea.top + 48 }}
+      <div
+        className="max-w-lg mx-auto px-4 py-6 overflow-y-auto"
+        style={{ paddingTop: safeArea.top + 48, height: `calc(100vh - ${safeArea.top + 48}px)` }}
       >
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-6 text-center mb-4">
           <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center shadow-lg">

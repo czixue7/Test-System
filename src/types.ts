@@ -134,3 +134,9 @@ export const API_MODELS: APIModelConfig[] = [
   { id: 'glm-4-plus', name: 'GLM-4-Plus', maxTokens: 128000 },
   { id: 'glm-4-air', name: 'GLM-4-Air', maxTokens: 8192 },
 ];
+
+// 火山引擎模型列表
+export const VOLCENGINE_MODELS: APIModelConfig[] = [
+  { id: 'doubao-seed-1-6-flash-250828', name: 'Doubao-Seed-1.6-flash (默认)', maxTokens: 32000 },
+  { id: 'doubao-seed-1-8-251228', name: 'Doubao-Seed-1.8', maxTokens: 32000 },
+];
