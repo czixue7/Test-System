@@ -515,8 +515,8 @@ ${answersComparison}
 得分：X/${maxScore}分
 判断：正确/部分正确/错误
 逐空分析：
-${correctAnswers.map((_, i) => `- 第${i + 1}空：正确/错误，用户答案「xxx」是否存在于标准答案集合中，具体说明`).join('\n')}
-综合解析：15字以内简要分析`;
+${correctAnswers.map((_, i) => `- 第${i + 1}空：正确/错误`).join('\n')}
+综合解析：20字以内`;
   } else {
     // 顺序模式Prompt
     const answersComparison = correctAnswers.map((correct, index) => {
@@ -553,8 +553,8 @@ ${answersComparison}
 得分：X/${maxScore}分
 判断：正确/部分正确/错误
 逐空分析：
-${correctAnswers.map((_, i) => `- 第${i + 1}空：正确/错误，用户答案「xxx」与标准答案「xxx」是否一致，具体说明`).join('\n')}
-综合解析：15字以内简要分析`;
+${correctAnswers.map((_, i) => `- 第${i + 1}空：正确/错误`).join('\n')}
+综合解析：20字以内`;
   }
 
   console.log('[AI判题] =======================================');
@@ -874,8 +874,8 @@ ${userAnswer}
 【返回格式 - 必须严格按以下格式】
 得分：X（0-${maxScore}之间的整数）
 是否正确：是/否（${maxScore}分才算"是"，否则"否"）
-评价：简短评价（如：答案完整准确/答案基本正确但不够详细/答案部分正确/答案与题目无关等）
-综合解析：15字以内简要分析`;
+评价：20字以内
+综合解析：20字以内`;
 
   console.log('[AI判题] ---------------------------------------');
   console.log('[AI判题] 发送给 AI 的 Prompt:');
@@ -1136,7 +1136,8 @@ export async function gradeFillBlankBatch(
     if (item.allowDisorder) {
       // 乱序模式
       const answersComparison = userAnswersArray.map((user, index) => {
-        const displayUser = (user as string).trim() === '' ? '(未填写)' : user;
+        const userStr = (user as string) || '';
+        const displayUser = userStr.trim() === '' ? '(未填写)' : userStr;
         return `第${index + 1}空：用户答案「${displayUser}」`;
       }).join('\n');
 
@@ -1156,8 +1157,8 @@ ${answersComparison}
     } else {
       // 顺序模式
       const answersComparison = correctAnswersArray.map((correct, index) => {
-        const user = userAnswersArray[index] || '';
-        const displayUser = (user as string).trim() === '' ? '(未填写)' : user;
+        const user = (userAnswersArray[index] as string) || '';
+        const displayUser = user.trim() === '' ? '(未填写)' : user;
         return `第${index + 1}空：标准答案「${correct}」vs 用户答案「${displayUser}」`;
       }).join('\n');
 
@@ -1209,8 +1210,8 @@ ${aiNeededItems.map(({ item }, idx) => {
 得分：X/${item.maxScore}分
 判断：正确/部分正确/错误
 逐空分析${modeHint}：
-${correctAnswersArray.map((_, i) => `- 第${i + 1}空：正确/错误，具体说明`).join('\n')}
-综合解析：15字以内简要分析`;
+${correctAnswersArray.map((_, i) => `- 第${i + 1}空：正确/错误`).join('\n')}
+综合解析：20字以内`;
 }).join('\n')}
 
 请确保返回所有 ${aiNeededItems.length} 道题的评分结果，并严格按照每道题标注的判题模式进行判断。`;
@@ -1645,7 +1646,8 @@ export async function gradeBatchWithStream(
 
     if (item.allowDisorder) {
       const answersComparison = userAnswersArray.map((user, index) => {
-        const displayUser = (user as string).trim() === '' ? '(未填写)' : user;
+        const userStr = (user as string) || '';
+        const displayUser = userStr.trim() === '' ? '(未填写)' : userStr;
         return `第${index + 1}空：用户答案「${displayUser}」`;
       }).join('\n');
 
@@ -1664,8 +1666,8 @@ ${answersComparison}
 ---`;
     } else {
       const answersComparison = correctAnswersArray.map((correct, index) => {
-        const user = userAnswersArray[index] || '';
-        const displayUser = (user as string).trim() === '' ? '(未填写)' : user;
+        const user = (userAnswersArray[index] as string) || '';
+        const displayUser = user.trim() === '' ? '(未填写)' : user;
         return `第${index + 1}空：标准答案「${correct}」vs 用户答案「${displayUser}」`;
       }).join('\n');
 
@@ -1717,8 +1719,8 @@ ${aiNeededItems.map(({ item }, idx) => {
 得分：X/${item.maxScore}分
 判断：正确/部分正确/错误
 逐空分析${modeHint}：
-${correctAnswersArray.map((_, i) => `- 第${i + 1}空：正确/错误，具体说明`).join('\n')}
-综合解析：15字以内简要分析`;
+${correctAnswersArray.map((_, i) => `- 第${i + 1}空：正确/错误`).join('\n')}
+综合解析：20字以内`;
 }).join('\n')}
 
 请确保返回所有 ${aiNeededItems.length} 道题的评分结果，并严格按照每道题标注的判题模式进行判断。`;
@@ -2279,8 +2281,8 @@ ${aiNeededItems.map(({ item }, idx) => `
 题目ID: ${item.questionId}
 得分：X（0-${item.maxScore}之间的整数）
 是否正确：是/否（${item.maxScore}分才算"是"，否则"否"）
-评价：简短评价（如：答案完整准确/答案基本正确但不够详细/答案部分正确/答案与题目无关等）
-综合解析：15字以内简要分析`).join('\n')}
+评价：20字以内
+综合解析：20字以内`).join('\n')}
 
 请确保返回所有 ${aiNeededItems.length} 道题的评分结果。`;
 

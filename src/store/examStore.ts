@@ -604,85 +604,164 @@ export const useExamStore = create<ExamStore>((set, get) => ({
         }
       }
 
-      // 处理填空题 - 使用流式批量判题
+      // 处理填空题 - 先使用固定判题，不全对则使用AI判题
       if (fillBlankQuestions.length > 0) {
-        if (aiAvailable) {
-          // 构建批量判题项目
-          const fillBlankItems: BatchGradingItem[] = fillBlankQuestions.map(q => {
-            const answer = state.examState!.answers.get(q.id)!;
-            const rawCorrectAnswer = q.correctAnswer;
-            const correctAnswers: string[] = Array.isArray(rawCorrectAnswer)
-              ? rawCorrectAnswer.filter((a): a is string => typeof a === 'string')
-              : (typeof rawCorrectAnswer === 'string' ? [rawCorrectAnswer] : []);
-            const userAnswers = Array.isArray(answer) ? answer : [answer];
+        // 第一步：使用固定判题
+        const fixedResults: Map<string, { score: number; isCorrect: 0 | 1 | 2; blankResults?: BlankResult[] }> = new Map();
+        
+        for (const question of fillBlankQuestions) {
+          const answer = state.examState!.answers.get(question.id)!;
+          const { score, isCorrect, blankResults } = checkAnswer(question, answer);
+          fixedResults.set(question.id, { score, isCorrect, blankResults });
+        }
 
-            return {
-              questionId: q.id,
-              userAnswer: userAnswers,
-              correctAnswer: correctAnswers,
-              maxScore: q.score,
-              question: q.content,
-              allowDisorder: q.allowDisorder
-            };
-          });
+        // 第二步：检查是否需要AI判题（有题目不全对且AI可用）
+        const needsAIGrading = aiAvailable && fillBlankQuestions.some(q => {
+          const result = fixedResults.get(q.id);
+          return result && result.isCorrect !== 2; // 不是全对
+        });
+
+        if (needsAIGrading) {
+          // 构建需要AI判题的项目（固定判题不全对的题目）
+          const aiNeededItems: BatchGradingItem[] = fillBlankQuestions
+            .filter(q => {
+              const result = fixedResults.get(q.id);
+              return result && result.isCorrect !== 2; // 只选择不全对的题目
+            })
+            .map(q => {
+              const answer = state.examState!.answers.get(q.id)!;
+              const rawCorrectAnswer = q.correctAnswer;
+              const correctAnswers: string[] = Array.isArray(rawCorrectAnswer)
+                ? rawCorrectAnswer.filter((a): a is string => typeof a === 'string')
+                : (typeof rawCorrectAnswer === 'string' ? [rawCorrectAnswer] : []);
+              const userAnswers = Array.isArray(answer) ? answer : [answer];
+
+              return {
+                questionId: q.id,
+                userAnswer: userAnswers,
+                correctAnswer: correctAnswers,
+                maxScore: q.score,
+                question: q.content,
+                allowDisorder: q.allowDisorder
+              };
+            });
 
           try {
             // 使用流式批量判题
-            await gradeBatchWithStream(fillBlankItems, {
+            const aiResults: Map<string, { score: number; isCorrect: 0 | 1 | 2; feedback?: string; explanation?: string; blankResults?: BlankResult[] }> = new Map();
+            
+            await gradeBatchWithStream(aiNeededItems, {
               onQuestionComplete: (questionId, aiResult) => {
-                const answer = state.examState!.answers.get(questionId)!;
-                const userAnswer: UserAnswer = {
-                  questionId,
-                  answer,
+                aiResults.set(questionId, {
                   score: aiResult.score,
                   isCorrect: aiResult.isCorrect,
-                  aiFeedback: aiResult.feedback,
-                  aiExplanation: aiResult.explanation,
-                  gradingMode: aiResult.gradingMode === 'ai' ? 'ai' : 'fixed',
+                  feedback: aiResult.feedback,
+                  explanation: aiResult.explanation,
                   blankResults: aiResult.blankResults
-                };
-                unconfirmedAnswers.push(userAnswer);
-                
-                // 立即回调通知该题目已判题完成
-                const questionResult: QuestionResult = {
-                  answer,
-                  isConfirmed: true,
-                  isCorrect: aiResult.isCorrect,
-                  score: aiResult.score,
-                  aiFeedback: aiResult.feedback,
-                  aiExplanation: aiResult.explanation,
-                  gradingMode: aiResult.gradingMode === 'ai' ? 'ai' : 'fixed',
-                  blankResults: aiResult.blankResults
-                };
-                onQuestionGraded?.(questionId, questionResult);
-                
-                processedCount++;
-                onProgress?.(confirmedAnswers.length + processedCount, state.examState!.questions.length);
+                });
               }
             });
-          } catch (error) {
-            console.error('[finishExam] 填空题流式批量判题失败:', error);
-            // 降级到固定规则
+
+            // 合并结果：固定判题全对的用固定结果，其他用AI结果（包括AI失败的也标记为AI降级判题）
             for (const question of fillBlankQuestions) {
               const answer = state.examState!.answers.get(question.id)!;
-              const { score, isCorrect, blankResults } = checkAnswer(question, answer);
+              const fixedResult = fixedResults.get(question.id)!;
+              
+              let finalResult;
+              if (fixedResult.isCorrect === 2) {
+                // 固定判题全对，使用固定结果
+                finalResult = {
+                  score: fixedResult.score,
+                  isCorrect: fixedResult.isCorrect,
+                  feedback: '固定判题：全部正确',
+                  explanation: '【固定判题模式】\n答案完全正确',
+                  blankResults: fixedResult.blankResults,
+                  gradingMode: 'fixed' as const
+                };
+              } else {
+                // 使用AI判题结果（无论AI是否成功，都标记为AI判题模式）
+                const aiResult = aiResults.get(question.id);
+                if (aiResult) {
+                  // AI判题成功
+                  finalResult = {
+                    score: aiResult.score,
+                    isCorrect: aiResult.isCorrect,
+                    feedback: aiResult.feedback,
+                    explanation: aiResult.explanation,
+                    blankResults: aiResult.blankResults,
+                    gradingMode: 'ai' as const
+                  };
+                } else {
+                  // AI判题失败，使用固定结果但标记为AI降级判题
+                  finalResult = {
+                    score: fixedResult.score,
+                    isCorrect: fixedResult.isCorrect,
+                    feedback: 'AI降级判题：使用固定规则结果',
+                    explanation: '【AI降级判题模式】\nAI判题失败，使用固定判题结果',
+                    blankResults: fixedResult.blankResults,
+                    gradingMode: 'ai-fallback' as const
+                  };
+                }
+              }
+
               const userAnswer: UserAnswer = {
                 questionId: question.id,
                 answer,
-                score,
-                isCorrect,
-                gradingMode: 'fixed',
-                blankResults
+                score: finalResult.score,
+                isCorrect: finalResult.isCorrect,
+                aiFeedback: finalResult.feedback,
+                aiExplanation: finalResult.explanation,
+                gradingMode: finalResult.gradingMode,
+                blankResults: finalResult.blankResults
               };
               unconfirmedAnswers.push(userAnswer);
               
               const questionResult: QuestionResult = {
                 answer,
                 isConfirmed: true,
-                isCorrect,
-                score,
-                gradingMode: 'fixed',
-                blankResults
+                isCorrect: finalResult.isCorrect,
+                score: finalResult.score,
+                aiFeedback: finalResult.feedback,
+                aiExplanation: finalResult.explanation,
+                gradingMode: finalResult.gradingMode,
+                blankResults: finalResult.blankResults
+              };
+              onQuestionGraded?.(question.id, questionResult);
+              
+              processedCount++;
+              onProgress?.(confirmedAnswers.length + processedCount, state.examState!.questions.length);
+            }
+          } catch (error) {
+            console.error('[finishExam] 填空题AI判题失败，使用固定判题结果:', error);
+            // 批量请求失败，但已调用AI，所以标记为AI降级判题
+            for (const question of fillBlankQuestions) {
+              const answer = state.examState!.answers.get(question.id)!;
+              const fixedResult = fixedResults.get(question.id)!;
+              
+              // 全对的题目保持固定判题，其他标记为AI降级判题
+              const isAllCorrect = fixedResult.isCorrect === 2;
+              
+              const userAnswer: UserAnswer = {
+                questionId: question.id,
+                answer,
+                score: fixedResult.score,
+                isCorrect: fixedResult.isCorrect,
+                gradingMode: isAllCorrect ? 'fixed' : 'ai-fallback',
+                blankResults: fixedResult.blankResults,
+                aiFeedback: isAllCorrect ? undefined : 'AI降级判题：批量请求失败',
+                aiExplanation: isAllCorrect ? undefined : '【AI降级判题模式】\nAI批量判题失败，使用固定判题结果'
+              };
+              unconfirmedAnswers.push(userAnswer);
+              
+              const questionResult: QuestionResult = {
+                answer,
+                isConfirmed: true,
+                isCorrect: fixedResult.isCorrect,
+                score: fixedResult.score,
+                gradingMode: isAllCorrect ? 'fixed' : 'ai-fallback',
+                blankResults: fixedResult.blankResults,
+                aiFeedback: isAllCorrect ? undefined : 'AI降级判题：批量请求失败',
+                aiExplanation: isAllCorrect ? undefined : '【AI降级判题模式】\nAI批量判题失败，使用固定判题结果'
               };
               onQuestionGraded?.(question.id, questionResult);
               
@@ -691,42 +770,74 @@ export const useExamStore = create<ExamStore>((set, get) => ({
             }
           }
         } else {
-          // AI未启用，使用固定规则
+          // 不需要AI判题（全对或AI不可用），直接使用固定判题结果
           for (const question of fillBlankQuestions) {
-            const answer = state.examState.answers.get(question.id)!;
-            const { score, isCorrect, blankResults } = checkAnswer(question, answer);
+            const answer = state.examState!.answers.get(question.id)!;
+            const fixedResult = fixedResults.get(question.id)!;
             const userAnswer: UserAnswer = {
               questionId: question.id,
               answer,
-              score,
-              isCorrect,
+              score: fixedResult.score,
+              isCorrect: fixedResult.isCorrect,
               gradingMode: 'fixed',
-              blankResults
+              blankResults: fixedResult.blankResults
             };
             unconfirmedAnswers.push(userAnswer);
             
             const questionResult: QuestionResult = {
               answer,
               isConfirmed: true,
-              isCorrect,
-              score,
+              isCorrect: fixedResult.isCorrect,
+              score: fixedResult.score,
               gradingMode: 'fixed',
-              blankResults
+              blankResults: fixedResult.blankResults
             };
             onQuestionGraded?.(question.id, questionResult);
             
             processedCount++;
-            onProgress?.(confirmedAnswers.length + processedCount, state.examState.questions.length);
+            onProgress?.(confirmedAnswers.length + processedCount, state.examState!.questions.length);
           }
         }
       }
 
-      // 批量处理主观题 - 逐题处理，实时更新进度
+      // 处理主观题 - 先使用固定判题，不全对则使用AI判题
       if (subjectiveQuestions.length > 0) {
-        if (aiAvailable) {
-          // 逐题处理，而不是批量处理，以便实时更新进度
-          for (const question of subjectiveQuestions) {
-            const answer = state.examState.answers.get(question.id)!;
+        // 第一步：使用固定判题
+        const fixedResults: Map<string, { score: number; isCorrect: 0 | 1 | 2; similarity: number }> = new Map();
+        
+        for (const question of subjectiveQuestions) {
+          const answer = state.examState!.answers.get(question.id)!;
+          const correctAnswerText = getAnswerTextForComparison(question.correctAnswer);
+          const result = calculateSubjectiveScore(answer as string, correctAnswerText, question.score);
+          let isCorrect: 0 | 1 | 2;
+          if (result.similarity >= 0.9) {
+            isCorrect = 2;
+          } else if (result.similarity >= 0.6) {
+            isCorrect = 1;
+          } else {
+            isCorrect = 0;
+          }
+          fixedResults.set(question.id, { score: result.score, isCorrect, similarity: result.similarity });
+        }
+
+        // 第二步：检查是否需要AI判题（有题目不全对且AI可用）
+        const needsAIGrading = aiAvailable && subjectiveQuestions.some(q => {
+          const result = fixedResults.get(q.id);
+          return result && result.isCorrect !== 2; // 不是全对
+        });
+
+        if (needsAIGrading) {
+          // 需要AI判题的题目（固定判题不全对的题目）
+          const aiNeededQuestions = subjectiveQuestions.filter(q => {
+            const result = fixedResults.get(q.id);
+            return result && result.isCorrect !== 2;
+          });
+
+          // 逐题处理需要AI判题的题目
+          const aiResults: Map<string, { score: number; isCorrect: 0 | 1 | 2; feedback?: string; explanation?: string }> = new Map();
+          
+          for (const question of aiNeededQuestions) {
+            const answer = state.examState!.answers.get(question.id)!;
             const correctAnswerText = getAnswerTextForComparison(question.correctAnswer);
 
             try {
@@ -734,119 +845,92 @@ export const useExamStore = create<ExamStore>((set, get) => ({
               const aiResult = await gradeSubjective(answer as string, correctAnswerText, question.score, question.content);
 
               if (aiResult) {
-                const userAnswer: UserAnswer = {
-                  questionId: question.id,
-                  answer,
+                aiResults.set(question.id, {
                   score: aiResult.score,
                   isCorrect: aiResult.isCorrect,
-                  aiFeedback: aiResult.feedback,
-                  aiExplanation: aiResult.explanation,
-                  gradingMode: aiResult.gradingMode === 'ai' ? 'ai' : 'fixed'
-                };
-                unconfirmedAnswers.push(userAnswer);
-                
-                const questionResult: QuestionResult = {
-                  answer,
-                  isConfirmed: true,
-                  isCorrect: aiResult.isCorrect,
-                  score: aiResult.score,
-                  aiFeedback: aiResult.feedback,
-                  aiExplanation: aiResult.explanation,
-                  gradingMode: aiResult.gradingMode === 'ai' ? 'ai' : 'fixed'
-                };
-                onQuestionGraded?.(question.id, questionResult);
-              } else {
-                // AI返回null，使用固定规则
-                const result = calculateSubjectiveScore(
-                  answer as string,
-                  correctAnswerText,
-                  question.score
-                );
-                let isCorrect: 0 | 1 | 2;
-                if (result.similarity >= 0.9) {
-                  isCorrect = 2;
-                } else if (result.similarity >= 0.6) {
-                  isCorrect = 1;
-                } else {
-                  isCorrect = 0;
-                }
-                const userAnswer: UserAnswer = {
-                  questionId: question.id,
-                  answer,
-                  score: result.score,
-                  isCorrect,
-                  gradingMode: 'fixed'
-                };
-                unconfirmedAnswers.push(userAnswer);
-                
-                const questionResult: QuestionResult = {
-                  answer,
-                  isConfirmed: true,
-                  isCorrect,
-                  score: result.score,
-                  gradingMode: 'fixed'
-                };
-                onQuestionGraded?.(question.id, questionResult);
+                  feedback: aiResult.feedback,
+                  explanation: aiResult.explanation
+                });
               }
             } catch (error) {
-              console.error(`[finishExam] 主观题 ${question.id} 判题失败:`, error);
-              // 降级到固定规则
-              const result = calculateSubjectiveScore(
-                answer as string,
-                correctAnswerText,
-                question.score
-              );
-              let isCorrect: 0 | 1 | 2;
-              if (result.similarity >= 0.9) {
-                isCorrect = 2;
-              } else if (result.similarity >= 0.6) {
-                isCorrect = 1;
-              } else {
-                isCorrect = 0;
-              }
-              const userAnswer: UserAnswer = {
-                questionId: question.id,
-                answer,
-                score: result.score,
-                isCorrect,
-                gradingMode: 'fixed'
-              };
-              unconfirmedAnswers.push(userAnswer);
-              
-              const questionResult: QuestionResult = {
-                answer,
-                isConfirmed: true,
-                isCorrect,
-                score: result.score,
-                gradingMode: 'fixed'
-              };
-              onQuestionGraded?.(question.id, questionResult);
+              console.error(`[finishExam] 主观题 ${question.id} AI判题失败:`, error);
+              // AI判题失败，不设置结果，后续会使用固定判题结果
             }
             processedCount++;
-            onProgress?.(confirmedAnswers.length + processedCount, state.examState.questions.length);
+            onProgress?.(confirmedAnswers.length + processedCount, state.examState!.questions.length);
           }
-        } else {
-          // AI未启用，使用固定规则
+
+          // 合并结果：固定判题全对的用固定结果，其他用AI结果（包括AI失败的也标记为AI降级判题）
           for (const question of subjectiveQuestions) {
-            const answer = state.examState.answers.get(question.id)!;
-            const result = calculateSubjectiveScore(
-              answer as string,
-              getAnswerTextForComparison(question.correctAnswer),
-              question.score
-            );
-            let isCorrect: 0 | 1 | 2;
-            if (result.similarity >= 0.9) {
-              isCorrect = 2;
-            } else if (result.similarity >= 0.6) {
-              isCorrect = 1;
+            const answer = state.examState!.answers.get(question.id)!;
+            const fixedResult = fixedResults.get(question.id)!;
+            
+            let finalResult;
+            if (fixedResult.isCorrect === 2) {
+              // 固定判题全对，使用固定结果
+              finalResult = {
+                score: fixedResult.score,
+                isCorrect: fixedResult.isCorrect,
+                feedback: '固定判题：答案正确',
+                explanation: '【固定判题模式】\n答案完全正确',
+                gradingMode: 'fixed' as const
+              };
             } else {
-              isCorrect = 0;
+              // 使用AI判题结果（无论AI是否成功，都标记为AI判题模式）
+              const aiResult = aiResults.get(question.id);
+              if (aiResult) {
+                // AI判题成功
+                finalResult = {
+                  score: aiResult.score,
+                  isCorrect: aiResult.isCorrect,
+                  feedback: aiResult.feedback,
+                  explanation: aiResult.explanation,
+                  gradingMode: 'ai' as const
+                };
+              } else {
+                // AI判题失败，使用固定结果但标记为AI降级判题
+                finalResult = {
+                  score: fixedResult.score,
+                  isCorrect: fixedResult.isCorrect,
+                  feedback: 'AI降级判题：使用固定规则结果',
+                  explanation: '【AI降级判题模式】\nAI判题失败，使用固定判题结果',
+                  gradingMode: 'ai-fallback' as const
+                };
+              }
             }
+
             const userAnswer: UserAnswer = {
               questionId: question.id,
               answer,
-              score: result.score,
-              isCorrect,
+              score: finalResult.score,
+              isCorrect: finalResult.isCorrect,
+              aiFeedback: finalResult.feedback,
+              aiExplanation: finalResult.explanation,
+              gradingMode: finalResult.gradingMode
+            };
+            unconfirmedAnswers.push(userAnswer);
+            
+            const questionResult: QuestionResult = {
+              answer,
+              isConfirmed: true,
+              isCorrect: finalResult.isCorrect,
+              score: finalResult.score,
+              aiFeedback: finalResult.feedback,
+              aiExplanation: finalResult.explanation,
+              gradingMode: finalResult.gradingMode
+            };
+            onQuestionGraded?.(question.id, questionResult);
+          }
+        } else {
+          // 不需要AI判题（全对或AI不可用），直接使用固定判题结果
+          for (const question of subjectiveQuestions) {
+            const answer = state.examState!.answers.get(question.id)!;
+            const fixedResult = fixedResults.get(question.id)!;
+            const userAnswer: UserAnswer = {
+              questionId: question.id,
+              answer,
+              score: fixedResult.score,
+              isCorrect: fixedResult.isCorrect,
               gradingMode: 'fixed'
             };
             unconfirmedAnswers.push(userAnswer);
@@ -854,14 +938,14 @@ export const useExamStore = create<ExamStore>((set, get) => ({
             const questionResult: QuestionResult = {
               answer,
               isConfirmed: true,
-              isCorrect,
-              score: result.score,
+              isCorrect: fixedResult.isCorrect,
+              score: fixedResult.score,
               gradingMode: 'fixed'
             };
             onQuestionGraded?.(question.id, questionResult);
             
             processedCount++;
-            onProgress?.(confirmedAnswers.length + processedCount, state.examState.questions.length);
+            onProgress?.(confirmedAnswers.length + processedCount, state.examState!.questions.length);
           }
         }
       }
