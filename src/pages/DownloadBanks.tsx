@@ -48,6 +48,9 @@ const BUILT_IN_BANKS_CONFIG = [
 // 兼容旧代码的导出
 const BUILT_IN_BANK_FILES = BUILT_IN_BANKS_CONFIG.map(b => b.file);
 
+// 题库索引文件配置 - 使用 raw.githubusercontent.com 避免 API 限制
+const BANK_INDEX_URL = 'https://raw.githubusercontent.com/czixue7/Test-System/main/bank-index.json';
+
 const DownloadBanks: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -100,123 +103,99 @@ const DownloadBanks: React.FC = () => {
     return { exists: true, hasUpdate, isBuiltIn: false };
   }, [banks]);
 
-  const fetchUserBankDir = useCallback(async (): Promise<BankInfo[]> => {
-    const userBankInfos: BankInfo[] = [];
-    try {
-      const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${USER_BANKS_PATH}`);
-      if (!response.ok) return userBankInfos;
-
-      const dirs: GitHubFile[] = await response.json();
-
-      for (const dir of dirs) {
-        if (dir.type === 'dir') {
-          try {
-            const dirResponse = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${dir.path}`);
-            if (!dirResponse.ok) continue;
-
-            const dirContents: GitHubFile[] = await dirResponse.json();
-            // 查找目录下的任意 .json 文件（不限制文件名）
-            const jsonFiles = dirContents.filter(f => f.type === 'file' && f.name.endsWith('.json'));
-
-            for (const jsonFile of jsonFiles) {
-              const bankName = jsonFile.name.replace('.json', '');
-              const status = checkBankStatus(bankName, jsonFile.sha, jsonFile.name, 'user');
-
-              const imageDir = dirContents.find(f => f.type === 'dir' && f.name === 'image');
-
-              userBankInfos.push({
-                name: bankName,
-                filename: jsonFile.name,
-                downloadUrl: jsonFile.download_url || '',
-                imagePath: imageDir ? `${dir.path}/image` : undefined,
-                sha: jsonFile.sha,
-                source: 'user',
-                exists: status.exists,
-                hasUpdate: status.hasUpdate,
-                isBuiltIn: false,
-                downloading: false,
-                progress: 0
-              });
-            }
-          } catch (err) {
-            console.warn(`Error processing user bank directory ${dir.path}:`, err);
-          }
-        }
-      }
-    } catch (err) {
-      console.warn('Error fetching user banks directory:', err);
-    }
-
-    return userBankInfos;
-  }, [checkBankStatus]);
-
-  const fetchSystemBankDir = useCallback(async (): Promise<BankInfo[]> => {
-    const systemBankInfos: BankInfo[] = [];
-    try {
-      const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${SYSTEM_BANKS_PATH}`);
-      if (!response.ok) return systemBankInfos;
-
-      const dirs: GitHubFile[] = await response.json();
-
-      for (const dir of dirs) {
-        if (dir.type === 'dir') {
-          try {
-            const dirResponse = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${dir.path}`);
-            if (!dirResponse.ok) continue;
-
-            const dirContents: GitHubFile[] = await dirResponse.json();
-            const expectedJsonFileName = `${dir.name}.json`;
-            const jsonFile = dirContents.find(f => f.type === 'file' && f.name === expectedJsonFileName);
-
-            if (jsonFile) {
-              const bankName = jsonFile.name.replace('.json', '');
-              const status = checkBankStatus(bankName, jsonFile.sha, jsonFile.name, 'system');
-
-              const imageDir = dirContents.find(f => f.type === 'dir' && f.name === 'image');
-
-              systemBankInfos.push({
-                name: bankName,
-                filename: jsonFile.name,
-                downloadUrl: jsonFile.download_url || '',
-                imagePath: imageDir ? `${dir.path}/image` : undefined,
-                sha: jsonFile.sha,
-                source: 'system',
-                exists: status.exists,
-                hasUpdate: status.hasUpdate,
-                isBuiltIn: status.isBuiltIn,
-                downloading: false,
-                progress: 0
-              });
-            }
-          } catch (err) {
-            console.warn(`Error processing system bank directory ${dir.path}:`, err);
-          }
-        }
-      }
-    } catch (err) {
-      console.warn('Error fetching system banks directory:', err);
-    }
-
-    return systemBankInfos;
-  }, [checkBankStatus]);
-
+  // 使用 raw.githubusercontent.com 直接获取文件，避免 GitHub API 限制
   const fetchBankList = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [systemBankInfos, userBankInfos] = await Promise.all([
-        fetchSystemBankDir(),
-        fetchUserBankDir()
-      ]);
-
-      setBankList([...systemBankInfos, ...userBankInfos]);
+      // 尝试获取题库索引文件
+      const indexResponse = await fetch(BANK_INDEX_URL);
+      
+      if (indexResponse.ok) {
+        // 使用索引文件
+        const indexData = await indexResponse.json();
+        const allBanks: BankInfo[] = [];
+        
+        // 处理系统题库
+        if (indexData.systemBanks && Array.isArray(indexData.systemBanks)) {
+          for (const bank of indexData.systemBanks) {
+            const status = checkBankStatus(bank.name, bank.sha, bank.filename, 'system');
+            allBanks.push({
+              name: bank.name,
+              filename: bank.filename,
+              downloadUrl: bank.downloadUrl,
+              imagePath: bank.imagePath,
+              sha: bank.sha,
+              source: 'system',
+              exists: status.exists,
+              hasUpdate: status.hasUpdate,
+              isBuiltIn: status.isBuiltIn,
+              downloading: false,
+              progress: 0
+            });
+          }
+        }
+        
+        // 处理用户题库
+        if (indexData.userBanks && Array.isArray(indexData.userBanks)) {
+          for (const bank of indexData.userBanks) {
+            const status = checkBankStatus(bank.name, bank.sha, bank.filename, 'user');
+            allBanks.push({
+              name: bank.name,
+              filename: bank.filename,
+              downloadUrl: bank.downloadUrl,
+              imagePath: bank.imagePath,
+              sha: bank.sha,
+              source: 'user',
+              exists: status.exists,
+              hasUpdate: status.hasUpdate,
+              isBuiltIn: false,
+              downloading: false,
+              progress: 0
+            });
+          }
+        }
+        
+        // 按名称从低到高排序
+        const sortByName = (a: BankInfo, b: BankInfo) => a.name.localeCompare(b.name, 'zh-CN');
+        allBanks.sort(sortByName);
+        
+        setBankList(allBanks);
+      } else {
+        // 索引文件不存在，使用备用方案：直接构建系统题库列表
+        console.warn('题库索引文件不存在，使用备用方案');
+        const fallbackBanks: BankInfo[] = [];
+        
+        for (const config of BUILT_IN_BANKS_CONFIG) {
+          const downloadUrl = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/${SYSTEM_BANKS_PATH}/${config.folder}/${config.file}`;
+          const status = checkBankStatus(config.folder, '', config.file, 'system');
+          
+          fallbackBanks.push({
+            name: config.folder,
+            filename: config.file,
+            downloadUrl: downloadUrl,
+            imagePath: `${SYSTEM_BANKS_PATH}/${config.folder}/image`,
+            sha: '',
+            source: 'system',
+            exists: status.exists,
+            hasUpdate: false,
+            isBuiltIn: true,
+            downloading: false,
+            progress: 0
+          });
+        }
+        
+        setBankList(fallbackBanks);
+        showInfo('使用备用题库列表，部分功能可能受限', 3000);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '获取题库列表失败');
+      console.error('获取题库列表失败:', err);
+      setError('获取题库列表失败');
       showError('获取题库列表失败，请检查网络连接');
     } finally {
       setLoading(false);
     }
-  }, [fetchSystemBankDir, fetchUserBankDir, showError]);
+  }, [checkBankStatus, showError, showInfo]);
 
   useEffect(() => {
     fetchBankList();
@@ -333,6 +312,10 @@ const DownloadBanks: React.FC = () => {
 
       if (!data.questions || !Array.isArray(data.questions)) {
         throw new Error('题库格式无效，缺少 questions 字段');
+      }
+      
+      if (data.questions.length === 0) {
+        throw new Error('题库为空，没有题目');
       }
       
       updateProgress(20);

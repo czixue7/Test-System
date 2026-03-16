@@ -37,6 +37,7 @@ function convertJsonToBuiltInBank(
     return {
       id: generateQuestionId(bankId, index),
       type: q.type as QuestionType,
+      question: q.question,
       content: q.content,
       options: q.options?.map(opt => ({
         id: opt.id,
@@ -44,6 +45,8 @@ function convertJsonToBuiltInBank(
       })),
       correctAnswer: q.correctAnswer,
       score: q.score ?? 10,
+      category: q.category ?? 'default',
+      difficulty: (q.difficulty as 'easy' | 'medium' | 'hard') ?? 'medium',
       explanation: q.explanation,
       images: images,
       allowDisorder: q.allowDisorder

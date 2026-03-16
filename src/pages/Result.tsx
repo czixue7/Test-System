@@ -230,9 +230,12 @@ const Result: React.FC = () => {
                   {(() => {
                     const answer = currentQuestion.correctAnswer;
                     if (typeof answer === 'object' && answer !== null && 'text' in answer) {
-                      return answer.text;
+                      return answer.text as string;
                     }
-                    return Array.isArray(answer) ? answer.join('、') : answer;
+                    if (Array.isArray(answer)) {
+                      return answer.join('、');
+                    }
+                    return String(answer);
                   })()}
                 </div>
               </div>
@@ -298,9 +301,12 @@ const Result: React.FC = () => {
                   {(() => {
                     const answer = currentQuestion.correctAnswer;
                     if (typeof answer === 'object' && answer !== null && 'text' in answer) {
-                      return answer.text;
+                      return answer.text as string;
                     }
-                    return answer;
+                    if (Array.isArray(answer)) {
+                      return answer.join('、');
+                    }
+                    return String(answer);
                   })()}
                 </div>
               </div>
@@ -499,7 +505,7 @@ const Result: React.FC = () => {
               <div className="text-xs text-gray-500 dark:text-gray-400">满分</div>
             </div>
             <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-              <div className="text-xl font-bold text-gray-600 dark:text-gray-400">{Math.floor(record.duration / 60)}:{(record.duration % 60).toString().padStart(2, '0')}</div>
+              <div className="text-xl font-bold text-gray-600 dark:text-gray-400">{Math.floor((record.duration ?? record.timeSpent) / 60)}:{((record.duration ?? record.timeSpent) % 60).toString().padStart(2, '0')}</div>
               <div className="text-xs text-gray-500 dark:text-gray-400">用时</div>
             </div>
           </div>
@@ -518,7 +524,7 @@ const Result: React.FC = () => {
             </div>
           </div>
           <div className="text-sm text-gray-500 dark:text-gray-400 mb-2">
-            {record.bankName} · {new Date(record.finishedAt).toLocaleString()}
+            {record.bankName || record.examName} · {new Date(record.finishedAt || record.submittedAt).toLocaleString()}
           </div>
           <div className="mb-4">
             {(() => {
@@ -553,7 +559,7 @@ const Result: React.FC = () => {
                 );
               }
               
-              const singleMode = record.gradingMode || 'fixed';
+              const singleMode = (record.gradingMode || 'fixed') as 'ai' | 'fixed' | 'ai-fallback';
               return (
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                   singleMode === 'ai'

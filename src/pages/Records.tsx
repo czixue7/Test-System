@@ -55,20 +55,20 @@ const Records: React.FC = () => {
                 <div key={record.id} className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-4">
                   <div className="flex justify-between items-center">
                     <div className="flex-1 cursor-pointer" onClick={() => navigate(`/result/${record.id}`)}>
-                      <div className="font-medium text-gray-800 dark:text-gray-200">{record.bankName}</div>
-                      <div className="text-sm text-gray-500 dark:text-gray-400">{new Date(record.finishedAt).toLocaleString()}</div>
+                      <div className="font-medium text-gray-800 dark:text-gray-200">{record.bankName || record.examName}</div>
+                      <div className="text-sm text-gray-500 dark:text-gray-400">{new Date(record.finishedAt || record.submittedAt).toLocaleString()}</div>
                     </div>
                     <div className="flex items-center gap-3">
                       <div className="text-right">
-                        <div className="font-bold text-blue-600 dark:text-blue-400">{record.percentage}%</div>
-                        <div className="text-sm text-gray-500 dark:text-gray-400">{Math.floor(record.duration / 60)}:{(record.duration % 60).toString().padStart(2, '0')}</div>
+                        <div className="font-bold text-blue-600 dark:text-blue-400">{record.percentage ?? Math.round((record.score / record.totalScore) * 100)}%</div>
+                        <div className="text-sm text-gray-500 dark:text-gray-400">{Math.floor((record.duration ?? record.timeSpent) / 60)}:{((record.duration ?? record.timeSpent) % 60).toString().padStart(2, '0')}</div>
                         <div className="text-xs mt-1">
                           <span className="text-green-600 dark:text-green-400">{correctCount}对</span>
                           <span className="text-gray-300 dark:text-gray-600 mx-1">·</span>
                           <span className="text-red-600 dark:text-red-400">{wrongCount}错</span>
                         </div>
                       </div>
-                      <button onClick={() => deleteRecord(record.id)} className="p-2 text-gray-400 hover:text-red-500 transition-colors">
+                      <button onClick={async () => { await deleteRecord(record.id); }} className="p-2 text-gray-400 hover:text-red-500 transition-colors">
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                       </button>
                     </div>
@@ -94,7 +94,7 @@ const Records: React.FC = () => {
       {showClearConfirm && (
         <ConfirmModal
           message="确定要清空所有记录吗？此操作不可恢复。"
-          onConfirm={() => { clearRecords(); setShowClearConfirm(false); }}
+          onConfirm={async () => { await clearRecords(); setShowClearConfirm(false); }}
           onCancel={() => setShowClearConfirm(false)}
           confirmText="清空"
           cancelText="取消"

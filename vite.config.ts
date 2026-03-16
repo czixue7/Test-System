@@ -28,7 +28,7 @@ export default defineConfig({
         manualChunks: {
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
           'zustand': ['zustand'],
-          'web-llm': ['@mlc-ai/web-llm'],
+          'vconsole': ['vconsole'],
         },
       },
     },
