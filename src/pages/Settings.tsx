@@ -9,7 +9,7 @@ import { useToast } from '../hooks/useToast';
 import { GradingProvider } from '../types';
 import { initVConsole, destroyVConsole } from '../utils/vconsoleManager';
 import { useSafeArea } from '../hooks/useSafeArea';
-import { modelConfigLoader, ProviderConfig, ProviderModel } from '../utils/modelConfigLoader';
+import { modelConfigLoader, ProviderConfig, ProviderModel, ModelsConfig } from '../utils/modelConfigLoader';
 
 const Settings: React.FC = () => {
   const navigate = useNavigate();
@@ -54,6 +54,8 @@ const Settings: React.FC = () => {
   const [selectedProviderId, setSelectedProviderId] = useState<string>('');
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [passwordVerified, setPasswordVerified] = useState<boolean>(false);
+  const [refreshingModels, setRefreshingModels] = useState<boolean>(false);
+  const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
 
   useEffect(() => {
     const unsubscribe = webllmDownloadManager.subscribe((tasks) => {
@@ -152,39 +154,70 @@ const Settings: React.FC = () => {
     setGradingExpanded(!gradingExpanded);
   };
 
-  const handleVerifyPassword = () => {
+  const handleVerifyPassword = async () => {
     if (!tempPassword.trim() || tempPassword.length !== 6) {
       showError('请输入6位密钥', 3000);
       return;
     }
-    
+
+    // 先验证密码能否解密
     const isValid = modelConfigLoader.verifyPassword(tempPassword);
-    if (isValid) {
-      setPasswordVerified(true);
-      setApiPassword(tempPassword);
-      
-      // 解密并保存第一个模型的 API Key
-      const firstModel = availableModels[0];
-      if (firstModel) {
-        const decryptedKey = modelConfigLoader.getDecryptedApiKey(
-          firstModel.provider.id,
-          firstModel.model.id,
-          tempPassword
-        );
-        if (decryptedKey) {
-          setApiKey(decryptedKey);
-          setSelectedProviderId(firstModel.provider.id);
-          setSelectedModelId(firstModel.model.id);
-          setApiProvider(firstModel.provider.id);
-          setApiModel(firstModel.model.id);
-        }
-      }
-      
-      setApiTestResult(null);
-      showSuccess('密钥验证成功', 3000);
-    } else {
+    if (!isValid) {
       showError('密钥错误', 3000);
       setPasswordVerified(false);
+      return;
+    }
+
+    // 解密并保存第一个模型的 API Key
+    const firstModel = availableModels[0];
+    if (!firstModel) {
+      showError('没有可用的模型', 3000);
+      return;
+    }
+
+    const decryptedKey = modelConfigLoader.getDecryptedApiKey(
+      firstModel.provider.id,
+      firstModel.model.id,
+      tempPassword
+    );
+
+    if (!decryptedKey) {
+      showError('解密 API Key 失败', 3000);
+      return;
+    }
+
+    // 测试 API 连接
+    showInfo('正在测试 API 连接...', 3000);
+    try {
+      apiGradingService.setConfig({
+        apiKey: decryptedKey,
+        model: firstModel.model.id,
+      });
+
+      const result = await apiGradingService.testConnection();
+
+      if (result.success) {
+        // API 连接成功，保存配置
+        setPasswordVerified(true);
+        setApiPassword(tempPassword);
+        setApiKey(decryptedKey);
+        setSelectedProviderId(firstModel.provider.id);
+        setSelectedModelId(firstModel.model.id);
+        setApiProvider(firstModel.provider.id);
+        setApiModel(firstModel.model.id);
+        setApiTestResult(result);
+        showSuccess('密钥验证成功，API 连接正常', 3000);
+      } else {
+        // API 连接失败
+        setPasswordVerified(false);
+        setApiTestResult(result);
+        showError(`密钥验证失败: ${result.message}`, 4000);
+      }
+    } catch (error) {
+      setPasswordVerified(false);
+      const message = error instanceof Error ? error.message : 'API 连接测试失败';
+      setApiTestResult({ success: false, message });
+      showError(`密钥验证失败: ${message}`, 4000);
     }
   };
 
@@ -193,13 +226,82 @@ const Settings: React.FC = () => {
     setSelectedModelId(modelId);
     setApiProvider(providerId);
     setApiModel(modelId);
-    
+
     // 解密并更新 API Key
     if (tempPassword) {
       const decryptedKey = modelConfigLoader.getDecryptedApiKey(providerId, modelId, tempPassword);
       if (decryptedKey) {
         setApiKey(decryptedKey);
       }
+    }
+  };
+
+  // 刷新模型列表
+  const handleRefreshModels = async () => {
+    setRefreshingModels(true);
+    try {
+      // 从远程获取最新配置
+      const response = await fetch('https://raw.githubusercontent.com/czixue7/Test-System/main/public/models.json', {
+        cache: 'no-cache'
+      });
+
+      if (!response.ok) {
+        throw new Error('获取远程模型列表失败');
+      }
+
+      const remoteConfig: ModelsConfig = await response.json();
+
+      // 检查本地是否有缓存的模型配置
+      const localResponse = await fetch('/models.json');
+      let localConfig: ModelsConfig | null = null;
+      if (localResponse.ok) {
+        localConfig = await localResponse.json();
+      }
+
+      // 比较远程和本地配置
+      const remoteHash = JSON.stringify(remoteConfig);
+      const localHash = localConfig ? JSON.stringify(localConfig) : '';
+
+      if (remoteHash !== localHash || !localConfig || availableModels.length === 0) {
+        // 需要更新
+        // 更新 modelConfigLoader 中的配置
+        modelConfigLoader['config'] = remoteConfig;
+
+        // 更新可用模型列表
+        const models = modelConfigLoader.getAllModels();
+        setAvailableModels(models);
+
+        // 如果当前没有选中的模型，默认选择第一个
+        if (!selectedModelId && models.length > 0) {
+          const firstModel = models[0];
+          setSelectedProviderId(firstModel.provider.id);
+          setSelectedModelId(firstModel.model.id);
+          setApiProvider(firstModel.provider.id);
+          setApiModel(firstModel.model.id);
+
+          // 如果已验证密码，更新 API Key
+          if (passwordVerified && tempPassword) {
+            const decryptedKey = modelConfigLoader.getDecryptedApiKey(
+              firstModel.provider.id,
+              firstModel.model.id,
+              tempPassword
+            );
+            if (decryptedKey) {
+              setApiKey(decryptedKey);
+            }
+          }
+        }
+
+        setLastRefreshTime(new Date());
+        showSuccess('已更新', 3000);
+      } else {
+        showInfo('无更新', 3000);
+      }
+    } catch (error) {
+      console.error('刷新模型列表失败:', error);
+      showError('刷新模型列表失败: ' + (error instanceof Error ? error.message : '未知错误'), 4000);
+    } finally {
+      setRefreshingModels(false);
     }
   };
 
@@ -858,9 +960,35 @@ const Settings: React.FC = () => {
                 {apiExpanded && (
                   <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-600 space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
-                        API 模型
-                      </label>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                          API 模型
+                        </label>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRefreshModels();
+                          }}
+                          disabled={refreshingModels}
+                          className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 disabled:text-gray-400 disabled:cursor-not-allowed"
+                          title="刷新模型列表"
+                        >
+                          <svg
+                            className={`w-4 h-4 ${refreshingModels ? 'animate-spin' : ''}`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                            />
+                          </svg>
+                          {refreshingModels ? '刷新中' : '刷新'}
+                        </button>
+                      </div>
                       <div className="flex gap-2 items-stretch">
                         <select
                           value={selectedModelId}
