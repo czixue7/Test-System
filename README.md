@@ -289,7 +289,7 @@ Low_Voltage_Electrician_Exam/
 | 文件/目录 | 说明 |
 |-----------|------|
 | `low-voltage-electrician-exam.exe` | 可直接运行的应用程序（无需安装） |
-| `bundle/nsis/答题测试库_0.3.4_x64-setup.exe` | NSIS 安装程序（带安装向导） |
+| `bundle/nsis/答题测试库_0.3.0_x64-setup.exe` | NSIS 安装程序（带安装向导） |
 
 ## NSIS 安装包汉化配置
 
@@ -453,14 +453,14 @@ sdk.dir=C:\\Users\\<用户名>\\AppData\\Local\\Android\\Sdk
 
 ## 下载安装
 
-### Windows 桌面端 v0.3.4
-- **安装包**: `答题测试库_0.3.4_x64-setup.exe` (~5MB)
+### Windows 桌面端 v0.3.5
+- **安装包**: `答题测试库_0.3.5_x64-setup.exe` (~5MB)
 - 支持 Windows 10/11 64位系统
 - 下载地址：[Releases](https://github.com/czixue7/Test-System/releases)
 
-### Android 移动端 v0.3.4
-- **ARM64 版本**: `Answer_Test_v0.3.4-arm64-release.apk` (~11MB) - 推荐，性能更好
-- **Universal 版本**: `Answer_Test_v0.3.4-universal-release.apk` (~38MB) - 兼容所有架构
+### Android 移动端 v0.3.5
+- **ARM64 版本**: `Answer_Test_v0.3.5-arm64-release.apk` (~11MB) - 推荐，性能更好
+- **Universal 版本**: `Answer_Test_v0.3.5-universal-release.apk` (~38MB) - 兼容所有架构
 - 支持 Android 8.0+ 系统
 - 下载地址：[Releases](https://github.com/czixue7/Test-System/releases)
 
