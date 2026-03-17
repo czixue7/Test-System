@@ -8,6 +8,9 @@
 - 多题库练习与切换
 - 选择题、多选题、填空题、主观题答题
 - **AI 智能判题**：支持 API 云端判题和 WebLLM 本地判题
+  - 固定判题全对时跳过 AI 判题，节省资源
+  - 固定判题不全对时自动使用 AI 判题
+  - AI 判题失败时降级到固定判题并标记
 - 多种模型支持：
   - API 云端判题：智谱 AI GLM 系列免费模型（GLM-4-Flash 200并发、GLM-4.7-Flash、GLM-Z1-Flash 等）
   - WebLLM 本地模型：Qwen3 1.7B（推荐）、Qwen3 0.6B（轻量）
@@ -463,6 +466,14 @@ sdk.dir=C:\\Users\\<用户名>\\AppData\\Local\\Android\\Sdk
 - **Universal 版本**: `Answer_Test_v0.3.5-universal-release.apk` (~38MB) - 兼容所有架构
 - 支持 Android 8.0+ 系统
 - 下载地址：[Releases](https://github.com/czixue7/Test-System/releases)
+
+## 最新更新 (v0.3.5)
+
+- **批量 AI 判题优化**：简化 prompt 类型，提高判题效率
+- **测试记录持久化**：使用本地文件存储，数据更安全
+- **题库索引文件**：避免 GitHub API 限制，支持更新检测
+- **题库排序优化**：内置题库按正确周数顺序显示
+- **体积优化**：PC 版本减小约 287 KB
 
 ## 许可证
 

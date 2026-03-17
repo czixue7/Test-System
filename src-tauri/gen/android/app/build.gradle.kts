@@ -23,19 +23,9 @@ android {
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
-        ndk {
-            abiFilters.addAll(listOf("arm64-v8a"))
-        }
     }
 
-    splits {
-        abi {
-            isEnable = true
-            reset()
-            include("arm64-v8a")
-            isUniversalApk = true
-        }
-    }
+
     
     signingConfigs {
         create("release") {
@@ -50,11 +40,8 @@ android {
         getByName("debug") {
             manifestPlaceholders["usesCleartextTraffic"] = "true"
             isDebuggable = true
-            isJniDebuggable = true
+            isJniDebuggable = false
             isMinifyEnabled = false
-            packaging {
-                jniLibs.keepDebugSymbols.add("*/arm64-v8a/*.so")
-            }
         }
         getByName("release") {
             isMinifyEnabled = true
