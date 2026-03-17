@@ -1,6 +1,6 @@
 {
   "name": "Answer_Test",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "description": "答题测试库",
   "type": "module",
   "scripts": {
@@ -46,3 +46,4 @@
     "vite": "^5.3.1"
   }
 }
+

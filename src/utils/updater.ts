@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, Channel } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
 
 export interface DownloadProgress {
@@ -15,7 +15,7 @@ export interface UpdateInfo {
   assetName?: string;
 }
 
-const currentVersion = '0.3.6';
+const currentVersion = '0.3.7';
 
 /**
  * 检查当前系统架构
@@ -264,7 +264,7 @@ function getPlatformAsset(assets: { name: string; browser_download_url: string }
 
 /**
  * 下载 APK 文件
- * 使用 Tauri 后端命令下载，支持 Android 平台
+ * 使用 Tauri 后端命令下载，支持 Android 平台和实时进度回调
  */
 export async function downloadApk(
   url: string,
@@ -275,22 +275,24 @@ export async function downloadApk(
   console.log(`[Updater] 文件名: ${filename}`);
 
   try {
+    // 创建 Channel 接收进度回调
+    const progressChannel = new Channel<DownloadProgress>();
+    
+    // 设置进度回调处理
+    if (onProgress) {
+      progressChannel.onmessage = (progress) => {
+        onProgress(progress);
+      };
+    }
+
     // 调用 Tauri 后端命令下载文件
     const filePath = await invoke<string>('download_apk', {
       url,
-      filename
+      filename,
+      onProgress: progressChannel
     });
 
     console.log(`[Updater] 下载完成: ${filePath}`);
-
-    // 模拟进度回调（因为当前实现是一次性下载）
-    if (onProgress) {
-      onProgress({
-        downloaded: 100,
-        total: 100,
-        percentage: 100
-      });
-    }
 
     return filePath;
   } catch (error) {
@@ -308,28 +310,25 @@ export async function installApk(filePath: string): Promise<string> {
 
   try {
     // 调用 Tauri 后端命令
-    // 注意：当前后端实现只是返回路径，实际的安装需要通过其他方式实现
     const result = await invoke<string>('install_apk', {
       apkPath: filePath
     });
 
     console.log(`[Updater] 安装结果: ${result}`);
-    
-    // 如果后端返回的是文件路径，说明需要前端处理安装
-    if (result === filePath) {
-      // 尝试使用 shell open 来触发安装
-      // 在 Android 上，这会尝试打开文件
-      try {
-        await open(`file://${filePath}`);
-        return '已尝试打开安装文件';
-      } catch (e) {
-        console.log('[Updater] shell open 失败，尝试其他方式');
-        // 如果 shell open 失败，返回路径让前端处理
-        return result;
-      }
+
+    // Android 安装已由原生侧处理
+    if (isAndroid()) {
+      return result;
     }
-    
-    return result;
+
+    // 非 Android 平台回退尝试打开文件
+    try {
+      await open(`file://${filePath}`);
+      return '已尝试打开安装文件';
+    } catch (e) {
+      console.log('[Updater] shell open 失败');
+      return result;
+    }
   } catch (error) {
     console.error('[Updater] 安装失败:', error);
     throw error;
@@ -378,3 +377,4 @@ export function isAndroid(): boolean {
   const userAgent = navigator.userAgent.toLowerCase();
   return userAgent.includes('android');
 }
+
