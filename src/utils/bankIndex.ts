@@ -106,10 +106,6 @@ export function checkBankStatus(
 ): BankStatus {
   const isBuiltIn = source === 'system' && isBuiltInBankFile(filename);
 
-  if (isBuiltIn) {
-    return { exists: true, hasUpdate: false, hasImageUpdate: false, isBuiltIn: true, missingImages: [], changedImages: [] };
-  }
-
   const existingBank = localBanks.find(bank => {
     if (bank.name === bankName) return true;
     const normalizedName = bankName.replace(/周考题（答案）/, '').trim();
@@ -122,9 +118,9 @@ export function checkBankStatus(
     return { exists: false, hasUpdate: false, hasImageUpdate: false, isBuiltIn: false, missingImages: [], changedImages: [] };
   }
 
-  // 没有 sourceSha 的旧数据
+  // 没有 sourceSha 的旧数据（包括早期版本的内置题库）
   if (!existingBank.sourceSha) {
-    return { exists: true, hasUpdate: false, hasImageUpdate: false, isBuiltIn: false, missingImages: [], changedImages: [] };
+    return { exists: true, hasUpdate: false, hasImageUpdate: false, isBuiltIn, missingImages: [], changedImages: [] };
   }
 
   const hasUpdate = existingBank.sourceSha !== remoteSha;
@@ -137,7 +133,7 @@ export function checkBankStatus(
     exists: true,
     hasUpdate,
     hasImageUpdate,
-    isBuiltIn: false,
+    isBuiltIn,
     missingImages,
     changedImages
   };

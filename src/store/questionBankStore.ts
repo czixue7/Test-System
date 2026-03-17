@@ -87,17 +87,16 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       },
       
       updateBankWithSha: (id, updates, sha, images) => {
-        if (isBuiltInBank(id)) {
-          console.warn('Cannot update built-in bank');
-          return;
-        }
         set((state) => {
           const newBanks = state.banks.map((bank) =>
             bank.id === id
               ? { ...bank, ...updates, sourceSha: sha, images, updatedAt: new Date().toISOString() }
               : bank
           );
-          saveUserBanks(newBanks);
+          // 只保存用户题库到存储，内置题库的更新只在内存中
+          if (!isBuiltInBank(id)) {
+            saveUserBanks(newBanks);
+          }
           return { banks: newBanks };
         });
       },
