@@ -139,7 +139,7 @@ const ManageBanks: React.FC = () => {
   const renderBankItem = (bank: QuestionBank) => {
     const updateInfo = checkBankUpdate(bank, bankIndex);
     const isUpdating = updatingBankId === bank.id;
-    const canUpdate = (updateInfo.hasUpdate || updateInfo.hasImageUpdate) && !isBuiltInBank(bank.id);
+    const canUpdate = updateInfo.hasUpdate || updateInfo.hasImageUpdate;
 
     return (
       <div

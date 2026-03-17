@@ -3,17 +3,18 @@ import { QuestionBank, JsonBankData, Question, QuestionType } from '../types';
 export const BUILT_IN_BANK_PREFIX = 'built-in-';
 
 // 新的目录结构：每个题库一个文件夹，图片放在 image 子目录下
+// 注意：sha 值需要与 bank-index.json 中的对应题库保持一致
 const BUILT_IN_BANKS = [
-  { folder: '第一周考题', file: '第一周考题.json', id: `${BUILT_IN_BANK_PREFIX}01` },
-  { folder: '第二周考题', file: '第二周考题.json', id: `${BUILT_IN_BANK_PREFIX}02` },
-  { folder: '第三周考题', file: '第三周考题.json', id: `${BUILT_IN_BANK_PREFIX}03` },
-  { folder: '第四周考题', file: '第四周考题.json', id: `${BUILT_IN_BANK_PREFIX}04` },
-  { folder: '第五周考题', file: '第五周考题.json', id: `${BUILT_IN_BANK_PREFIX}05` },
-  { folder: '第六周考题', file: '第六周考题.json', id: `${BUILT_IN_BANK_PREFIX}06` },
-  { folder: '第七周考题', file: '第七周考题.json', id: `${BUILT_IN_BANK_PREFIX}07` },
-  { folder: '第八周考题', file: '第八周考题.json', id: `${BUILT_IN_BANK_PREFIX}08` },
-  { folder: '第九周考题', file: '第九周考题.json', id: `${BUILT_IN_BANK_PREFIX}09` },
-  { folder: '第十周考题', file: '第十周考题.json', id: `${BUILT_IN_BANK_PREFIX}10` },
+  { folder: '第一周考题', file: '第一周考题.json', id: `${BUILT_IN_BANK_PREFIX}01`, sha: '3a6b5a56e5c30ac521f88b3bb2ab095945c69793d87cccb32680b8dd7daf44df' },
+  { folder: '第二周考题', file: '第二周考题.json', id: `${BUILT_IN_BANK_PREFIX}02`, sha: '180bee9682fabc3cab639a47e6a63d2f82a85f5e47d9b30c6ce638ecc84abebb' },
+  { folder: '第三周考题', file: '第三周考题.json', id: `${BUILT_IN_BANK_PREFIX}03`, sha: '7e09ae64e1fcd2e62d1329fef8bfd37cce3ba720a62e4e4eb81254ae47049e3a' },
+  { folder: '第四周考题', file: '第四周考题.json', id: `${BUILT_IN_BANK_PREFIX}04`, sha: 'b2c65a9cc2282bfda8584e1e13e3445c974ae917b3805c6fd7b5840c7f35c7af' },
+  { folder: '第五周考题', file: '第五周考题.json', id: `${BUILT_IN_BANK_PREFIX}05`, sha: 'e5695835ee0a708360c8216ef4b9597471cb9dbf56be28d2f4f0e0d2377e9428' },
+  { folder: '第六周考题', file: '第六周考题.json', id: `${BUILT_IN_BANK_PREFIX}06`, sha: 'e03ef0d7bba94f5859bae2bdd5e492040e025ac18f183723a58bee2da6d29b48' },
+  { folder: '第七周考题', file: '第七周考题.json', id: `${BUILT_IN_BANK_PREFIX}07`, sha: 'f4dc6d3ce0b9c0b7a1ac4b78e99af994eb748f5ecafcf69f91439531494a148f' },
+  { folder: '第八周考题', file: '第八周考题.json', id: `${BUILT_IN_BANK_PREFIX}08`, sha: '1c787e3580809d0aaa2769bdbd03a73546f6c8c4208230b7adbbd604c6ce9301' },
+  { folder: '第九周考题', file: '第九周考题.json', id: `${BUILT_IN_BANK_PREFIX}09`, sha: '2ed488b1e116c47566d5a6a4def26200a07736074eb61cc766f4639e34a4b023' },
+  { folder: '第十周考题', file: '第十周考题.json', id: `${BUILT_IN_BANK_PREFIX}10`, sha: 'c12e95d65f0a0c2be257969a7695cbdb310f07d0ac34b2595562f5fe61b6ff88' },
 ];
 
 export function isBuiltInBank(id: string): boolean {
@@ -26,7 +27,9 @@ function generateQuestionId(bankId: string, questionIndex: number): string {
 
 function convertJsonToBuiltInBank(
   data: JsonBankData,
-  bankId: string
+  bankId: string,
+  sha: string,
+  filename: string
 ): QuestionBank {
   const now = new Date().toISOString();
   const questions: Question[] = data.questions.map((q, index) => {
@@ -59,7 +62,10 @@ function convertJsonToBuiltInBank(
     description: data.description,
     questions,
     createdAt: now,
-    updatedAt: now
+    updatedAt: now,
+    sourceSha: sha,
+    sourceFilename: filename,
+    sourceType: 'system'
   };
 }
 
@@ -77,10 +83,10 @@ export async function loadBuiltInBanks(): Promise<QuestionBank[]> {
 
       const data: JsonBankData = await response.json();
 
-      // 转换并创建题库对象
+      // 转换并创建题库对象，携带 sourceSha 和 sourceFilename 用于更新检测
       // 注意：不再自动加载image/文件夹中的图片作为题目图片
       // 因为这些图片实际上是答案图片，应该在答案区域显示
-      const bank = convertJsonToBuiltInBank(data, bankInfo.id);
+      const bank = convertJsonToBuiltInBank(data, bankInfo.id, bankInfo.sha, bankInfo.file);
       banks.push(bank);
     } catch (error) {
       console.warn(`Error loading built-in bank ${bankInfo.folder}/${bankInfo.file}:`, error);
