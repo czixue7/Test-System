@@ -53,14 +53,21 @@ android {
             )
         }
     }
-    
+
     // 配置APK输出文件名
     applicationVariants.all {
         val variant = this
         variant.outputs
             .map { it as com.android.build.gradle.internal.api.ApkVariantOutputImpl }
             .forEach { output ->
-                val abiName = output.getFilter(com.android.build.OutputFile.ABI) ?: "universal"
+                val flavorName = variant.flavorName ?: "universal"
+                val abiName = when (flavorName.lowercase()) {
+                    "arm64" -> "arm64"
+                    "arm" -> "arm"
+                    "x86" -> "x86"
+                    "x86_64" -> "x86_64"
+                    else -> flavorName
+                }
                 val version = variant.versionName
                 output.outputFileName = "Answer_Test_v${version}-${abiName}-${variant.buildType.name}.apk"
             }
