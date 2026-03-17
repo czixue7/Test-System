@@ -5,7 +5,7 @@ export const BUILT_IN_BANK_PREFIX = 'built-in-';
 // 新的目录结构：每个题库一个文件夹，图片放在 image 子目录下
 // 注意：sha 值需要与 bank-index.json 中的对应题库保持一致
 const BUILT_IN_BANKS = [
-  { folder: '第一周考题', file: '第一周考题.json', id: `${BUILT_IN_BANK_PREFIX}01`, sha: '3a6b5a56e5c30ac521f88b3bb2ab095945c69793d87cccb32680b8dd7daf44df' },
+  { folder: '第一周考题', file: '第一周考题.json', id: `${BUILT_IN_BANK_PREFIX}01`, sha: 'b64eb605cc22b439c5a00bee19d149a82bd58fa1' },
   { folder: '第二周考题', file: '第二周考题.json', id: `${BUILT_IN_BANK_PREFIX}02`, sha: '180bee9682fabc3cab639a47e6a63d2f82a85f5e47d9b30c6ce638ecc84abebb' },
   { folder: '第三周考题', file: '第三周考题.json', id: `${BUILT_IN_BANK_PREFIX}03`, sha: '7e09ae64e1fcd2e62d1329fef8bfd37cce3ba720a62e4e4eb81254ae47049e3a' },
   { folder: '第四周考题', file: '第四周考题.json', id: `${BUILT_IN_BANK_PREFIX}04`, sha: 'b2c65a9cc2282bfda8584e1e13e3445c974ae917b3805c6fd7b5840c7f35c7af' },
