@@ -60,7 +60,7 @@ const Profile: React.FC = () => {
     }
   }, [showAboutModal, showThemeModal]);
 
-  const currentVersion = '0.3.6';
+  const currentVersion = '0.3.7';
 
   const handleCheckUpdate = async () => {
     setCheckingUpdate(true);
@@ -156,11 +156,12 @@ const Profile: React.FC = () => {
     try {
       const result = await installApk(downloadedFilePath);
       addLog(`安装结果: ${result}`);
-      
-      // 检查是否成功调用了安装器
-      if (result.includes('已尝试打开') || result.includes('成功')) {
+
+      if (result === 'REQUEST_INSTALL_PERMISSION') {
+        addLog('⚠️ 需要允许安装未知来源应用，已跳转系统设置');
+        addLog('请在系统设置中允许后，返回应用再次点击安装');
+      } else if (result === 'INSTALL_INTENT_SENT' || result.includes('已尝试打开') || result.includes('成功')) {
         addLog('✅ 系统安装器已启动，请查看系统界面');
-        addLog('提示: 如果未弹出安装界面，请检查是否允许安装未知来源应用');
       } else {
         addLog('⚠️ 自动安装可能未成功');
         addLog('请手动到下载目录中找到 APK 文件并点击安装');
@@ -502,3 +503,4 @@ const Profile: React.FC = () => {
 };
 
 export default Profile;
+
