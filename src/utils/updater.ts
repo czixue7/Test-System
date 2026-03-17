@@ -15,7 +15,7 @@ export interface UpdateInfo {
   assetName?: string;
 }
 
-const currentVersion = '0.3.5';
+const currentVersion = '0.3.6';
 
 /**
  * 检查当前系统架构
