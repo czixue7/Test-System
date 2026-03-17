@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuestionBankStore } from '../store/questionBankStore';
-import { QuestionBank } from '../types';
+import { QuestionBank, BankIndex, BankImageInfo } from '../types';
 import { useToast } from '../hooks/useToast';
 import { useSafeArea } from '../hooks/useSafeArea';
+import { fetchBankIndex, checkBankStatus, BankStatus } from '../utils/bankIndex';
 
 interface GitHubFile {
   name: string;
@@ -23,33 +24,17 @@ interface BankInfo {
   downloadUrl: string;
   imagePath?: string;
   sha: string;
+  images?: BankImageInfo[];
   source: 'system' | 'user';
   exists: boolean;
   hasUpdate: boolean;
+  hasImageUpdate: boolean;
   isBuiltIn: boolean;
+  missingImages: string[];
+  changedImages: string[];
   downloading: boolean;
   progress: number;
 }
-
-// 系统题库配置 - 新的目录结构：每个题库一个文件夹
-const BUILT_IN_BANKS_CONFIG = [
-  { folder: '第一周考题', file: '第一周考题.json' },
-  { folder: '第二周考题', file: '第二周考题.json' },
-  { folder: '第三周考题', file: '第三周考题.json' },
-  { folder: '第四周考题', file: '第四周考题.json' },
-  { folder: '第五周考题', file: '第五周考题.json' },
-  { folder: '第六周考题', file: '第六周考题.json' },
-  { folder: '第七周考题', file: '第七周考题.json' },
-  { folder: '第八周考题', file: '第八周考题.json' },
-  { folder: '第九周考题', file: '第九周考题.json' },
-  { folder: '第十周考题', file: '第十周考题.json' },
-];
-
-// 兼容旧代码的导出
-const BUILT_IN_BANK_FILES = BUILT_IN_BANKS_CONFIG.map(b => b.file);
-
-// 题库索引文件配置 - 使用 raw.githubusercontent.com 避免 API 限制
-const BANK_INDEX_URL = 'https://raw.githubusercontent.com/czixue7/Test-System/main/bank-index.json';
 
 const DownloadBanks: React.FC = () => {
   const navigate = useNavigate();
@@ -65,95 +50,63 @@ const DownloadBanks: React.FC = () => {
     system: true,
     user: true
   });
+  const [bankIndex, setBankIndex] = useState<BankIndex | null>(null);
 
   const GITHUB_REPO = 'czixue7/Test-System';
-  const SYSTEM_BANKS_PATH = 'public/banks';
-  const USER_BANKS_PATH = 'Question_bank';
 
-  const isBuiltInBankFile = (filename: string): boolean => {
-    // 兼容新旧文件名格式
-    return BUILT_IN_BANK_FILES.includes(filename) || 
-           BUILT_IN_BANKS_CONFIG.some(b => b.file === filename || filename.includes(b.folder));
-  };
-
-  const checkBankStatus = useCallback((bankName: string, remoteSha: string, filename: string, source: 'system' | 'user'): { exists: boolean; hasUpdate: boolean; isBuiltIn: boolean } => {
-    const isBuiltIn = source === 'system' && isBuiltInBankFile(filename);
-
-    if (isBuiltIn) {
-      return { exists: true, hasUpdate: false, isBuiltIn: true };
-    }
-
-    const existingBank = banks.find(bank => {
-      if (bank.name === bankName) return true;
-      const normalizedName = bankName.replace(/周考题（答案）/, '').trim();
-      if (bank.name.includes(normalizedName) || normalizedName.includes(bank.name)) return true;
-      if (bank.sourceFilename === filename) return true;
-      return false;
-    });
-
-    if (!existingBank) {
-      return { exists: false, hasUpdate: false, isBuiltIn: false };
-    }
-
-    if (!existingBank.sourceSha) {
-      return { exists: true, hasUpdate: false, isBuiltIn: false };
-    }
-
-    const hasUpdate = existingBank.sourceSha !== remoteSha;
-    return { exists: true, hasUpdate, isBuiltIn: false };
-  }, [banks]);
-
-  // 使用 raw.githubusercontent.com 直接获取文件，避免 GitHub API 限制
+  // 使用统一的 bank-index.json 获取题库列表
   const fetchBankList = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      // 尝试获取题库索引文件
-      const indexResponse = await fetch(BANK_INDEX_URL);
+      const index = await fetchBankIndex();
       
-      if (indexResponse.ok) {
-        // 使用索引文件
-        const indexData = await indexResponse.json();
+      if (index) {
+        setBankIndex(index);
         const allBanks: BankInfo[] = [];
         
         // 处理系统题库
-        if (indexData.systemBanks && Array.isArray(indexData.systemBanks)) {
-          for (const bank of indexData.systemBanks) {
-            const status = checkBankStatus(bank.name, bank.sha, bank.filename, 'system');
-            allBanks.push({
-              name: bank.name,
-              filename: bank.filename,
-              downloadUrl: bank.downloadUrl,
-              imagePath: bank.imagePath,
-              sha: bank.sha,
-              source: 'system',
-              exists: status.exists,
-              hasUpdate: status.hasUpdate,
-              isBuiltIn: status.isBuiltIn,
-              downloading: false,
-              progress: 0
-            });
-          }
+        for (const bank of index.systemBanks) {
+          const status = checkBankStatus(bank.name, bank.sha, bank.images, bank.filename, 'system', banks);
+          allBanks.push({
+            name: bank.name,
+            filename: bank.filename,
+            downloadUrl: bank.downloadUrl,
+            imagePath: bank.imagePath,
+            sha: bank.sha,
+            images: bank.images,
+            source: 'system',
+            exists: status.exists,
+            hasUpdate: status.hasUpdate,
+            hasImageUpdate: status.hasImageUpdate,
+            isBuiltIn: status.isBuiltIn,
+            missingImages: status.missingImages,
+            changedImages: status.changedImages,
+            downloading: false,
+            progress: 0
+          });
         }
         
         // 处理用户题库
-        if (indexData.userBanks && Array.isArray(indexData.userBanks)) {
-          for (const bank of indexData.userBanks) {
-            const status = checkBankStatus(bank.name, bank.sha, bank.filename, 'user');
-            allBanks.push({
-              name: bank.name,
-              filename: bank.filename,
-              downloadUrl: bank.downloadUrl,
-              imagePath: bank.imagePath,
-              sha: bank.sha,
-              source: 'user',
-              exists: status.exists,
-              hasUpdate: status.hasUpdate,
-              isBuiltIn: false,
-              downloading: false,
-              progress: 0
-            });
-          }
+        for (const bank of index.userBanks) {
+          const status = checkBankStatus(bank.name, bank.sha, bank.images, bank.filename, 'user', banks);
+          allBanks.push({
+            name: bank.name,
+            filename: bank.filename,
+            downloadUrl: bank.downloadUrl,
+            imagePath: bank.imagePath,
+            sha: bank.sha,
+            images: bank.images,
+            source: 'user',
+            exists: status.exists,
+            hasUpdate: status.hasUpdate,
+            hasImageUpdate: status.hasImageUpdate,
+            isBuiltIn: false,
+            missingImages: status.missingImages,
+            changedImages: status.changedImages,
+            downloading: false,
+            progress: 0
+          });
         }
         
         // 按名称从低到高排序
@@ -162,31 +115,8 @@ const DownloadBanks: React.FC = () => {
         
         setBankList(allBanks);
       } else {
-        // 索引文件不存在，使用备用方案：直接构建系统题库列表
-        console.warn('题库索引文件不存在，使用备用方案');
-        const fallbackBanks: BankInfo[] = [];
-        
-        for (const config of BUILT_IN_BANKS_CONFIG) {
-          const downloadUrl = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/${SYSTEM_BANKS_PATH}/${config.folder}/${config.file}`;
-          const status = checkBankStatus(config.folder, '', config.file, 'system');
-          
-          fallbackBanks.push({
-            name: config.folder,
-            filename: config.file,
-            downloadUrl: downloadUrl,
-            imagePath: `${SYSTEM_BANKS_PATH}/${config.folder}/image`,
-            sha: '',
-            source: 'system',
-            exists: status.exists,
-            hasUpdate: false,
-            isBuiltIn: true,
-            downloading: false,
-            progress: 0
-          });
-        }
-        
-        setBankList(fallbackBanks);
-        showInfo('使用备用题库列表，部分功能可能受限', 3000);
+        setError('无法获取题库索引文件');
+        showError('获取题库列表失败，请检查网络连接');
       }
     } catch (err) {
       console.error('获取题库列表失败:', err);
@@ -195,23 +125,29 @@ const DownloadBanks: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [checkBankStatus, showError, showInfo]);
+  }, [banks, showError, showInfo]);
 
   useEffect(() => {
     fetchBankList();
   }, [fetchBankList]);
 
+  // 当本地题库变化时，重新检测状态
   useEffect(() => {
+    if (!bankIndex) return;
+    
     setBankList(prev => prev.map(bank => {
-      const status = checkBankStatus(bank.name, bank.sha, bank.filename, bank.source);
+      const status = checkBankStatus(bank.name, bank.sha, bank.images, bank.filename, bank.source, banks);
       return {
         ...bank,
         exists: status.exists,
         hasUpdate: status.hasUpdate,
-        isBuiltIn: status.isBuiltIn
+        hasImageUpdate: status.hasImageUpdate,
+        isBuiltIn: status.isBuiltIn,
+        missingImages: status.missingImages,
+        changedImages: status.changedImages
       };
     }));
-  }, [banks, checkBankStatus]);
+  }, [banks, bankIndex]);
 
   const downloadImageAsBase64 = async (url: string): Promise<string> => {
     const response = await fetch(url);
@@ -276,7 +212,7 @@ const DownloadBanks: React.FC = () => {
       i === index ? { ...b, downloading: true, progress: 0 } : b
     ));
 
-    if (bank.hasUpdate) {
+    if (bank.hasUpdate || bank.hasImageUpdate) {
       showInfo(`正在更新「${bank.name}」...`);
     } else {
       showInfo(`正在下载「${bank.name}」...`);
@@ -342,18 +278,19 @@ const DownloadBanks: React.FC = () => {
         })),
         sourceSha: bank.sha,
         sourceFilename: bank.filename,
-        sourceType: bank.source
+        sourceType: bank.source,
+        images: bank.images
       };
 
-      importBankWithSha(newBank as QuestionBank, bank.sha, bank.filename);
+      importBankWithSha(newBank as QuestionBank, bank.sha, bank.filename, bank.images);
 
       updateProgress(100);
 
       setBankList(prev => prev.map((b, i) => 
-        i === index ? { ...b, downloading: false, progress: 100, exists: true, hasUpdate: false } : b
+        i === index ? { ...b, downloading: false, progress: 100, exists: true, hasUpdate: false, hasImageUpdate: false, missingImages: [], changedImages: [] } : b
       ));
 
-      if (bank.hasUpdate) {
+      if (bank.hasUpdate || bank.hasImageUpdate) {
         showSuccess(`题库「${newBank.name}」更新成功！`);
       } else {
         showSuccess(`题库「${newBank.name}」下载并导入成功！`);
@@ -384,10 +321,10 @@ const DownloadBanks: React.FC = () => {
   const systemBanks = bankList.filter(b => b.source === 'system');
   const userBanks = bankList.filter(b => b.source === 'user');
 
-  const systemExistingCount = systemBanks.filter(b => b.exists && !b.hasUpdate).length;
-  const systemUpdateCount = systemBanks.filter(b => b.hasUpdate).length;
-  const userExistingCount = userBanks.filter(b => b.exists && !b.hasUpdate).length;
-  const userUpdateCount = userBanks.filter(b => b.hasUpdate).length;
+  const systemExistingCount = systemBanks.filter(b => b.exists && !b.hasUpdate && !b.hasImageUpdate).length;
+  const systemUpdateCount = systemBanks.filter(b => b.hasUpdate || b.hasImageUpdate).length;
+  const userExistingCount = userBanks.filter(b => b.exists && !b.hasUpdate && !b.hasImageUpdate).length;
+  const userUpdateCount = userBanks.filter(b => b.hasUpdate || b.hasImageUpdate).length;
 
   const renderBankList = (
     banks: BankInfo[],
@@ -451,6 +388,7 @@ const DownloadBanks: React.FC = () => {
               <div className="space-y-3">
                 {banks.map((bank) => {
                   const globalIndex = bankList.findIndex(b => b.filename === bank.filename && b.source === bank.source);
+                  const needsUpdate = bank.hasUpdate || bank.hasImageUpdate;
                   return (
                     <div
                       key={`${bank.source}-${bank.filename}`}
@@ -466,12 +404,12 @@ const DownloadBanks: React.FC = () => {
                               内置
                             </span>
                           )}
-                          {bank.hasUpdate && (
+                          {needsUpdate && (
                             <span className="px-1.5 py-0.5 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 text-xs rounded flex-shrink-0">
                               有更新
                             </span>
                           )}
-                          {bank.exists && !bank.hasUpdate && !bank.isBuiltIn && (
+                          {bank.exists && !needsUpdate && !bank.isBuiltIn && (
                             <span className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs rounded flex-shrink-0">
                               已存在
                             </span>
@@ -481,11 +419,11 @@ const DownloadBanks: React.FC = () => {
                         {!bank.isBuiltIn && (
                           <button
                             onClick={() => handleDownload(bank, globalIndex)}
-                            disabled={bank.downloading || (bank.exists && !bank.hasUpdate)}
+                            disabled={bank.downloading || (bank.exists && !needsUpdate)}
                             className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${
-                              bank.exists && !bank.hasUpdate
+                              bank.exists && !needsUpdate
                                 ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 cursor-not-allowed'
-                                : bank.hasUpdate
+                                : needsUpdate
                                 ? 'bg-orange-500 text-white hover:bg-orange-600'
                                 : bank.downloading
                                 ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-500 cursor-wait'
@@ -498,9 +436,9 @@ const DownloadBanks: React.FC = () => {
                                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                                 </svg>
-                                {bank.hasUpdate ? '更新中' : '下载中'}
+                                {needsUpdate ? '更新中' : '下载中'}
                               </>
-                            ) : bank.hasUpdate ? (
+                            ) : needsUpdate ? (
                               <>
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />

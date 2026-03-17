@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { QuestionBank, Question } from '../types';
+import { QuestionBank, Question, BankImageInfo } from '../types';
 import { getStoreValue, setStoreValue } from '../utils/tauriStore';
 import { loadBuiltInBanks, isBuiltInBank } from '../utils/builtInBanks';
 
@@ -14,14 +14,14 @@ interface QuestionBankState {
   loadBanks: () => Promise<void>;
   addBank: (bank: Omit<QuestionBank, 'id' | 'createdAt' | 'updatedAt'>) => string;
   updateBank: (id: string, updates: Partial<QuestionBank>) => void;
-  updateBankWithSha: (id: string, updates: Partial<QuestionBank>, sha: string) => void;
+  updateBankWithSha: (id: string, updates: Partial<QuestionBank>, sha: string, images?: BankImageInfo[]) => void;
   deleteBank: (id: string) => void;
   getBank: (id: string) => QuestionBank | undefined;
   addQuestion: (bankId: string, question: Omit<Question, 'id'>) => void;
   updateQuestion: (bankId: string, questionId: string, updates: Partial<Question>) => void;
   deleteQuestion: (bankId: string, questionId: string) => void;
   importBank: (bank: QuestionBank) => string;
-  importBankWithSha: (bank: Omit<QuestionBank, 'id' | 'createdAt' | 'updatedAt'>, sha: string, filename: string) => string;
+  importBankWithSha: (bank: Omit<QuestionBank, 'id' | 'createdAt' | 'updatedAt'>, sha: string, filename: string, images?: BankImageInfo[]) => string;
 }
 
 const saveUserBanks = async (banks: QuestionBank[]) => {
@@ -86,7 +86,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
         });
       },
       
-      updateBankWithSha: (id, updates, sha) => {
+      updateBankWithSha: (id, updates, sha, images) => {
         if (isBuiltInBank(id)) {
           console.warn('Cannot update built-in bank');
           return;
@@ -94,7 +94,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
         set((state) => {
           const newBanks = state.banks.map((bank) =>
             bank.id === id
-              ? { ...bank, ...updates, sourceSha: sha, updatedAt: new Date().toISOString() }
+              ? { ...bank, ...updates, sourceSha: sha, images, updatedAt: new Date().toISOString() }
               : bank
           );
           saveUserBanks(newBanks);
@@ -201,7 +201,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
         return id;
       },
       
-      importBankWithSha: (bankData, sha, filename) => {
+      importBankWithSha: (bankData, sha, filename, images) => {
         const id = generateId();
         const now = new Date().toISOString();
         const newBank: QuestionBank = {
@@ -209,6 +209,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
           id,
           sourceSha: sha,
           sourceFilename: filename,
+          images,
           createdAt: now,
           updatedAt: now
         };
