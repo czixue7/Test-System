@@ -43,6 +43,8 @@ const Settings: React.FC = () => {
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [passwordVerified, setPasswordVerified] = useState<boolean>(false);
   const [refreshingModels, setRefreshingModels] = useState<boolean>(false);
+  const [modelModalOpen, setModelModalOpen] = useState<boolean>(false);
+  const [modelModalVisible, setModelModalVisible] = useState<boolean>(false);
 
   // 加载模型配置
   useEffect(() => {
@@ -76,6 +78,27 @@ const Settings: React.FC = () => {
       });
     }
   }, [apiKey, apiModel]);
+
+  // 模型弹窗动画控制
+  useEffect(() => {
+    if (modelModalOpen) {
+      const timer = setTimeout(() => setModelModalVisible(true), 10);
+      return () => clearTimeout(timer);
+    } else {
+      setModelModalVisible(false);
+    }
+  }, [modelModalOpen]);
+
+  const handleCloseModelModal = () => {
+    setModelModalVisible(false);
+    setTimeout(() => setModelModalOpen(false), 300);
+  };
+
+  const handleSelectModelWithClose = (providerId: string, modelId: string) => {
+    handleSelectModel(providerId, modelId);
+    setModelModalVisible(false);
+    setTimeout(() => setModelModalOpen(false), 300);
+  };
 
   const getGradingModeLabel = () => {
     return gradingMode === 'fixed' ? '固定判断' : 'AI判断';
@@ -188,6 +211,13 @@ const Settings: React.FC = () => {
         setApiKey(decryptedKey);
       }
     }
+    // 切换模型时清除测试结果
+    setApiTestResult(null);
+  };
+
+  const handleSelectModel = (providerId: string, modelId: string) => {
+    handleModelChange(providerId, modelId);
+    // 关闭弹窗的动画由调用方控制
   };
 
   // 刷新模型列表
@@ -513,30 +543,20 @@ const Settings: React.FC = () => {
                         </button>
                       </div>
                       <div className="flex gap-2 items-stretch">
-                        <select
-                          value={selectedModelId}
-                          onChange={(e) => {
-                            const modelId = e.target.value;
-                            const modelInfo = availableModels.find(m => m.model.id === modelId);
-                            if (modelInfo) {
-                              handleModelChange(modelInfo.provider.id, modelId);
-                            }
-                            // 切换模型时清除测试结果
-                            setApiTestResult(null);
-                          }}
+                        <button
+                          onClick={() => passwordVerified && setModelModalOpen(true)}
                           disabled={!passwordVerified}
-                          className="flex-1 h-10 px-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="flex-1 min-w-0 h-10 px-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-200 text-left focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden whitespace-nowrap text-ellipsis box-border"
                         >
-                          {availableModels.map(({ provider, model }) => (
-                            <option key={`${provider.id}-${model.id}`} value={model.id}>
-                              {provider.name} - {model.name}
-                            </option>
-                          ))}
-                        </select>
+                          {(() => {
+                            const selected = availableModels.find(m => m.model.id === selectedModelId);
+                            return selected ? `${selected.provider.name} - ${selected.model.name}` : '请选择模型';
+                          })()}
+                        </button>
                         <button
                           onClick={handleTestApiConnection}
                           disabled={apiTesting || !apiKey}
-                          className="px-4 h-10 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed whitespace-nowrap"
+                          className="w-24 h-10 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed whitespace-nowrap flex-shrink-0 box-border"
                         >
                           {apiTesting ? '测试中...' : '测试连接'}
                         </button>
@@ -547,7 +567,7 @@ const Settings: React.FC = () => {
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
                         访问密钥
                       </label>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 items-stretch">
                         <input
                           type="password"
                           value={tempPassword}
@@ -558,12 +578,12 @@ const Settings: React.FC = () => {
                           }}
                           placeholder="请输入6位密钥"
                           maxLength={6}
-                          className="flex-1 h-10 px-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="flex-1 min-w-0 h-10 px-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 box-border"
                         />
                         <button
                           onClick={handleVerifyPassword}
                           disabled={passwordVerified || !tempPassword.trim()}
-                          className="px-4 h-10 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed whitespace-nowrap"
+                          className="w-24 h-10 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed whitespace-nowrap flex-shrink-0 box-border"
                         >
                           {passwordVerified ? '已验证' : '验证'}
                         </button>
@@ -637,6 +657,60 @@ const Settings: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* 模型选择弹窗 */}
+      {modelModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 animate-fade-in">
+          <div
+            className={`bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-sm w-full mx-4 overflow-hidden transform transition-all duration-300 ease-out ${
+              modelModalVisible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
+            }`}
+          >
+            <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-600 flex items-center justify-between">
+              <h3 className="text-base font-medium text-gray-800 dark:text-gray-200">选择模型</h3>
+              <button
+                onClick={handleCloseModelModal}
+                className="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="max-h-80 overflow-y-auto">
+              {availableModels.map(({ provider, model }) => (
+                <button
+                  key={`${provider.id}-${model.id}`}
+                  onClick={() => handleSelectModelWithClose(provider.id, model.id)}
+                  className={`w-full px-4 py-3 text-left border-b border-gray-100 dark:border-gray-700 last:border-b-0 transition-colors ${
+                    selectedModelId === model.id
+                      ? 'bg-blue-50 dark:bg-blue-900/30'
+                      : 'hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
+                      selectedModelId === model.id ? 'border-blue-500' : 'border-gray-300 dark:border-gray-600'
+                    }`}>
+                      {selectedModelId === model.id && (
+                        <div className="w-3 h-3 rounded-full bg-blue-500" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
+                        {model.name}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                        {provider.name}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

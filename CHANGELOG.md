@@ -8,9 +8,249 @@
 
 ## [0.3.5] - 2026-03-17
 
+### 新增
+
+- **批量 AI 判题优化**：
+  - 将单题 prompt 特点融合进批量 prompt，只保留两种类型（填空题和主观题）
+  - 简化批量判题逻辑，提高判题效率和一致性
+- **测试记录持久化**：
+  - 测试记录使用本地文件保存（像错题本一样持久化）
+  - 移除 localStorage 存储，改用 Tauri Store 文件存储
+- **题库索引文件**：
+  - 新增 `bank-index.json` 索引文件，避免 GitHub API 频率限制
+  - 使用 `raw.githubusercontent.com` 直接获取题库列表
+  - 支持 SHA 值检查，实现题库更新检测
+- **体积优化**：
+  - PC 版本排除 vConsole 调试工具，减小约 287 KB 体积
+  - vConsole 仅在移动端显示和使用
+
 ### 修改
 
-- **版本号更新**: 统一更新所有版本号至 0.3.5
+- **题库列表排序优化**：
+  - 内置题库按 ID 排序（built-in-01 到 built-in-10），确保正确的周数顺序
+  - 用户题库按名称排序
+- **下载题库页面重构**：
+  - 使用索引文件获取题库列表，避免 GitHub API 403 错误
+  - 空题库自动过滤，不显示在下载列表中
+  - 系统题库和用户题库统一排序显示
+- **AI 判题结果展示修复**：
+  - 修复 AI 已判断正确的答案仍显示为错误（红色删除线）的问题
+  - 确保 `blankResults` 正确保存到考试记录中
+
+### 修复
+
+- **blankResults 保存修复**：
+  - 修复已确认题目的 `blankResults` 字段未保存的问题
+  - 考试结果页面现在能正确显示每空的判题结果
+- **代码清理**：
+  - 删除未使用的 `ModelDownloadModal.tsx` 组件
+  - 清理 `aiGrading.ts` 中未使用的函数（`checkModelAvailability`、`initializeModel`、`unloadModel` 等）
+  - 清理 `deviceDetection.ts` 中未使用的函数
+  - 移除 `types.ts` 中未使用的类型定义
+
+### 技术细节
+
+#### 批量判题 Prompt 融合
+
+**修改文件：** `src/utils/aiGrading.ts`
+
+将原有的 5 种 prompt 类型融合为 2 种批量 prompt：
+- `gradeFillBlankBatchInternal` - 批量填空题判题（支持乱序和顺序模式）
+- `gradeSubjectiveBatchInternal` - 批量主观题判题
+
+```typescript
+export interface BatchGradingItem {
+  questionId: string;
+  userAnswer: string | string[];
+  correctAnswer: string | string[];
+  maxScore: number;
+  question?: string;
+  allowDisorder?: boolean;
+  questionType?: 'fill-in-blank' | 'subjective';  // 新增字段
+}
+```
+
+#### 记录持久化实现
+
+**修改文件：** `src/store/recordStore.ts`
+
+```typescript
+// 移除 zustand persist 中间件（不再使用 localStorage）
+// 改用 Tauri Store 文件存储
+const STORAGE_KEY = 'exam-records';
+
+export const useRecordStore = create<RecordState>()(
+  (set, get) => ({
+    // ...
+    addRecord: async (...) => {
+      // ...
+      await setStoreValue(STORAGE_KEY, newRecords);
+    },
+  })
+);
+```
+
+#### 题库索引文件格式
+
+**文件：** `bank-index.json`
+
+```json
+{
+  "systemBanks": [
+    {
+      "name": "第一周考题",
+      "filename": "第一周考题.json",
+      "downloadUrl": "https://raw.githubusercontent.com/czixue7/Test-System/main/public/banks/第一周考题/第一周考题.json",
+      "imagePath": "public/banks/第一周考题/image",
+      "sha": "c588208c5e6aa146222dc71fc87c52787dab1ed3e28e756b7731c970fd02b9fb"
+    }
+  ],
+  "userBanks": [...]
+}
+```
+
+#### 题库排序优化
+
+**修改文件：** `src/store/questionBankStore.ts`
+
+```typescript
+// 内置题库按 id 排序（built-in-01, built-in-02...）
+const sortBuiltInById = (a: QuestionBank, b: QuestionBank) => a.id.localeCompare(b.id);
+// 用户题库按名称排序
+const sortByName = (a: QuestionBank, b: QuestionBank) => a.name.localeCompare(b.name, 'zh-CN');
+
+const sortedBuiltInBanks = builtInBanks.sort(sortBuiltInById);
+const sortedUserBanks = userBanks.sort(sortByName);
+```
+
+---
+
+## [0.3.5] - 2026-03-17
+
+### 新增
+
+- **API 模型配置加密**：
+  - 模型列表保存在 `public/models.json`，包含提供商、模型名称和加密 API Key
+  - 使用 XOR + Base64 加密算法保护 API Key
+  - 用户只需输入 6 位密码即可解密并使用模型
+  - 密码包含大写字母和数字混合（如 `LHQ4L7`）
+  - 独立加密工具 `encrypt-tool/encrypt.cjs`，不上传 Git
+- **模型列表刷新功能**：
+  - API 模型标签右侧添加刷新按钮
+  - 从 GitHub 远程获取最新模型配置
+  - 本地列表为空时自动下载
+  - 有更新时提示"已更新"（绿色），无更新时提示"无更新"（蓝色）
+- **API 密钥验证增强**：
+  - 密码验证时自动测试 API 连接
+  - 只有 API 连接成功才视为验证通过
+  - 验证失败显示具体错误信息
+
+### 修改
+
+- **设置页面 UI 优化**：
+  - 删除 API 端点输入框，端点从配置文件自动获取
+  - API 模型选择移到密钥输入上方
+  - "API 密钥"标签改为"密钥"
+  - 测试连接按钮移到模型选择框右侧
+  - 统一输入框和按钮高度（h-10）
+  - 统一按钮宽度（w-20）
+  - 去掉选择框内的"请选择模型"选项
+  - 测试结果提示随页面内容变化自动清除
+- **模型列表更新**：
+  - 清空原有 API 模型列表
+  - 默认模型：GLM-4-Flash（智谱 AI）和 doubao-seed-1-6-flash（火山引擎）
+  - 模型配置包含提供商 ID、名称、端点和加密 Key
+- **AI 判题 Prompt 优化**：
+  - 综合解析限制从 15 字改为 20 字
+  - 简化逐空分析要求，只返回正确/错误状态
+  - 减少 AI 返回信息量，提高响应速度
+
+### 修复
+
+- **模拟考试判题逻辑优化**：
+  - 固定判题全对的题目不再调用 AI，节省资源
+  - 固定判题不全对的题目自动使用 AI 判题
+  - AI 判题失败的题目标记为 `ai-fallback` 模式
+- **修复 AI 判题 undefined 错误**：
+  - 修复用户答案为 undefined 时调用 trim() 报错
+  - 添加空值保护，将 undefined 转为空字符串
+- **修复 API 模型配置未加载错误**：
+  - 自动加载模型配置文件
+  - 配置未加载时自动从远程获取
+
+### 技术细节
+
+#### 加密工具实现
+
+**文件：** `encrypt-tool/encrypt.cjs`
+
+```javascript
+// XOR 加密 + Base64 编码
+function encryptApiKey(apiKey, password) {
+  const data = stringToBytes(apiKey);
+  const encrypted = xorEncrypt(data, password);
+  return base64Encode(encrypted);
+}
+```
+
+**文件：** `src/utils/modelConfigLoader.ts`
+
+```typescript
+// 解密 API Key
+decryptApiKey(encryptedKey: string, password: string): string {
+  const encrypted = base64Decode(encryptedKey);
+  const decrypted = xorEncrypt(encrypted, password);
+  return bytesToString(decrypted);
+}
+```
+
+#### 密码验证流程
+
+**文件：** `src/pages/Settings.tsx`
+
+```typescript
+const handleVerifyPassword = async () => {
+  // 1. 验证密码能否解密
+  const isValid = modelConfigLoader.verifyPassword(tempPassword);
+  
+  // 2. 解密第一个模型的 API Key
+  const decryptedKey = modelConfigLoader.getDecryptedApiKey(...);
+  
+  // 3. 测试 API 连接
+  apiGradingService.setConfig({ apiKey: decryptedKey, model: modelId });
+  const result = await apiGradingService.testConnection();
+  
+  // 4. 连接成功才保存配置
+  if (result.success) {
+    setPasswordVerified(true);
+    showSuccess('密钥验证成功，API 连接正常', 3000);
+  }
+};
+```
+
+#### 模型配置格式
+
+**文件：** `public/models.json`
+
+```json
+{
+  "providers": [
+    {
+      "id": "zhipu",
+      "name": "智谱 AI",
+      "endpoint": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+      "models": [
+        {
+          "id": "glm-4-flash",
+          "name": "GLM-4-Flash",
+          "maxTokens": 4096,
+          "encryptedKey": "UVQGVANQBgVTVA5R..."
+        }
+      ]
+    }
+  ]
+}
+```
 
 ## [0.3.4] - 2026-03-15
 
