@@ -115,6 +115,26 @@ export interface QuestionBank {
   sourceSha?: string;
   sourceFilename?: string;
   sourceType?: 'system' | 'user';
+  images?: BankImageInfo[];
+}
+
+export interface BankImageInfo {
+  filename: string;
+  sha: string;
+}
+
+export interface BankIndexItem {
+  name: string;
+  filename: string;
+  downloadUrl: string;
+  imagePath?: string;
+  sha: string;
+  images?: BankImageInfo[];
+}
+
+export interface BankIndex {
+  systemBanks: BankIndexItem[];
+  userBanks: BankIndexItem[];
 }
 
 export interface JsonQuestionData {

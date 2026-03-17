@@ -3,21 +3,9 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuestionBankStore } from '../store/questionBankStore';
 import { isBuiltInBank } from '../utils/builtInBanks';
 import { useToast } from '../hooks/useToast';
-import { QuestionBank } from '../types';
+import { QuestionBank, BankIndex, BankImageInfo } from '../types';
 import { useSafeArea } from '../hooks/useSafeArea';
-
-interface GitHubFile {
-  name: string;
-  sha: string;
-  type: string;
-  path: string;
-}
-
-interface RemoteBankInfo {
-  filename: string;
-  sha: string;
-  source: 'system' | 'user';
-}
+import { fetchBankIndex, checkBankUpdate, findBankInIndex } from '../utils/bankIndex';
 
 const ManageBanks: React.FC = () => {
   const navigate = useNavigate();
@@ -28,7 +16,7 @@ const ManageBanks: React.FC = () => {
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [bankToDelete, setBankToDelete] = useState<string | null>(null);
-  const [remoteBanks, setRemoteBanks] = useState<RemoteBankInfo[]>([]);
+  const [bankIndex, setBankIndex] = useState<BankIndex | null>(null);
   const [loadingRemote, setLoadingRemote] = useState(false);
   const [updatingBankId, setUpdatingBankId] = useState<string | null>(null);
   const [expandedSections, setExpandedSections] = useState<{ user: boolean; builtIn: boolean }>({
@@ -36,101 +24,27 @@ const ManageBanks: React.FC = () => {
     builtIn: true
   });
 
-  const GITHUB_REPO = 'czixue7/Test-System';
-  const SYSTEM_BANKS_PATH = 'public/banks';
-  const USER_BANKS_PATH = 'Question_bank';
-
+  // 使用统一的 bank-index.json 获取远程题库信息
   const fetchRemoteBanks = useCallback(async () => {
     setLoadingRemote(true);
     try {
-      const [systemResponse, userResponse] = await Promise.all([
-        fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${SYSTEM_BANKS_PATH}`),
-        fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${USER_BANKS_PATH}`)
-      ]);
-
-      const remoteBankInfos: RemoteBankInfo[] = [];
-
-      // 获取系统题库（子目录结构）
-      if (systemResponse.ok) {
-        const systemData: GitHubFile[] = await systemResponse.json();
-        // 遍历每个子目录
-        for (const dir of systemData.filter(item => item.type === 'dir')) {
-          try {
-            const dirResponse = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${dir.path}`);
-            if (dirResponse.ok) {
-              const dirContents: GitHubFile[] = await dirResponse.json();
-              // 查找与目录名匹配的 JSON 文件
-              const expectedJsonFileName = `${dir.name}.json`;
-              const jsonFile = dirContents.find(f => f.type === 'file' && f.name === expectedJsonFileName);
-              if (jsonFile) {
-                remoteBankInfos.push({
-                  filename: jsonFile.name,
-                  sha: jsonFile.sha,
-                  source: 'system'
-                });
-              }
-            }
-          } catch (err) {
-            console.warn(`Error fetching system bank directory ${dir.path}:`, err);
-          }
-        }
+      const index = await fetchBankIndex();
+      if (index) {
+        setBankIndex(index);
+      } else {
+        showError('无法获取远程题库信息');
       }
-
-      // 获取用户题库（子目录结构）
-      if (userResponse.ok) {
-        const userData: GitHubFile[] = await userResponse.json();
-        // 遍历每个子目录
-        for (const dir of userData.filter(item => item.type === 'dir')) {
-          try {
-            const dirResponse = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${dir.path}`);
-            if (dirResponse.ok) {
-              const dirContents: GitHubFile[] = await dirResponse.json();
-              // 查找目录下的任意 .json 文件（不限制文件名）
-              const jsonFiles = dirContents.filter(f => f.type === 'file' && f.name.endsWith('.json'));
-              for (const jsonFile of jsonFiles) {
-                remoteBankInfos.push({
-                  filename: jsonFile.name,
-                  sha: jsonFile.sha,
-                  source: 'user'
-                });
-              }
-            }
-          } catch (err) {
-            console.warn(`Error fetching user bank directory ${dir.path}:`, err);
-          }
-        }
-      }
-
-      setRemoteBanks(remoteBankInfos);
     } catch (error) {
       console.error('Failed to fetch remote banks:', error);
+      showError('获取远程题库信息失败');
     } finally {
       setLoadingRemote(false);
     }
-  }, []);
+  }, [showError]);
 
   useEffect(() => {
     fetchRemoteBanks();
   }, [fetchRemoteBanks]);
-
-  const checkBankUpdate = (bank: QuestionBank): { hasUpdate: boolean; remoteSha: string | null } => {
-    if (!bank.sourceSha || !bank.sourceFilename) {
-      return { hasUpdate: false, remoteSha: null };
-    }
-
-    const remoteBank = remoteBanks.find(
-      rb => rb.filename === bank.sourceFilename && rb.source === bank.sourceType
-    );
-
-    if (!remoteBank) {
-      return { hasUpdate: false, remoteSha: null };
-    }
-
-    return {
-      hasUpdate: remoteBank.sha !== bank.sourceSha,
-      remoteSha: remoteBank.sha
-    };
-  };
 
   const handleGoBack = () => {
     if (window.history.length > 1 && location.key !== 'default') {
@@ -167,9 +81,12 @@ const ManageBanks: React.FC = () => {
   };
 
   const handleUpdateBank = async (bank: QuestionBank) => {
-    const remoteBank = remoteBanks.find(
-      rb => rb.filename === bank.sourceFilename && rb.source === bank.sourceType
-    );
+    if (!bankIndex || !bank.sourceFilename || !bank.sourceType) {
+      showError('无法获取远程题库信息');
+      return;
+    }
+
+    const remoteBank = findBankInIndex(bankIndex, bank.sourceFilename, bank.sourceType);
 
     if (!remoteBank) {
       showError('无法获取远程题库信息');
@@ -180,11 +97,7 @@ const ManageBanks: React.FC = () => {
     showInfo(`正在更新「${bank.name}」...`);
 
     try {
-      const pathPrefix = bank.sourceType === 'system' ? 'public/banks' : 'Question_bank';
-      const bankFolder = bank.sourceFilename?.replace('.json', '');
-      const response = await fetch(
-        `https://raw.githubusercontent.com/${GITHUB_REPO}/main/${pathPrefix}/${bankFolder}/${bank.sourceFilename}`
-      );
+      const response = await fetch(remoteBank.downloadUrl);
 
       if (!response.ok) {
         throw new Error('下载失败');
@@ -207,10 +120,11 @@ const ManageBanks: React.FC = () => {
           allowDisorder: q.allowDisorder
         })),
         sourceSha: remoteBank.sha,
+        images: remoteBank.images,
         updatedAt: new Date().toISOString()
       };
 
-      updateBankWithSha(bank.id, updatedBank, remoteBank.sha);
+      updateBankWithSha(bank.id, updatedBank, remoteBank.sha, remoteBank.images);
       showSuccess(`题库「${updatedBank.name}」更新成功！`);
     } catch (error) {
       showError(`更新失败：${error instanceof Error ? error.message : '未知错误'}`);
@@ -223,9 +137,9 @@ const ManageBanks: React.FC = () => {
   const builtInBanks = banks.filter(b => isBuiltInBank(b.id));
 
   const renderBankItem = (bank: QuestionBank) => {
-    const { hasUpdate, remoteSha } = checkBankUpdate(bank);
+    const updateInfo = checkBankUpdate(bank, bankIndex);
     const isUpdating = updatingBankId === bank.id;
-    const canUpdate = hasUpdate && remoteSha && !isBuiltInBank(bank.id);
+    const canUpdate = (updateInfo.hasUpdate || updateInfo.hasImageUpdate) && !isBuiltInBank(bank.id);
 
     return (
       <div
@@ -247,7 +161,7 @@ const ManageBanks: React.FC = () => {
                 用户
               </span>
             )}
-            {hasUpdate && !isBuiltInBank(bank.id) && (
+            {canUpdate && (
               <span className="px-1.5 py-0.5 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 text-xs rounded flex-shrink-0">
                 有更新
               </span>
