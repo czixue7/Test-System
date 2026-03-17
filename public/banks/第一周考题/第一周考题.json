@@ -3,7 +3,7 @@
   "description": "数据中心基础概念、组成、分级标准（国标与Uptime）、能效指标及常见问题。",
   "questions": [
     {
-      "type": "fill-in-blank",
+      "type": "subjective",
       "content": "什么是数据中心：______",
       "correctAnswer": ["指一个能够持续供电，保证计算、储存、网络设备正常运行的基础设施物理空间"],
       "score": 1
@@ -60,7 +60,7 @@
       "score": 3
     },
     {
-      "type": "fill-in-blank",
+      "type": "subjective",
       "content": "数据中心国标GB50174-2017中文全称：______",
       "correctAnswer": ["电子信息系统机房设计规范（数据中心设计规范）"],
       "score": 1
