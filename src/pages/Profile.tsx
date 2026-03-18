@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useThemeStore, Theme } from '../store/themeStore';
 import { useSafeArea } from '../hooks/useSafeArea';
-import { checkUpdate, downloadApk, installApk, isTauri, isAndroid, UpdateInfo, DownloadProgress } from '../utils/updater';
+import { checkUpdate, downloadApk, installApk, isTauri, isAndroid, UpdateInfo, DownloadProgress, CURRENT_VERSION_HASH } from '../utils/updater';
 
 type DownloadStatus = 'idle' | 'downloading' | 'downloaded' | 'installing';
 
@@ -321,7 +321,8 @@ const Profile: React.FC = () => {
                 </svg>
               </div>
               <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-1">答题测试库</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">版本 {currentVersion}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">版本 {currentVersion}</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">构建 {CURRENT_VERSION_HASH}</p>
               <div className="text-sm text-gray-600 dark:text-gray-300 space-y-1.5 mb-4">
                 <p>一款帮助用户学习和备考的应用</p>
                 <p>支持题库管理、模拟测试、错题回顾等功能</p>

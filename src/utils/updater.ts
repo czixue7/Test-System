@@ -13,9 +13,59 @@ export interface UpdateInfo {
   message: string;
   downloadUrl?: string;
   assetName?: string;
+  versionHash?: string;
+}
+
+/**
+ * 版本信息存储键名
+ */
+const VERSION_HASH_KEY = 'app_version_hash';
+
+/**
+ * 获取当前存储的版本哈希
+ */
+export function getStoredVersionHash(): string | null {
+  try {
+    return localStorage.getItem(VERSION_HASH_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 存储版本哈希
+ */
+export function storeVersionHash(hash: string): void {
+  try {
+    localStorage.setItem(VERSION_HASH_KEY, hash);
+  } catch (e) {
+    console.error('[Updater] 存储版本哈希失败:', e);
+  }
+}
+
+/**
+ * 计算版本哈希（基于版本号和构建时间）
+ * 用于检测同一版本的不同构建
+ */
+export function calculateVersionHash(version: string, buildInfo?: string): string {
+  // 简单的哈希计算：版本号 + 构建信息
+  const hashInput = buildInfo ? `${version}-${buildInfo}` : version;
+  let hash = 0;
+  for (let i = 0; i < hashInput.length; i++) {
+    const char = hashInput.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(16).substring(0, 8);
 }
 
 const currentVersion = '0.3.7';
+
+/**
+ * 当前版本哈希（每次构建时更新）
+ * 用于区分同一版本的不同构建
+ */
+export const CURRENT_VERSION_HASH = 'a1b2c3d4'; // 每次发布时更新此值
 
 /**
  * 检查当前系统架构
@@ -78,11 +128,29 @@ export function isArm64Supported(): boolean {
 }
 
 /**
+ * 解析 GitHub Release body 中的版本哈希
+ * 支持格式：hash:abc123 或 <!-- hash:abc123 -->
+ */
+function parseVersionHash(body: string): string | null {
+  if (!body) return null;
+  
+  // 匹配 hash:xxx 或 <!-- hash:xxx --> 格式
+  const hashMatch = body.match(/hash[:\s]+([a-f0-9]{8})/i);
+  if (hashMatch) {
+    return hashMatch[1].toLowerCase();
+  }
+  
+  return null;
+}
+
+/**
  * 检查更新
  * 从 GitHub Releases 获取最新版本信息
+ * 同时比较版本号和哈希值
  */
 export async function checkUpdate(): Promise<UpdateInfo> {
   console.log('[Updater] 开始检查更新...');
+  console.log(`[Updater] 当前版本: ${currentVersion}, 当前哈希: ${CURRENT_VERSION_HASH}`);
 
   try {
     const response = await fetch('https://api.github.com/repos/czixue7/Test-System/releases/latest');
@@ -93,8 +161,9 @@ export async function checkUpdate(): Promise<UpdateInfo> {
 
     const data = await response.json();
     const latestVersion = data.tag_name?.replace(/^v/, '') || '0.0.0';
+    const latestHash = parseVersionHash(data.body);
 
-    console.log(`[Updater] 当前版本: ${currentVersion}, 最新版本: ${latestVersion}`);
+    console.log(`[Updater] 最新版本: ${latestVersion}, 最新哈希: ${latestHash || '未提供'}`);
     console.log(`[Updater] GitHub API 返回的资产数量: ${data.assets?.length || 0}`);
     
     // 打印所有资产名称用于调试
@@ -117,10 +186,26 @@ export async function checkUpdate(): Promise<UpdateInfo> {
       return 0;
     };
 
-    const hasUpdate = compareVersions(latestVersion, currentVersion) > 0;
+    const versionCompare = compareVersions(latestVersion, currentVersion);
+    
+    // 判断是否需要更新：
+    // 1. 版本号更高 -> 需要更新
+    // 2. 版本号相同但哈希值不同 -> 需要更新（同一版本的不同构建）
+    let hasUpdate = false;
+    let updateReason = '';
+
+    if (versionCompare > 0) {
+      hasUpdate = true;
+      updateReason = `版本号更新 (${currentVersion} -> ${latestVersion})`;
+    } else if (versionCompare === 0 && latestHash && latestHash !== CURRENT_VERSION_HASH) {
+      hasUpdate = true;
+      updateReason = `同一版本的新构建 (哈希: ${CURRENT_VERSION_HASH} -> ${latestHash})`;
+    }
+
+    console.log(`[Updater] 更新判断: hasUpdate=${hasUpdate}, reason=${updateReason || '无更新'}`);
 
     if (hasUpdate) {
-      console.log('[Updater] 发现新版本');
+      console.log('[Updater] 发现新版本或新构建');
 
       // 获取适合当前平台的下载链接
       const asset = getPlatformAsset(data.assets);
@@ -130,9 +215,10 @@ export async function checkUpdate(): Promise<UpdateInfo> {
         return {
           hasUpdate: true,
           latestVersion,
-          message: `发现新版本 v${latestVersion}`,
+          message: updateReason,
           downloadUrl: asset.browser_download_url,
-          assetName: asset.name
+          assetName: asset.name,
+          versionHash: latestHash || undefined
         };
       } else {
         console.warn('[Updater] 未找到适合当前平台的下载文件');
@@ -144,6 +230,8 @@ export async function checkUpdate(): Promise<UpdateInfo> {
       }
     } else {
       console.log('[Updater] 当前已是最新版本');
+      // 存储当前版本哈希
+      storeVersionHash(CURRENT_VERSION_HASH);
       return {
         hasUpdate: false,
         latestVersion,

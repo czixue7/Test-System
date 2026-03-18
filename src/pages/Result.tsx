@@ -487,8 +487,8 @@ const Result: React.FC = () => {
       </header>
 
       <div
-        className="max-w-lg mx-auto px-4 py-6 overflow-y-auto"
-        style={{ paddingTop: safeArea.top + 48, height: `calc(100vh - ${safeArea.top + 48}px)` }}
+        className="max-w-lg mx-auto px-4 py-6"
+        style={{ paddingTop: safeArea.top + 48, paddingBottom: safeArea.bottom + 20 }}
       >
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-6 text-center mb-4">
           <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center shadow-lg">

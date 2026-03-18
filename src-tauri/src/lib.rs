@@ -139,7 +139,7 @@ fn get_android_download_dir() -> Result<std::path::PathBuf, String> {
 }
 
 #[tauri::command]
-async fn install_apk(_app: tauri::AppHandle, apk_path: String) -> Result<String, String> {
+async fn install_apk(app: tauri::AppHandle, apk_path: String) -> Result<String, String> {
     log::info!("install_apk: 开始安装 APK, path={}", apk_path);
 
     #[cfg(target_os = "android")]
@@ -148,14 +148,14 @@ async fn install_apk(_app: tauri::AppHandle, apk_path: String) -> Result<String,
             .try_state::<AndroidInstaller>()
             .ok_or_else(|| "Android 安装插件未初始化".to_string())?;
 
-        let result: Value = installer
+        let result: serde_json::Value = installer
             .0
-            .run_mobile_plugin::<Value>("install", apk_path)
+            .run_mobile_plugin::<serde_json::Value>("install", apk_path)
             .map_err(|e| e.to_string())?;
 
         let status = result
             .get("status")
-            .and_then(|v| v.as_str())
+            .and_then(|v: &serde_json::Value| v.as_str())
             .unwrap_or("UNKNOWN")
             .to_string();
 
