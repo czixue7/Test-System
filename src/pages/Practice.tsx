@@ -388,7 +388,8 @@ const Practice: React.FC = () => {
                 let inputClass = 'w-full p-3 border-2 border-transparent rounded-lg text-gray-800 dark:text-gray-100 dark:placeholder-gray-400 transition-colors duration-300 outline-none focus:border-blue-300 focus:outline-none';
                 
                 if (isConfirmed) {
-                  if (result?.isCorrect) {
+                  // 提交后根据当前空是否匹配显示颜色
+                  if (isMatch) {
                     inputClass += ' border-green-500 bg-green-50 dark:bg-green-900/30 dark:border-green-500';
                   } else {
                     inputClass += ' border-red-400 bg-red-50 dark:bg-red-900/20 dark:border-red-500';

@@ -27,7 +27,7 @@ log = "0.4"
 tokio = { version = "1", features = ["full"] }
 futures-util = "0.3"
 bytes = "1"
-reqwest = { version = "0.12", features = ["stream"] }
+reqwest = { version = "0.12", features = ["stream", "rustls-tls"], default-features = false }
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_logger = "0.14"
