@@ -1,0 +1,824 @@
+{
+  "name": "数据中心基础设施设备参数题库",
+  "description": "基于数据中心基础设施设备参数表编制的填空题题库，涵盖电气系统、暖通空调、水处理系统、配套水泵及储水设施五大类设备。所有题目均为填空题，品牌作为答案的一部分，描述严格对应表格原文。",
+  "questions": [
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心变压器的容量规格为______KVA和______KVA。",
+      "options": [],
+      "correctAnswer": [
+        "2500",
+        "2000"
+      ],
+      "score": 5,
+      "explanation": "变压器容量规格为2500KVA / 2000KVA，两个值均为容量规格，无先后语义。",
+      "allowDisorder": true
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心变压器一次侧电流的计算公式为容量÷(______)。",
+      "options": [],
+      "correctAnswer": [
+        "1.732×10"
+      ],
+      "score": 5,
+      "explanation": "变压器一次侧电流=容量÷(1.732×10)。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心变压器二次侧电流的计算公式为容量÷(______)。",
+      "options": [],
+      "correctAnswer": [
+        "1.732×0.4"
+      ],
+      "score": 5,
+      "explanation": "变压器二次侧电流=容量÷(1.732×0.4)。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心UPS的品牌为______。",
+      "options": [],
+      "correctAnswer": [
+        "华为"
+      ],
+      "score": 5,
+      "explanation": "UPS品牌为华为。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心UPS的容量规格包括______KVA、______KVA和______KVA。",
+      "options": [],
+      "correctAnswer": [
+        "400",
+        "500",
+        "600"
+      ],
+      "score": 5,
+      "explanation": "UPS容量规格为400/500/600KVA，三个值均为容量规格，无先后语义。",
+      "allowDisorder": true
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心UPS支持的并机模式为______。",
+      "options": [],
+      "correctAnswer": [
+        "单机/2/3/4并机"
+      ],
+      "score": 5,
+      "explanation": "华为UPS支持单机/2/3/4并机。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心双登电池单组功率为______W。",
+      "options": [],
+      "correctAnswer": [
+        "630"
+      ],
+      "score": 5,
+      "explanation": "双登电池单组功率630W。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心双登电池的配置为四组______节/三组______节/二组______节(______ah)。",
+      "options": [],
+      "correctAnswer": [
+        "46",
+        "50",
+        "47",
+        "150"
+      ],
+      "score": 5,
+      "explanation": "双登电池配置：四组46节、三组50节、二组47节(150ah)，各数值存在配置对应关系，顺序固定。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心圣阳电池的规格包括______W/______ah和______W/______ah。",
+      "options": [],
+      "correctAnswer": [
+        "630",
+        "155",
+        "490",
+        "135"
+      ],
+      "score": 5,
+      "explanation": "圣阳电池有630W(155ah)和490W(135ah)两种规格，功率与容量存在配对关系，顺序固定。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心柴发的品牌为______。",
+      "options": [],
+      "correctAnswer": [
+        "玉柴"
+      ],
+      "score": 5,
+      "explanation": "柴发品牌为玉柴。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心柴发的功率为______KW。",
+      "options": [],
+      "correctAnswer": [
+        "2000"
+      ],
+      "score": 5,
+      "explanation": "柴发功率为2000KW。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心柴发配套的骆驼电池容量为______ah。",
+      "options": [],
+      "correctAnswer": [
+        "200"
+      ],
+      "score": 5,
+      "explanation": "柴发配套骆驼电池200ah。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心柴发的日用油箱容量为______L。",
+      "options": [],
+      "correctAnswer": [
+        "1000"
+      ],
+      "score": 5,
+      "explanation": "柴发日用油箱1000L。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心柴发的日用油箱尺寸为______米。",
+      "options": [],
+      "correctAnswer": [
+        "1.2"
+      ],
+      "score": 5,
+      "explanation": "柴发日用油箱尺寸为1.2米。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心柴发的油罐容量为______立方。",
+      "options": [],
+      "correctAnswer": [
+        "50"
+      ],
+      "score": 5,
+      "explanation": "柴发油罐50立方。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心假负载的功率为______KW。",
+      "options": [],
+      "correctAnswer": [
+        "2200"
+      ],
+      "score": 5,
+      "explanation": "假负载功率为2200KW。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心直流屏的电池配置为______ah。",
+      "options": [],
+      "correctAnswer": [
+        "2*65"
+      ],
+      "score": 5,
+      "explanation": "直流屏配置为2*65ah。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心直流屏的合母电压为______V。",
+      "options": [],
+      "correctAnswer": [
+        "125"
+      ],
+      "score": 5,
+      "explanation": "直流屏合母125V。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心直流屏的控母电压为______V。",
+      "options": [],
+      "correctAnswer": [
+        "110"
+      ],
+      "score": 5,
+      "explanation": "直流屏控母110V。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心冷却塔的品牌为______。",
+      "options": [],
+      "correctAnswer": [
+        "BAC"
+      ],
+      "score": 5,
+      "explanation": "冷却塔品牌为BAC。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心冷却塔的风机功率为______KW。",
+      "options": [],
+      "correctAnswer": [
+        "45"
+      ],
+      "score": 5,
+      "explanation": "BAC冷却塔风机功率45KW。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心冷却塔的处理水量为______m³/h。",
+      "options": [],
+      "correctAnswer": [
+        "1065.3"
+      ],
+      "score": 5,
+      "explanation": "BAC冷却塔处理水量为1065.3 m³/h。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心风墙空调的品牌为______。",
+      "options": [],
+      "correctAnswer": [
+        "天加"
+      ],
+      "score": 5,
+      "explanation": "风墙空调品牌为天加。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心一层风墙空调的功率为______KW，换热量为______KW。",
+      "options": [],
+      "correctAnswer": [
+        "30",
+        "180"
+      ],
+      "score": 5,
+      "explanation": "一层风墙空调功率30KW，换热量180KW，功率与换热量为不同物理量，顺序固定。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心二层风墙空调的功率为______KW，换热量为______KW。",
+      "options": [],
+      "correctAnswer": [
+        "26.5",
+        "160"
+      ],
+      "score": 5,
+      "explanation": "二层风墙空调功率26.5KW，换热量160KW。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心三至五层风墙空调的功率为______KW，换热量为______KW。",
+      "options": [],
+      "correctAnswer": [
+        "26.4",
+        "140"
+      ],
+      "score": 5,
+      "explanation": "三至五层风墙空调功率26.4KW，换热量140KW。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心水冷空调的品牌为______。",
+      "options": [],
+      "correctAnswer": [
+        "申菱"
+      ],
+      "score": 5,
+      "explanation": "水冷空调品牌为申菱。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心水冷空调的制冷量为______KW。",
+      "options": [],
+      "correctAnswer": [
+        "120"
+      ],
+      "score": 5,
+      "explanation": "水冷空调制冷量为120KW。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心氟泵空调的品牌为______。",
+      "options": [],
+      "correctAnswer": [
+        "海悟"
+      ],
+      "score": 5,
+      "explanation": "氟泵空调品牌为海悟。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心氟泵空调的制冷量为______KW。",
+      "options": [],
+      "correctAnswer": [
+        "50"
+      ],
+      "score": 5,
+      "explanation": "氟泵空调制冷量为50KW。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心CDU的品牌为______。",
+      "options": [],
+      "correctAnswer": [
+        "曙光"
+      ],
+      "score": 5,
+      "explanation": "CDU品牌为曙光。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心CDU的容量为______KW和______KW。",
+      "options": [],
+      "correctAnswer": [
+        "340",
+        "480"
+      ],
+      "score": 5,
+      "explanation": "CDU容量为340/480KW，两个值均为容量规格，无先后语义。",
+      "allowDisorder": true
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心1-2层恒湿机的品牌为______。",
+      "options": [],
+      "correctAnswer": [
+        "盛世泽龙"
+      ],
+      "score": 5,
+      "explanation": "1-2层恒湿机品牌为盛世泽龙。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心1-2层恒湿机的加湿量为______kg/h。",
+      "options": [],
+      "correctAnswer": [
+        "15"
+      ],
+      "score": 5,
+      "explanation": "1-2层恒湿机加湿量为15kg/h。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心1-2层恒湿机的除湿量为______kg/h。",
+      "options": [],
+      "correctAnswer": [
+        "5"
+      ],
+      "score": 5,
+      "explanation": "1-2层恒湿机除湿量为5kg/h。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心3-5层恒湿机的品牌为______。",
+      "options": [],
+      "correctAnswer": [
+        "思探得"
+      ],
+      "score": 5,
+      "explanation": "3-5层恒湿机品牌为思探得。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心3-5层恒湿机的加/除湿量为______kg/h。",
+      "options": [],
+      "correctAnswer": [
+        "8"
+      ],
+      "score": 5,
+      "explanation": "3-5层恒湿机加/除湿量为8kg/h。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心新风机组的品牌为______。",
+      "options": [],
+      "correctAnswer": [
+        "蓝途"
+      ],
+      "score": 5,
+      "explanation": "新风机组品牌为蓝途。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心新风机组的整机功率为______kW。",
+      "options": [],
+      "correctAnswer": [
+        "100"
+      ],
+      "score": 5,
+      "explanation": "新风机组整机功率为100kW。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心新风机组的制冷量为______kW。",
+      "options": [],
+      "correctAnswer": [
+        "326"
+      ],
+      "score": 5,
+      "explanation": "新风机组制冷量为326kW。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心新风机组的制热量为______kW。",
+      "options": [],
+      "correctAnswer": [
+        "360"
+      ],
+      "score": 5,
+      "explanation": "新风机组制热量为360kW。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心新风机组的风量为______m³/h。",
+      "options": [],
+      "correctAnswer": [
+        "29000"
+      ],
+      "score": 5,
+      "explanation": "新风机组风量为29000 m³/h。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心板换的品牌为______。",
+      "options": [],
+      "correctAnswer": [
+        "阿法拉伐"
+      ],
+      "score": 5,
+      "explanation": "板换品牌为阿法拉伐。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心板换的换热量为______KW。",
+      "options": [],
+      "correctAnswer": [
+        "6400"
+      ],
+      "score": 5,
+      "explanation": "板换换热量为6400KW。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心一次泵的品牌为______。",
+      "options": [],
+      "correctAnswer": [
+        "格兰富"
+      ],
+      "score": 5,
+      "explanation": "一次泵品牌为格兰富。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心一次泵的功率为______KW。",
+      "options": [],
+      "correctAnswer": [
+        "132"
+      ],
+      "score": 5,
+      "explanation": "一次泵功率为132KW。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心一次泵的流量为______m³/h。",
+      "options": [],
+      "correctAnswer": [
+        "1063.0"
+      ],
+      "score": 5,
+      "explanation": "一次泵流量为1063.0 m³/h。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心一次泵的扬程为______米。",
+      "options": [],
+      "correctAnswer": [
+        "36"
+      ],
+      "score": 5,
+      "explanation": "一次泵扬程为36米。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心零次泵的品牌为______。",
+      "options": [],
+      "correctAnswer": [
+        "格兰富"
+      ],
+      "score": 5,
+      "explanation": "零次泵品牌为格兰富。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心零次泵的功率为______KW。",
+      "options": [],
+      "correctAnswer": [
+        "75"
+      ],
+      "score": 5,
+      "explanation": "零次泵功率为75KW。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心零次泵的流量为______m³/h。",
+      "options": [],
+      "correctAnswer": [
+        "1063.0"
+      ],
+      "score": 5,
+      "explanation": "零次泵流量为1063.0 m³/h。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心零次泵的扬程为______米。",
+      "options": [],
+      "correctAnswer": [
+        "20"
+      ],
+      "score": 5,
+      "explanation": "零次泵扬程为20米。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心砂滤的品牌为______。",
+      "options": [],
+      "correctAnswer": [
+        "沃兹"
+      ],
+      "score": 5,
+      "explanation": "砂滤品牌为沃兹。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心砂滤的流量为______m³/h。",
+      "options": [],
+      "correctAnswer": [
+        "96"
+      ],
+      "score": 5,
+      "explanation": "砂滤流量为96 m³/h。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心加药装置的品牌为______。",
+      "options": [],
+      "correctAnswer": [
+        "循诺"
+      ],
+      "score": 5,
+      "explanation": "加药装置品牌为循诺。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心加药装置循环水的pH控制范围为______。",
+      "options": [],
+      "correctAnswer": [
+        "8-10"
+      ],
+      "score": 5,
+      "explanation": "加药装置循环水pH控制范围为8-10。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心加药装置零次测电导率应≤______。",
+      "options": [],
+      "correctAnswer": [
+        "1500"
+      ],
+      "score": 5,
+      "explanation": "加药装置零次测电导率≤1500。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心加药装置总电导率应≤______。",
+      "options": [],
+      "correctAnswer": [
+        "2000"
+      ],
+      "score": 5,
+      "explanation": "加药装置总电导率≤2000。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心变频补水泵组的品牌为______。",
+      "options": [],
+      "correctAnswer": [
+        "威乐"
+      ],
+      "score": 5,
+      "explanation": "变频补水泵组品牌为亦拓。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心变频补水泵组的功率为______KW。",
+      "options": [],
+      "correctAnswer": [
+        "30"
+      ],
+      "score": 5,
+      "explanation": "变频补水泵组功率为30KW。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心变频补水泵组的流量为______m³/h。",
+      "options": [],
+      "correctAnswer": [
+        "92"
+      ],
+      "score": 5,
+      "explanation": "变频补水泵组流量为92 m³/h。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心变频补水泵组的扬程为______米。",
+      "options": [],
+      "correctAnswer": [
+        "60"
+      ],
+      "score": 5,
+      "explanation": "变频补水泵组扬程为60米。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心定压装置的品牌为______。",
+      "options": [],
+      "correctAnswer": [
+        "亦拓"
+      ],
+      "score": 5,
+      "explanation": "定压装置品牌为亦拓。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心定压装置的压力范围为______bar。",
+      "options": [],
+      "correctAnswer": [
+        "1.5±0.3"
+      ],
+      "score": 5,
+      "explanation": "定压装置压力范围为1.5±0.3bar。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心空调补水泵的品牌为______。",
+      "options": [],
+      "correctAnswer": [
+        "威乐"
+      ],
+      "score": 5,
+      "explanation": "空调补水泵品牌为威乐。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心空调补水泵的功率为______KW。",
+      "options": [],
+      "correctAnswer": [
+        "5.5"
+      ],
+      "score": 5,
+      "explanation": "空调补水泵功率为5.5KW。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心空调补水泵的流量为______m³/h。",
+      "options": [],
+      "correctAnswer": [
+        "46"
+      ],
+      "score": 5,
+      "explanation": "空调补水泵流量为46 m³/h。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心空调补水泵的扬程为______米。",
+      "options": [],
+      "correctAnswer": [
+        "60"
+      ],
+      "score": 5,
+      "explanation": "空调补水泵扬程为60米。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心软化水补水泵的品牌为______。",
+      "options": [],
+      "correctAnswer": [
+        "威乐"
+      ],
+      "score": 5,
+      "explanation": "软化水补水泵品牌为威乐。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心软化水补水泵的功率为______kW。",
+      "options": [],
+      "correctAnswer": [
+        "7.5"
+      ],
+      "score": 5,
+      "explanation": "软化水补水泵功率为7.5kW。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心软化水补水泵的流量为______m³/h。",
+      "options": [],
+      "correctAnswer": [
+        "20"
+      ],
+      "score": 5,
+      "explanation": "软化水补水泵流量为20 m³/h。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心软化水补水泵的扬程为______米。",
+      "options": [],
+      "correctAnswer": [
+        "60"
+      ],
+      "score": 5,
+      "explanation": "软化水补水泵扬程为60米。",
+      "allowDisorder": false
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "本数据中心水箱的尺寸为______米×______米×______米。",
+      "options": [],
+      "correctAnswer": [
+        "7",
+        "9",
+        "4.5"
+      ],
+      "score": 5,
+      "explanation": "水箱尺寸为7×9×4.5（米），长×宽×高顺序固定。",
+      "allowDisorder": false
+    }
+  ]
+}
