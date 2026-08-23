@@ -2,6 +2,88 @@ import { QuestionBank, BankIndex, BankIndexItem, BankImageInfo } from '../types'
 import { isBuiltInBank } from './builtInBanks';
 
 const BANK_INDEX_URL = 'https://raw.githubusercontent.com/czixue7/Test-System/main/bank-index.json';
+const GITHUB_REPO = 'czixue7/Test-System';
+const USER_BANK_PATH = 'Question_bank';
+
+interface GitHubContentItem {
+  name: string;
+  path: string;
+  sha: string;
+  type: 'file' | 'dir';
+  download_url?: string;
+}
+
+/**
+ * 动态从GitHub获取Question_bank目录下所有用户题库
+ * 遍历子目录，找到JSON文件和图片目录
+ */
+async function fetchUserBanksFromGitHub(): Promise<BankIndexItem[]> {
+  const items: BankIndexItem[] = [];
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    const response = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO}/contents/${USER_BANK_PATH}`,
+      { signal: controller.signal }
+    );
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      console.warn('Failed to fetch user bank directory:', response.status);
+      return items;
+    }
+
+    const dirContents: GitHubContentItem[] = await response.json();
+    if (!Array.isArray(dirContents)) {
+      return items;
+    }
+
+    const subDirs = dirContents.filter(item => item.type === 'dir');
+
+    for (const subDir of subDirs) {
+      try {
+        const subController = new AbortController();
+        const subTimeoutId = setTimeout(() => subController.abort(), 10000);
+
+        const subResponse = await fetch(
+          `https://api.github.com/repos/${GITHUB_REPO}/contents/${subDir.path}`,
+          { signal: subController.signal }
+        );
+        clearTimeout(subTimeoutId);
+
+        if (!subResponse.ok) continue;
+
+        const subContents: GitHubContentItem[] = await subResponse.json();
+        if (!Array.isArray(subContents)) continue;
+
+        const jsonFile = subContents.find(
+          f => f.type === 'file' && f.name.endsWith('.json')
+        );
+
+        if (jsonFile && jsonFile.download_url) {
+          const hasImageDir = subContents.some(f => f.type === 'dir' && f.name === 'image');
+
+          items.push({
+            name: subDir.name,
+            filename: jsonFile.name,
+            downloadUrl: jsonFile.download_url,
+            imagePath: hasImageDir ? `${subDir.path}/image` : undefined,
+            sha: jsonFile.sha,
+            images: []
+          });
+        }
+      } catch (err) {
+        console.warn(`Failed to fetch sub-directory ${subDir.name}:`, err);
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching user banks from GitHub:', error);
+  }
+
+  return items;
+}
 
 export interface BankStatus {
   exists: boolean;
@@ -23,15 +105,29 @@ export interface BankUpdateInfo {
 
 /**
  * 获取题库索引文件
+ * 合并静态bank-index.json和动态从GitHub获取的用户题库
  */
 export async function fetchBankIndex(): Promise<BankIndex | null> {
   try {
+    // 1. 获取静态索引文件
     const response = await fetch(BANK_INDEX_URL);
-    if (!response.ok) {
-      console.warn('Failed to fetch bank index:', response.status);
-      return null;
+    let index: BankIndex;
+    if (response.ok) {
+      index = await response.json();
+    } else {
+      console.warn('Failed to fetch bank index, using empty defaults:', response.status);
+      index = { systemBanks: [], userBanks: [] };
     }
-    return await response.json();
+
+    // 2. 动态从GitHub获取Question_bank目录下的用户题库
+    const dynamicUserBanks = await fetchUserBanksFromGitHub();
+
+    // 3. 合并用户题库：动态获取的优先，静态索引中不重复的保留
+    const dynamicNames = new Set(dynamicUserBanks.map(b => b.filename));
+    const staticOnly = index.userBanks.filter(b => !dynamicNames.has(b.filename));
+    index.userBanks = [...dynamicUserBanks, ...staticOnly];
+
+    return index;
   } catch (error) {
     console.error('Error fetching bank index:', error);
     return null;
@@ -123,7 +219,9 @@ export function checkBankStatus(
     return { exists: true, hasUpdate: false, hasImageUpdate: false, isBuiltIn, missingImages: [], changedImages: [] };
   }
 
-  const hasUpdate = existingBank.sourceSha !== remoteSha;
+  // 如果SHA长度不同，说明使用了不同的哈希算法，无法比较，视为无更新
+  const hasUpdate = existingBank.sourceSha.length === remoteSha.length && 
+                    existingBank.sourceSha !== remoteSha;
   
   // 比较图片差异
   const { missingImages, changedImages } = compareImages(existingBank.images, remoteImages);
@@ -169,7 +267,9 @@ export function checkBankUpdate(bank: QuestionBank, index: BankIndex | null): Ba
     };
   }
 
-  const hasUpdate = remoteBank.sha !== bank.sourceSha;
+  // 如果SHA长度不同，说明使用了不同的哈希算法，无法比较，视为无更新
+  const hasUpdate = bank.sourceSha.length === remoteBank.sha.length &&
+                    remoteBank.sha !== bank.sourceSha;
   
   // 比较图片差异
   const { missingImages, changedImages } = compareImages(bank.images, remoteBank.images);

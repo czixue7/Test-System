@@ -143,13 +143,13 @@ const Practice: React.FC = () => {
     const result = getResult(question.id);
 
     if (practiceMode === 'wrong') {
-      if (result && result.isCorrect) {
+      if (result && result.isCorrect === 2) {
         const newWrong = wrongQuestions.filter(q => q.id !== question.id);
         setWrongQuestions(newWrong);
         savePracticeData(newWrong, favoriteQuestions, commonQuestions);
       }
     } else {
-      if (result && !result.isCorrect) {
+      if (result && result.isCorrect !== 2) {
         const newWrong = [...wrongQuestions];
         if (!newWrong.find(q => q.id === question.id)) {
           newWrong.push(question);
@@ -277,15 +277,14 @@ const Practice: React.FC = () => {
                 bgClass = 'bg-blue-50 border-blue-500 dark:bg-blue-900/30 dark:border-blue-500';
               }
               return (
-                <button
+                <div
                   key={option.id}
                   onClick={() => !isConfirmed && !isViewMode && setAnswer(currentQuestion.id, option.id)}
-                  disabled={isViewMode || isConfirmed}
-                  className={`w-full p-3 rounded-lg text-left border-2 transition-all ${textClass} ${bgClass}`}
+                  className={`w-full p-3 rounded-lg text-left border-2 transition-all ${textClass} ${bgClass} ${(isViewMode || isConfirmed) ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                 >
                   <span className="font-medium mr-2">{option.id}.</span>
                   <span className="selectable">{option.content}</span>
-                </button>
+                </div>
               );
             })}
           </div>
@@ -309,7 +308,7 @@ const Practice: React.FC = () => {
                 bgClass = 'bg-blue-50 border-blue-500 dark:bg-blue-900/30 dark:border-blue-500';
               }
               return (
-                <button
+                <div
                   key={option.id}
                   onClick={() => {
                     if (isConfirmed || isViewMode) return;
@@ -318,12 +317,11 @@ const Practice: React.FC = () => {
                       : [...selected, option.id];
                     setAnswer(currentQuestion.id, newSelected);
                   }}
-                  disabled={isViewMode || isConfirmed}
-                  className={`w-full p-3 rounded-lg text-left border-2 transition-all ${textClass} ${bgClass}`}
+                  className={`w-full p-3 rounded-lg text-left border-2 transition-all ${textClass} ${bgClass} ${(isViewMode || isConfirmed) ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                 >
                   <span className="font-medium mr-2">{option.id}.</span>
                   <span className="selectable">{option.content}</span>
-                </button>
+                </div>
               );
             })}
           </div>
@@ -415,9 +413,9 @@ const Practice: React.FC = () => {
                       newAnswers[idx] = e.target.value;
                       setAnswer(currentQuestion.id, newAnswers);
                     }}
-                    disabled={isConfirmed}
+                    readOnly={isConfirmed}
                     placeholder={`第${idx + 1}空`}
-                    className={inputClass}
+                    className={`${inputClass} ${isConfirmed ? 'pointer-events-none' : ''}`}
                   />
                 );
               })
@@ -480,10 +478,10 @@ const Practice: React.FC = () => {
               <textarea
                 value={userAnswer}
                 onChange={(e) => setAnswer(currentQuestion.id, e.target.value)}
-                disabled={isConfirmed}
+                readOnly={isConfirmed}
                 placeholder="请输入答案"
                 rows={4}
-                className={textareaClass}
+                className={`${textareaClass} ${isConfirmed ? 'pointer-events-none' : ''}`}
               />
             );
           })()
@@ -505,11 +503,13 @@ const Practice: React.FC = () => {
                 if (!isConfirmed) {
                   return <span className="text-gray-600 dark:text-gray-300 font-medium">未作答</span>;
                 }
-                return result?.isCorrect ? (
-                  <span className="text-green-600 dark:text-green-400 font-medium">✓ 正确</span>
-                ) : (
-                  <span className="text-red-600 dark:text-red-400 font-medium">✗ 错误</span>
-                );
+                if (result?.isCorrect === 2) {
+                  return <span className="text-green-600 dark:text-green-400 font-medium">✓ 正确</span>;
+                }
+                if (result?.isCorrect === 1) {
+                  return <span className="text-orange-500 dark:text-orange-400 font-medium">◐ 部分正确</span>;
+                }
+                return <span className="text-red-600 dark:text-red-400 font-medium">✗ 错误</span>;
               })()}
               {isConfirmed && <span className="text-gray-500 dark:text-gray-400">得分: {result?.score}/{currentQuestion.score}</span>}
             </div>
@@ -596,12 +596,21 @@ const Practice: React.FC = () => {
         </div>
       </header>
 
-      <div ref={swipeRef} className="flex-1 overflow-y-auto touch-pan-y">
+      <div 
+        ref={swipeRef} 
+        className="flex-1 overflow-y-auto"
+        style={{ 
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehavior: 'contain'
+        }}
+      >
         <div 
           className={`max-w-lg mx-auto px-4 py-4 transition-all duration-300 ${isKeyboardOpen ? 'pb-24' : 'pb-40'}`}
           style={{ paddingTop: safeArea.top + 48 }}
         >
-          {renderQuestionContent()}
+          <div className="overflow-visible">
+            {renderQuestionContent()}
+          </div>
         </div>
       </div>
 
@@ -636,9 +645,11 @@ const Practice: React.FC = () => {
                     idx === practiceIndex
                       ? 'bg-blue-500 text-white'
                       : isConfirmed
-                        ? result?.isCorrect
+                        ? result?.isCorrect === 2
                           ? 'bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400'
-                          : 'bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-400'
+                          : result?.isCorrect === 1
+                            ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/50 dark:text-orange-400'
+                            : 'bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-400'
                         : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
                   }`}
                 >

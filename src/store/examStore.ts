@@ -55,12 +55,42 @@ const checkAnswer = (question: Question, answer: string | string[]): { isCorrect
   }
 
   if (question.type === 'multiple-choice') {
-    const correctSet = new Set(question.correctAnswer as string[]);
-    const userSet = new Set(answer as string[]);
-    const isCorrect =
-      correctSet.size === userSet.size &&
-      [...correctSet].every((item) => userSet.has(item));
-    return { isCorrect: isCorrect ? 2 : 0, score: isCorrect ? question.score : 0 };
+    const correctAnswers = question.correctAnswer as string[];
+    const userAnswers = answer as string[];
+    const correctSet = new Set(correctAnswers.map(a => a.trim()));
+    const userSet = new Set(userAnswers.map(a => a.trim()));
+    
+    // 计算正确选项数和错误选项数
+    let correctCount = 0;
+    let wrongCount = 0;
+    for (const userAns of userSet) {
+      if (correctSet.has(userAns)) {
+        correctCount++;
+      } else {
+        wrongCount++;
+      }
+    }
+    
+    const totalCorrect = correctSet.size;
+    const isAllCorrect = correctCount === totalCorrect && wrongCount === 0;
+    
+    // 计算得分：按正确比例给分，选错扣分（最低0分）
+    let score = 0;
+    if (totalCorrect > 0) {
+      score = Math.max(0, Math.round(question.score * (correctCount - wrongCount) / totalCorrect));
+    }
+    
+    // 根据正确数确定状态
+    let isCorrect: 0 | 1 | 2;
+    if (isAllCorrect) {
+      isCorrect = 2; // 全部正确
+    } else if (correctCount > 0) {
+      isCorrect = 1; // 部分正确
+    } else {
+      isCorrect = 0; // 全部错误
+    }
+    
+    return { isCorrect, score };
   }
 
   if (question.type === 'fill-in-blank') {
@@ -182,12 +212,39 @@ export const checkAnswerWithAI = async (
   }
 
   if (question.type === 'multiple-choice') {
-    const correctSet = new Set(question.correctAnswer as string[]);
-    const userSet = new Set(answer as string[]);
-    const isCorrectBool =
-      correctSet.size === userSet.size &&
-      [...correctSet].every((item) => userSet.has(item));
-    return { isCorrect: isCorrectBool ? 2 : 0, score: isCorrectBool ? question.score : 0 };
+    const correctAnswers = question.correctAnswer as string[];
+    const userAnswers = answer as string[];
+    const correctSet = new Set(correctAnswers.map(a => a.trim()));
+    const userSet = new Set(userAnswers.map(a => a.trim()));
+    
+    let correctCount = 0;
+    let wrongCount = 0;
+    for (const userAns of userSet) {
+      if (correctSet.has(userAns)) {
+        correctCount++;
+      } else {
+        wrongCount++;
+      }
+    }
+    
+    const totalCorrect = correctSet.size;
+    const isAllCorrect = correctCount === totalCorrect && wrongCount === 0;
+    
+    let score = 0;
+    if (totalCorrect > 0) {
+      score = Math.max(0, Math.round(question.score * (correctCount - wrongCount) / totalCorrect));
+    }
+    
+    let isCorrect: 0 | 1 | 2;
+    if (isAllCorrect) {
+      isCorrect = 2;
+    } else if (correctCount > 0) {
+      isCorrect = 1;
+    } else {
+      isCorrect = 0;
+    }
+    
+    return { isCorrect, score };
   }
 
   const gradingMode = useSettingsStore.getState().gradingMode;

@@ -60,47 +60,94 @@ async function fetchGitHubSha(filePath) {
 
 async function updateBankIndex() {
   console.log('开始更新 bank-index.json...\n');
-  
+
   // 更新系统题库
   for (const bank of bankIndex.systemBanks) {
     const folderName = bank.name;
     const imagePath = imageFolders[folderName];
-    
+
     if (!imagePath) {
       console.log(`跳过: ${folderName} (未找到图片路径映射)`);
       continue;
     }
-    
+
     const localImages = scanLocalImages(imagePath);
-    
+
     if (localImages.length === 0) {
       console.log(`跳过: ${folderName} (无本地图片)`);
       bank.images = [];
       continue;
     }
-    
+
     console.log(`处理: ${folderName} (${localImages.length} 张图片)`);
-    
+
     const images = [];
     for (const filename of localImages) {
       const filePath = `${imagePath}/${filename}`;
       const sha = await fetchGitHubSha(filePath);
-      
+
       if (sha) {
         images.push({ filename, sha });
         console.log(`  ✓ ${filename}: ${sha.substring(0, 16)}...`);
       } else {
         console.log(`  ✗ ${filename}: 获取失败`);
       }
-      
+
       // 添加延迟避免触发GitHub API限制
       await new Promise(resolve => setTimeout(resolve, 100));
     }
-    
+
     bank.images = images;
     console.log('');
   }
-  
+
+  // 动态扫描 Question_bank 目录，更新用户题库
+  console.log('扫描 Question_bank 目录...');
+  const GITHUB_REPO = 'czixue7/Test-System';
+  const USER_BANK_PATH = 'Question_bank';
+
+  try {
+    const dirResponse = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${USER_BANK_PATH}`);
+    if (dirResponse.ok) {
+      const dirContents = await dirResponse.json();
+      const subDirs = Array.isArray(dirContents) ? dirContents.filter(item => item.type === 'dir') : [];
+
+      const dynamicUserBanks = [];
+
+      for (const subDir of subDirs) {
+        const subResponse = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${subDir.path}`);
+        if (!subResponse.ok) continue;
+
+        const subContents = await subResponse.json();
+        if (!Array.isArray(subContents)) continue;
+
+        const jsonFile = subContents.find(f => f.type === 'file' && f.name.endsWith('.json'));
+        if (jsonFile && jsonFile.download_url) {
+          const hasImageDir = subContents.some(f => f.type === 'dir' && f.name === 'image');
+          dynamicUserBanks.push({
+            name: subDir.name,
+            filename: jsonFile.name,
+            downloadUrl: jsonFile.download_url,
+            imagePath: hasImageDir ? `${subDir.path}/image` : undefined,
+            sha: jsonFile.sha,
+            images: []
+          });
+          console.log(`  ✓ 用户题库: ${subDir.name} (${jsonFile.name})`);
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
+      // 用动态获取的用户题库替换静态索引中的
+      bankIndex.userBanks = dynamicUserBanks;
+      console.log(`用户题库更新完成: ${dynamicUserBanks.length} 个\n`);
+    } else {
+      console.warn('无法获取 Question_bank 目录，保留原有用户题库数据');
+    }
+  } catch (error) {
+    console.error('扫描 Question_bank 目录失败:', error);
+  }
+
   // 保存更新后的 bank-index.json
   fs.writeFileSync(bankIndexPath, JSON.stringify(bankIndex, null, 2));
   console.log('✓ bank-index.json 更新完成!');

@@ -104,6 +104,7 @@ export function convertJsonToBank(data: JsonBankData): QuestionBank {
     category: q.category ?? 'default',
     difficulty: (q.difficulty as 'easy' | 'medium' | 'hard') ?? 'medium',
     explanation: q.explanation,
+    images: q.images,
     allowDisorder: q.allowDisorder
   }));
 
@@ -136,7 +137,11 @@ export function exportBankToJson(bank: QuestionBank): string {
       options: q.options,
       correctAnswer: q.correctAnswer,
       score: q.score,
-      explanation: q.explanation
+      explanation: q.explanation,
+      allowDisorder: q.allowDisorder,
+      images: q.images,
+      category: q.category,
+      difficulty: q.difficulty
     }))
   }, null, 2);
 }
