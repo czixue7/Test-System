@@ -5,6 +5,7 @@ import { QuestionBank, BankIndex, BankImageInfo } from '../types';
 import { useToast } from '../hooks/useToast';
 import { useSafeArea } from '../hooks/useSafeArea';
 import { fetchBankIndex, checkBankStatus, findBankInIndex } from '../utils/bankIndex';
+import { dictionaryCompare } from '../utils/sortUtils';
 
 interface GitHubFile {
   name: string;
@@ -36,8 +37,8 @@ interface BankInfo {
   progress: number;
 }
 
-// 按名称排序函数
-const sortByName = (a: BankInfo, b: BankInfo) => a.name.localeCompare(b.name, 'zh-CN');
+// 按名称字典序排序
+const sortBanks = (a: BankInfo, b: BankInfo) => dictionaryCompare(a.name, b.name);
 
 const DownloadBanks: React.FC = () => {
   const navigate = useNavigate();
@@ -113,7 +114,7 @@ const DownloadBanks: React.FC = () => {
         }
         
         // 按名称排序
-        allBanks.sort(sortByName);
+        allBanks.sort(sortBanks);
         
         setBankList(allBanks);
       } else {
@@ -151,39 +152,69 @@ const DownloadBanks: React.FC = () => {
         };
       });
       // 重新排序
-      updated.sort(sortByName);
+      updated.sort(sortBanks);
       return updated;
     });
   }, [banks, bankIndex]);
 
-  const downloadImageAsBase64 = async (url: string): Promise<string> => {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`Failed to download image: ${url}`);
-    const blob = await response.blob();
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
+  const downloadImageAsBase64 = async (url: string, timeoutMs: number = 15000): Promise<string> => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      if (!response.ok) throw new Error(`Failed to download image: ${response.status}`);
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
   };
 
   const downloadAndProcessImages = async (imagePath: string, totalProgress: (progress: number) => void): Promise<Map<string, string[]>> => {
     const questionImagesMap = new Map<string, string[]>();
     
     try {
-      const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${imagePath}`);
-      if (!response.ok) return questionImagesMap;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
+      
+      const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${imagePath}`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        console.warn(`获取图片列表失败: ${response.status} ${response.statusText}`);
+        return questionImagesMap;
+      }
       
       const imageFiles: GitHubFile[] = await response.json();
-      const validImages = imageFiles.filter(f => f.type === 'file' && (f.name.endsWith('.jpg') || f.name.endsWith('.jpeg') || f.name.endsWith('.png') || f.name.endsWith('.gif')));
+      
+      if (!Array.isArray(imageFiles)) {
+        console.warn('图片列表格式错误:', imageFiles);
+        return questionImagesMap;
+      }
+      
+      const validImages = imageFiles.filter(f => 
+        f.type === 'file' && 
+        /\.(jpg|jpeg|png|gif)$/i.test(f.name)
+      );
       
       let processedCount = 0;
       const totalImages = validImages.length;
       
-      for (const imageFile of validImages) {
+      // 并发限制：同时最多下载3张图片
+      const concurrency = 3;
+      let currentIndex = 0;
+      
+      const downloadImage = async (imageFile: GitHubFile) => {
         try {
-          const match = imageFile.name.match(/^(\d+)-(\d+)\.(jpg|jpeg|png|gif)$/);
+          const match = imageFile.name.match(/^(\d+)-(\d+)\.(jpg|jpeg|png|gif)$/i);
           if (match && imageFile.download_url) {
             const questionIndex = parseInt(match[1]) - 1;
             const base64Image = await downloadImageAsBase64(imageFile.download_url);
@@ -201,7 +232,17 @@ const DownloadBanks: React.FC = () => {
         if (totalImages > 0) {
           totalProgress(processedCount / totalImages * 50);
         }
-      }
+      };
+      
+      // 并发下载图片
+      const workers = Array.from({ length: Math.min(concurrency, totalImages) }, async () => {
+        while (currentIndex < validImages.length) {
+          const index = currentIndex++;
+          await downloadImage(validImages[index]);
+        }
+      });
+      
+      await Promise.all(workers);
     } catch (err) {
       console.warn('Error downloading images:', err);
     }
@@ -240,9 +281,15 @@ const DownloadBanks: React.FC = () => {
         ));
       };
 
-      const response = await fetch(bank.downloadUrl);
+      // 带超时的下载
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      
+      const response = await fetch(bank.downloadUrl, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      
       if (!response.ok) {
-        throw new Error(`HTTP 错误: ${response.status}`);
+        throw new Error(`HTTP 错误: ${response.status} ${response.statusText}`);
       }
 
       const text = await response.text();
@@ -267,6 +314,12 @@ const DownloadBanks: React.FC = () => {
         throw new Error('题库为空，没有题目');
       }
       
+      // 验证题目数据完整性
+      const validQuestions = data.questions.filter((q: any) => q && q.type && q.content);
+      if (validQuestions.length < data.questions.length) {
+        console.warn(`有 ${data.questions.length - validQuestions.length} 道题目数据不完整，已跳过`);
+      }
+      
       updateProgress(20);
       
       let questionImagesMap = new Map<string, string[]>();
@@ -277,45 +330,45 @@ const DownloadBanks: React.FC = () => {
       
       const localBankId = getLocalBankId(bank.filename, bank.source);
       
+      // 构建题目数据，保留所有原始字段
+      const buildQuestions = (questions: any[]) => questions.map((q: any, qIndex: number) => ({
+        id: localBankId 
+          ? `updated-${Date.now()}-${qIndex}` 
+          : `downloaded-${Date.now()}-${qIndex}`,
+        type: q.type,
+        question: q.question || q.content,
+        content: q.content,
+        options: q.options,
+        correctAnswer: q.correctAnswer,
+        score: q.score ?? 1,
+        category: q.category ?? 'default',
+        difficulty: q.difficulty ?? 'medium',
+        explanation: q.explanation,
+        images: questionImagesMap.has(qIndex.toString()) 
+          ? questionImagesMap.get(qIndex.toString()) 
+          : q.images,
+        allowDisorder: q.allowDisorder
+      }));
+      
       if (localBankId && (bank.hasUpdate || bank.hasImageUpdate)) {
         // 更新现有题库
         const updatedBank: Partial<QuestionBank> = {
           name: data.name || bank.name,
           description: data.description,
-          questions: data.questions.map((q: any, qIndex: number) => ({
-            id: `updated-${Date.now()}-${qIndex}`,
-            type: q.type,
-            content: q.content,
-            options: q.options,
-            correctAnswer: q.correctAnswer,
-            score: q.score || 1,
-            explanation: q.explanation,
-            images: questionImagesMap.has(qIndex.toString()) ? questionImagesMap.get(qIndex.toString()) : q.images,
-            allowDisorder: q.allowDisorder
-          })),
+          questions: buildQuestions(data.questions),
           sourceSha: bank.sha,
           images: bank.images,
           updatedAt: new Date().toISOString()
         };
         
         updateBankWithSha(localBankId, updatedBank, bank.sha, bank.images);
-        showSuccess(`题库「${updatedBank.name}」更新成功！`);
+        showSuccess(`题库「${updatedBank.name}」更新成功！共 ${data.questions.length} 题`);
       } else {
         // 新下载题库
         const newBank: Omit<QuestionBank, 'id' | 'createdAt' | 'updatedAt'> = {
           name: data.name || bank.name,
           description: data.description,
-          questions: data.questions.map((q: any, qIndex: number) => ({
-            id: `downloaded-${Date.now()}-${qIndex}`,
-            type: q.type,
-            content: q.content,
-            options: q.options,
-            correctAnswer: q.correctAnswer,
-            score: q.score || 1,
-            explanation: q.explanation,
-            images: questionImagesMap.has(qIndex.toString()) ? questionImagesMap.get(qIndex.toString()) : q.images,
-            allowDisorder: q.allowDisorder
-          })),
+          questions: buildQuestions(data.questions),
           sourceSha: bank.sha,
           sourceFilename: bank.filename,
           sourceType: bank.source,
@@ -323,7 +376,7 @@ const DownloadBanks: React.FC = () => {
         };
 
         importBankWithSha(newBank as QuestionBank, bank.sha, bank.filename, bank.images);
-        showSuccess(`题库「${newBank.name}」下载并导入成功！`);
+        showSuccess(`题库「${newBank.name}」下载并导入成功！共 ${data.questions.length} 题`);
       }
 
       updateProgress(100);
@@ -356,7 +409,7 @@ const DownloadBanks: React.FC = () => {
 
   // 使用 useMemo 确保排序后的列表
   const sortedBankList = useMemo(() => {
-    return [...bankList].sort(sortByName);
+    return [...bankList].sort(sortBanks);
   }, [bankList]);
 
   const systemBanks = sortedBankList.filter(b => b.source === 'system');

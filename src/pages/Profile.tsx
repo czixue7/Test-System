@@ -60,7 +60,7 @@ const Profile: React.FC = () => {
     }
   }, [showAboutModal, showThemeModal]);
 
-  const currentVersion = '0.3.7';
+  const currentVersion = '0.3.8';
 
   const handleCheckUpdate = async () => {
     setCheckingUpdate(true);
@@ -326,7 +326,7 @@ const Profile: React.FC = () => {
               <div className="text-sm text-gray-600 dark:text-gray-300 space-y-1.5 mb-4">
                 <p>一款帮助用户学习和备考的应用</p>
                 <p>支持题库管理、模拟测试、错题回顾等功能</p>
-                <p>支持 AI 智能判题（API 云端 / WebLLM 本地）</p>
+                <p>支持 AI 智能判题</p>
                 <div className="pt-2 mt-2 border-t border-gray-200 dark:border-gray-700">
                   <a
                     href="https://github.com/czixue7/Test-System"

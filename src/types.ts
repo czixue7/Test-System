@@ -6,7 +6,7 @@ export interface Question {
   question: string;
   content?: string;
   options?: Array<{ id: string; content: string }>;
-  correctAnswer: string | string[];
+  correctAnswer: string | string[] | AnswerWithImages;
   score: number;
   category: string;
   difficulty: 'easy' | 'medium' | 'hard';
@@ -32,7 +32,7 @@ export interface QuestionResult {
   questionId?: string;
   question?: string;
   userAnswer?: string | string[];
-  correctAnswer?: string | string[];
+  correctAnswer?: string | string[] | AnswerWithImages;
   answer?: string | string[];
   isCorrect: number;
   score: number;
@@ -143,7 +143,7 @@ export interface JsonQuestionData {
   question: string;
   content?: string;
   options?: Array<{ id: string; content: string }>;
-  correctAnswer: string | string[];
+  correctAnswer: string | string[] | AnswerWithImages;
   score?: number;
   category?: string;
   difficulty?: string;

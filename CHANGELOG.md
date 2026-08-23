@@ -6,6 +6,124 @@
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-08-24
+
+### 修复
+
+- **JSON 模板错误修复**：
+  - 修复规范题库 JSON 模板格式错误问题
+  - 统一所有题库的 JSON 结构，确保导入和解析正确
+- **选择题判题逻辑修复**：
+  - 修复多选题判题错误，现在部分正确时显示"部分正确"而非全部错误
+  - 统一所有页面的多选题判题逻辑，确保一致性
+  - 选择题中只要有一个空或错误，整个题判断结果为"部分正确"
+- **GitHub 题库获取修复**：
+  - 修复从 GitHub 获取题库不完整的问题
+  - 优化用户题库动态获取逻辑，确保完整加载所有可用题库
+- **题库更新检测修复**：
+  - 修复相同文件仍误报更新的问题
+  - 优化 SHA 哈希值比对逻辑，准确判断文件是否真正变更
+- **题库排序修复**：
+  - 实现字典式排序，数字从小到大、字母从 A 到 Z、汉字按拼音顺序
+  - 逐字对应比较，类似查字典的排序方式
+  - 支持数字、字母、汉字混合排序
+- **本地题库持久化修复**：
+  - 修复本地导入题库退出后丢失的问题
+  - 使用 Tauri Store 持久化存储本地题库数据
+  - 重新进入软件后本地导入的题库依然保留
+- **安全区域检测完善**：
+  - 重写 `useSafeArea`，采用三层降级检测策略（CSS env() → screen 差值 → 设备默认值）
+  - 修复状态栏遮挡、底部导航栏遮挡问题，支持绝大多数 Android/iOS 设备
+  - 区分 Android 和 iOS 设备，使用各自的设计规范默认值
+  - 支持横屏模式的左右安全区域（挖孔/刘海屏适配）
+  - 监听方向变化、可见性变化、visualViewport 变化等多事件
+  - 多次延迟重试，确保安全区域值稳定获取
+- **键盘检测完善**：
+  - 重写 `useKeyboard`，优先使用 `visualViewport` API 精确检测键盘高度
+  - 修复键盘遮挡输入框问题，动态阈值适配不同屏幕尺寸
+  - 状态防抖机制，避免键盘弹出/收起时的误判
+  - 智能预估高度 + 平滑动画过渡，提升用户体验
+  - 支持 focusin/focusout/beforeinput/visibilitychange 等多事件触发
+  - 区分文本输入和非文本输入（checkbox/button 等不触发键盘检测）
+
+### 新增
+
+- **统一边距管理 Hook**：
+  - 新增 `useInsets` Hook，整合安全区域和键盘边距
+  - 提供统一的 top/bottom/left/right 边距接口
+  - 底部边距自动取安全区域和键盘高度的较大值
+
+### 技术细节
+
+#### 安全区域三层降级检测
+
+**修改文件：** `src/hooks/useSafeArea.ts`
+
+| 优先级 | 检测方式 | 适用场景 |
+|--------|----------|----------|
+| 第1层 | CSS `env(safe-area-inset-*)` | iOS、部分支持的 Android |
+| 第2层 | `window.screen` 与 `innerHeight` 差值估算 | 大多数 Android WebView |
+| 第3层 | 基于设备类型的默认值 | 所有 fallback 场景 |
+
+```typescript
+// Android 默认值：状态栏 24dp + 导航栏 32~48dp
+// iOS 默认值：刘海屏 44px/34px，非刘海屏 20px/0
+const computeSafeArea = (): SafeAreaInsets => {
+  // CSS env() → screen 差值 → 设备默认值，逐层降级
+};
+```
+
+#### 键盘多维度检测
+
+**修改文件：** `src/hooks/useKeyboard.ts`
+
+```typescript
+// 优先使用 visualViewport（最准确）
+// Fallback 使用 resize 高度差值
+// 动态阈值 = 屏幕高度的 15%（最低 80px）
+// 状态防抖：弹出需 2 次确认，收起需 3 次确认
+```
+
+#### 统一边距 Hook
+
+**新增文件：** `src/hooks/useInsets.ts`
+
+```typescript
+const insets = useInsets();
+insets.top       // 顶部状态栏高度
+insets.bottom    // 底部总边距 = max(导航栏, 键盘)
+insets.safeArea  // 纯安全区域
+insets.keyboard  // 键盘状态详情
+```
+
+### 技术细节
+
+#### 字典式排序实现
+
+**修改文件：** `src/utils/sortUtils.ts`
+
+实现了逐字比较的字典排序算法，支持数字、字母、汉字混合排序：
+
+```typescript
+// 字典式排序：数字 < 字母 < 汉字，逐字对应比较
+export const dictionaryCompare = (a: string, b: string) => {
+  // 逐字符比较，数字优先，其次字母，最后汉字
+};
+```
+
+#### 本地题库持久化
+
+**修改文件：** `src/store/questionBankStore.ts`
+
+使用 Tauri Store 插件持久化用户导入的题库：
+
+```typescript
+// 保存到本地存储
+await setStoreValue('user-banks', userBanks);
+// 启动时从本地存储加载
+const saved = await getStoreValue('user-banks', []);
+```
+
 ## [0.3.7] - 2026-03-18
 
 ### 新增
