@@ -24,13 +24,25 @@ const App: React.FC = () => {
   useEffect(() => {
     const init = async () => {
       try {
-        await Promise.all([loadBanks(), loadRecords()]);
+        // 设置最大加载时间，避免加载过久
+        const maxWaitTime = new Promise(resolve => setTimeout(resolve, 3000));
         
-        // 自动加载上次使用的 AI 模型（在后台静默加载）
-        console.log('[App] 尝试自动加载上次使用的 AI 模型...');
-        autoLoadLastModel().catch(error => {
-          console.log('[App] 自动加载模型失败（可能未缓存或用户未使用过）:', error);
-        });
+        // 并行加载数据，但设置超时
+        const loadData = Promise.all([
+          loadBanks().catch(err => console.error('加载题库失败:', err)),
+          loadRecords().catch(err => console.error('加载记录失败:', err))
+        ]);
+        
+        // 等待数据加载或超时（最多3秒）
+        await Promise.race([loadData, maxWaitTime]);
+        
+        // 自动加载上次使用的 AI 模型（在后台静默加载，不阻塞应用启动）
+        setTimeout(() => {
+          console.log('[App] 尝试自动加载上次使用的 AI 模型...');
+          autoLoadLastModel().catch(error => {
+            console.log('[App] 自动加载模型失败:', error);
+          });
+        }, 100);
       } catch (error) {
         console.error('Failed to load data:', error);
       } finally {

@@ -13,22 +13,40 @@ node_modules
 # Build outputs
 dist
 dist-ssr
+build/
+.cache/
 *.local
 
 # Editor directories and files
+.idea
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 
+# OS generated files
+.DS_Store
+Thumbs.db
+*.tmp
+*.temp
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Trae IDE
+.trae/
+
 # Tauri - Rust
 target/
-Cargo.lock
 
 # Tauri - Android
 /src-tauri/gen/android/.gradle
@@ -45,6 +63,8 @@ Cargo.lock
 /src-tauri/gen/android/gradlew
 /src-tauri/gen/android/gradlew.bat
 /src-tauri/gen/android/buildSrc/build
+/src-tauri/gen/android/app/release-key.jks
+/src-tauri/gen/android/app/keystore.properties
 
 # Android Studio
 *.apk
@@ -60,43 +80,11 @@ proguard/
 *.jks
 *.keystore
 
-# OS generated files
-Thumbs.db
-.DS_Store
-*.tmp
-*.temp
+# Android SDK (local install)
+.android-sdk/
 
-# Test coverage
-coverage/
-.nyc_output/
-
-# Environment variables
-.env
-.env.local
-.env.*.local
-# Build outputs
-build/
-.cache/
-
-# Environment variables
-.env
-.env.local
-.env.*.local
-
-# OS files
-Thumbs.db
-.DS_Store
-
-# Trae IDE
-.trae/
-
-# Android build artifacts
-src-tauri/gen/android/.gradle
-src-tauri/gen/android/app/build
-src-tauri/gen/android/buildSrc/build
-src-tauri/gen/android/local.properties
-src-tauri/gen/android/app/release-key.jks
-src-tauri/gen/android/app/keystore.properties
+# Debug utilities (development only)
+src/utils/bankDebug.ts
 
 # Build summary and reference files
 gguf-build-summary.md

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuestionBankStore } from '../store/questionBankStore';
 import { isBuiltInBank } from '../utils/builtInBanks';
@@ -10,9 +10,11 @@ import { fetchBankIndex, checkBankUpdate, findBankInIndex } from '../utils/bankI
 const ManageBanks: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { banks, deleteBank, updateBankWithSha } = useQuestionBankStore();
+  const { banks, deleteBank, updateBankWithSha, loadBanks } = useQuestionBankStore();
   const { showSuccess, showWarning, showInfo, showError } = useToast();
   const safeArea = useSafeArea();
+  const banksRef = useRef(banks);
+  banksRef.current = banks;
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [bankToDelete, setBankToDelete] = useState<string | null>(null);
@@ -24,13 +26,29 @@ const ManageBanks: React.FC = () => {
     builtIn: true
   });
 
-  // 使用统一的 bank-index.json 获取远程题库信息
+  // 刷新：获取远程索引 + 重新加载本地题库
   const fetchRemoteBanks = useCallback(async () => {
     setLoadingRemote(true);
     try {
-      const index = await fetchBankIndex();
+      const [index] = await Promise.all([
+        fetchBankIndex(),
+        loadBanks()
+      ]);
       if (index) {
         setBankIndex(index);
+        let updateCount = 0;
+        const currentBanks = banksRef.current;
+        for (const bank of currentBanks) {
+          const updateInfo = checkBankUpdate(bank, index);
+          if (updateInfo.hasUpdate || updateInfo.hasImageUpdate) {
+            updateCount++;
+          }
+        }
+        if (updateCount > 0) {
+          showInfo(`刷新完成，${updateCount} 个题库有更新`);
+        } else {
+          showSuccess('刷新完成，所有题库均为最新');
+        }
       } else {
         showError('无法获取远程题库信息');
       }
@@ -40,11 +58,12 @@ const ManageBanks: React.FC = () => {
     } finally {
       setLoadingRemote(false);
     }
-  }, [showError]);
+  }, [loadBanks, showError, showSuccess, showInfo]);
 
   useEffect(() => {
     fetchRemoteBanks();
-  }, [fetchRemoteBanks]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleGoBack = () => {
     if (window.history.length > 1 && location.key !== 'default') {

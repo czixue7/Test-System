@@ -456,25 +456,36 @@ sdk.dir=C:\\Users\\<用户名>\\AppData\\Local\\Android\\Sdk
 
 ## 下载安装
 
-### Windows 桌面端 v0.3.5
-- **安装包**: `答题测试库_0.3.5_x64-setup.exe` (~5MB)
+### Windows 桌面端 v0.3.8
+- **安装包**: `答题测试库_0.3.8_x64-setup.exe` (~5MB)
 - 支持 Windows 10/11 64位系统
 - 下载地址：[Releases](https://github.com/czixue7/Test-System/releases)
 
-### Android 移动端 v0.3.5
-- **ARM64 版本**: `Answer_Test_v0.3.5-arm64-release.apk` (~11MB) - 推荐，性能更好
-- **Universal 版本**: `Answer_Test_v0.3.5-universal-release.apk` (~38MB) - 兼容所有架构
+### Android 移动端 v0.3.8
+- **ARM64 版本**: `Answer_Test_v0.3.8-arm64-release.apk` (~11MB) - 推荐，性能更好
+- **Universal 版本**: `Answer_Test_v0.3.8-universal-release.apk` (~38MB) - 兼容所有架构
 - 支持 Android 8.0+ 系统
 - 下载地址：[Releases](https://github.com/czixue7/Test-System/releases)
 
-## 最新更新 (v0.3.7)
+## 最新更新 (v0.3.8)
 
+- **JSON 模板错误修复**：修复规范题库 JSON 模板格式错误，统一所有题库结构
+- **选择题判题逻辑修复**：多选题部分正确时显示"部分正确"，统一所有页面判题逻辑
+- **GitHub 题库获取修复**：修复从 GitHub 获取题库不完整的问题
+- **题库更新检测修复**：修复相同文件误报更新的问题，优化哈希值比对逻辑
+- **题库排序修复**：实现字典式排序，数字、字母、汉字逐字对应比较
+- **本地题库持久化修复**：修复本地导入题库退出后丢失的问题，使用 Tauri Store 持久化
+- **安全区域检测完善**：三层降级检测策略，修复状态栏/导航栏遮挡，支持绝大多数 Android/iOS 设备
+- **键盘检测完善**：visualViewport 精确检测 + 动态阈值 + 状态防抖，修复键盘遮挡输入框问题
+- **统一边距管理**：新增 `useInsets` Hook，整合安全区域和键盘边距
+
+## 历史更新
+
+### v0.3.7
 - **下载进度实时显示**：修复下载安装包时进度条不显示进度的问题，使用流式下载实现实时进度推送
 - **更新检测增强**：除版本号外新增哈希值比对，同一版本的不同构建也能被检测为更新
 - **顺序练题颜色显示修复**：修复固定判题提交后错误答案输入框显示绿色的 bug
 - **考试结果页面布局修复**：移除底部多余的空白遮挡区域
-
-## 历史更新
 
 ### v0.3.5
 - **批量 AI 判题优化**：简化 prompt 类型，提高判题效率
