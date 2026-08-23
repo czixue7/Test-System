@@ -22,7 +22,7 @@ const Import: React.FC = () => {
   "questions": [
     {
       "type": "single-choice",
-      "content": "题目内容",
+      "content": "单选题题目内容",
       "options": [
         {"id": "A", "content": "选项 A 内容"},
         {"id": "B", "content": "选项 B 内容"},
@@ -44,24 +44,22 @@ const Import: React.FC = () => {
       ],
       "correctAnswer": ["A", "B"],
       "score": 10,
-      "explanation": "答案解析"
+      "explanation": "答案解析（可选）"
     },
     {
       "type": "fill-in-blank",
-      "content": "填空题题目内容",
+      "content": "填空题题目内容，使用 ______ 表示空格",
       "correctAnswer": ["答案 1", "答案 2"],
       "score": 10,
-      "explanation": "答案解析"
+      "allowDisorder": true,
+      "explanation": "答案解析（可选）"
     },
     {
       "type": "subjective",
       "content": "主观题题目内容",
-      "correctAnswer": {
-        "text": "参考答案",
-        "images": ["图片 URL（可选）"]
-      },
+      "correctAnswer": "参考答案文本",
       "score": 10,
-      "explanation": "答案解析"
+      "explanation": "答案解析（可选）"
     }
   ]
 }`;
@@ -107,10 +105,13 @@ const Import: React.FC = () => {
           questions: data.questions.map((q: any) => ({
             id: Date.now().toString(36) + Math.random().toString(36).substr(2),
             type: q.type,
+            question: q.question,
             content: q.content,
             options: q.options,
             correctAnswer: q.correctAnswer,
             score: q.score || 1,
+            category: q.category || 'default',
+            difficulty: q.difficulty || 'medium',
             explanation: q.explanation,
             images: q.images,
             allowDisorder: q.allowDisorder

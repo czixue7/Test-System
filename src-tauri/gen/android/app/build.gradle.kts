@@ -23,6 +23,11 @@ android {
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
+        
+        // 只构建 arm64-v8a 架构
+        ndk {
+            abiFilters.add("arm64-v8a")
+        }
     }
 
 
@@ -82,6 +87,13 @@ android {
 
 rust {
     rootDirRel = "../../../"
+}
+
+// 禁用 rustBuild 任务（Rust 库已预先编译好，直接使用 jniLibs 中的 .so 文件）
+tasks.whenTaskAdded {
+    if (name.contains("rustBuild")) {
+        enabled = false
+    }
 }
 
 dependencies {

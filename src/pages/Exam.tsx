@@ -216,7 +216,7 @@ const Exam: React.FC = () => {
       userAnswers.forEach((answer) => {
         const hasAnswered = answer.answer !== '' && 
           (!Array.isArray(answer.answer) || answer.answer.length > 0);
-        if (hasAnswered && !answer.isCorrect) {
+        if (hasAnswered && answer.isCorrect !== 2) {
           const question = questions.find(q => q.id === answer.questionId);
           if (question) {
             wrongQuestionsInExam.push(question);
@@ -378,15 +378,14 @@ const Exam: React.FC = () => {
               let bgClass = 'bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700';
               if (isSelected) bgClass = 'bg-blue-50 border-blue-500 dark:bg-blue-900/30 dark:border-blue-400';
               return (
-                <button
+                <div
                   key={option.id}
                   onClick={() => !isGrading && setAnswer(currentQuestion.id, option.id)}
-                  disabled={isGrading}
-                  className={`w-full p-3 rounded-lg text-left border-2 transition-all text-gray-800 dark:text-gray-200 ${bgClass} ${isGrading ? 'cursor-not-allowed opacity-70' : ''}`}
+                  className={`w-full p-3 rounded-lg text-left border-2 transition-all text-gray-800 dark:text-gray-200 ${bgClass} ${isGrading ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
                 >
                   <span className="font-medium mr-2">{option.id}.</span>
                   <span className="selectable">{option.content}</span>
-                </button>
+                </div>
               );
             })}
           </div>
@@ -400,7 +399,7 @@ const Exam: React.FC = () => {
               let bgClass = 'bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700';
               if (isSelected) bgClass = 'bg-blue-50 border-blue-500 dark:bg-blue-900/30 dark:border-blue-400';
               return (
-                <button
+                <div
                   key={option.id}
                   onClick={() => {
                     if (isGrading) return;
@@ -409,12 +408,11 @@ const Exam: React.FC = () => {
                       : [...selected, option.id];
                     setAnswer(currentQuestion.id, newSelected);
                   }}
-                  disabled={isGrading}
-                  className={`w-full p-3 rounded-lg text-left border-2 transition-all text-gray-800 dark:text-gray-200 ${bgClass} ${isGrading ? 'cursor-not-allowed opacity-70' : ''}`}
+                  className={`w-full p-3 rounded-lg text-left border-2 transition-all text-gray-800 dark:text-gray-200 ${bgClass} ${isGrading ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
                 >
                   <span className="font-medium mr-2">{option.id}.</span>
                   <span className="selectable">{option.content}</span>
-                </button>
+                </div>
               );
             })}
           </div>
@@ -434,9 +432,9 @@ const Exam: React.FC = () => {
                   newAnswers[idx] = e.target.value;
                   setAnswer(currentQuestion.id, newAnswers);
                 }}
-                disabled={isGrading}
+                readOnly={isGrading}
                 placeholder={`空 ${idx + 1}`}
-                className={`w-full p-3 border-2 border-transparent rounded-lg bg-gray-100 dark:bg-gray-700 focus:border-blue-300 focus:outline-none text-gray-800 dark:text-gray-200 transition-colors duration-300 ${isGrading ? 'cursor-not-allowed opacity-70' : ''}`}
+                className={`w-full p-3 border-2 border-transparent rounded-lg bg-gray-100 dark:bg-gray-700 focus:border-blue-300 focus:outline-none text-gray-800 dark:text-gray-200 transition-colors duration-300 ${isGrading ? 'cursor-not-allowed opacity-70 pointer-events-none' : ''}`}
               />
             ))}
           </div>
@@ -446,10 +444,10 @@ const Exam: React.FC = () => {
           <textarea
             value={currentAnswer as string || ''}
             onChange={(e) => !isGrading && setAnswer(currentQuestion.id, e.target.value)}
-            disabled={isGrading}
+            readOnly={isGrading}
             placeholder="请输入答案"
             rows={4}
-            className={`w-full p-3 border-2 border-transparent rounded-lg bg-gray-100 dark:bg-gray-700 focus:border-blue-300 focus:outline-none text-gray-800 dark:text-gray-200 transition-colors duration-300 ${isGrading ? 'cursor-not-allowed opacity-70' : ''}`}
+            className={`w-full p-3 border-2 border-transparent rounded-lg bg-gray-100 dark:bg-gray-700 focus:border-blue-300 focus:outline-none text-gray-800 dark:text-gray-200 transition-colors duration-300 ${isGrading ? 'cursor-not-allowed opacity-70 pointer-events-none' : ''}`}
           />
         )}
       </div>
@@ -474,7 +472,14 @@ const Exam: React.FC = () => {
         </div>
       </header>
 
-      <div ref={swipeRef} className="flex-1 overflow-y-auto touch-pan-y">
+      <div 
+        ref={swipeRef} 
+        className="flex-1 overflow-y-auto"
+        style={{ 
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehavior: 'contain'
+        }}
+      >
         <div 
           className={`max-w-lg mx-auto px-4 py-4 transition-all duration-300 ${isKeyboardOpen ? 'pb-32' : 'pb-24'}`}
           style={{ paddingTop: safeArea.top + 48 }}
@@ -499,7 +504,9 @@ const Exam: React.FC = () => {
               </div>
             </div>
           )}
-          {renderQuestionContent()}
+          <div className="overflow-visible">
+            {renderQuestionContent()}
+          </div>
         </div>
       </div>
 

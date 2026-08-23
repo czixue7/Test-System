@@ -18,7 +18,7 @@ const Result: React.FC = () => {
   const [viewerInitialIndex, setViewerInitialIndex] = useState(0);
   const [sourceRect, setSourceRect] = useState<DOMRect | null>(null);
   const navRef = useRef<HTMLDivElement>(null);
-  const swipeRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const { isOpen: isKeyboardOpen, bottom: keyboardBottom } = useKeyboard();
   const safeArea = useSafeArea();
 
@@ -58,7 +58,7 @@ const Result: React.FC = () => {
     );
   }
 
-  useSwipeElement(swipeRef, {
+  useSwipeElement(contentRef, {
     onSwipeLeft: () => {
       if (showDetail) {
         setCurrentIndex(Math.min(record.questions.length - 1, currentIndex + 1));
@@ -72,8 +72,9 @@ const Result: React.FC = () => {
     threshold: 50,
   });
 
-  const correctCount = record.answers.filter(a => a.isCorrect).length;
-  const wrongCount = record.answers.filter(a => !a.isCorrect && a.answer !== '' && (!Array.isArray(a.answer) || a.answer.length > 0)).length;
+  const correctCount = record.answers.filter(a => a.isCorrect === 2).length;
+  const partialCount = record.answers.filter(a => a.isCorrect === 1).length;
+  const wrongCount = record.answers.filter(a => a.isCorrect === 0 && a.answer !== '' && (!Array.isArray(a.answer) || a.answer.length > 0)).length;
   const unansweredCount = record.answers.filter(a => a.answer === '' || (Array.isArray(a.answer) && a.answer.length === 0)).length;
 
   if (showDetail) {
@@ -352,11 +353,10 @@ const Result: React.FC = () => {
 
     return (
       <div 
-        ref={swipeRef}
-        className="min-h-screen bg-gray-50 dark:bg-gray-900"
+        className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col"
       >
         <header 
-          className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg dark:from-blue-700 dark:to-blue-800 transition-colors"
+          className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg dark:from-blue-700 dark:to-blue-800 transition-colors flex-shrink-0"
           style={{ paddingTop: safeArea.top }}
         >
           <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
@@ -369,28 +369,38 @@ const Result: React.FC = () => {
         </header>
 
         <div 
-          className="max-w-lg mx-auto px-4 py-6"
-          style={{ paddingTop: safeArea.top + 72, paddingBottom: safeArea.bottom + 100 }}
+          ref={contentRef}
+          className="flex-1 overflow-y-auto"
+          style={{ 
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehavior: 'contain',
+            paddingTop: safeArea.top + 72,
+            paddingBottom: safeArea.bottom + 120
+          }}
         >
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-6">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-sm text-gray-500 dark:text-gray-400">第 {currentIndex + 1} 题 / 共 {record.questions.length} 题</span>
-              <span className={`px-2 py-1 rounded text-xs font-medium ${
-                userAnswer?.isCorrect === 2
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400'
-                  : userAnswer?.isCorrect === 1
-                    ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-400'
-                    : 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400'
-              }`}>
-                {userAnswer?.isCorrect === 2
-                  ? '正确'
-                  : userAnswer?.isCorrect === 1
-                    ? '部分正确'
-                    : '错误'}
-              </span>
+          <div className="max-w-lg mx-auto px-4 py-6">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-6">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-sm text-gray-500 dark:text-gray-400">第 {currentIndex + 1} 题 / 共 {record.questions.length} 题</span>
+                <span className={`px-2 py-1 rounded text-xs font-medium ${
+                  userAnswer?.isCorrect === 2
+                    ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400'
+                    : userAnswer?.isCorrect === 1
+                      ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-400'
+                      : 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400'
+                }`}>
+                  {userAnswer?.isCorrect === 2
+                    ? '正确'
+                    : userAnswer?.isCorrect === 1
+                      ? '部分正确'
+                      : '错误'}
+                </span>
+              </div>
+              
+              <div className="overflow-visible">
+                {renderQuestionContent()}
+              </div>
             </div>
-            
-            {renderQuestionContent()}
           </div>
         </div>
 
@@ -509,16 +519,20 @@ const Result: React.FC = () => {
               <div className="text-xs text-gray-500 dark:text-gray-400">用时</div>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            <div className="p-3 bg-green-50 dark:bg-green-900/30 rounded-lg">
+          <div className="grid grid-cols-4 gap-2 mb-4">
+            <div className="p-2 bg-green-50 dark:bg-green-900/30 rounded-lg">
               <div className="text-xl font-bold text-green-600 dark:text-green-400">{correctCount}</div>
               <div className="text-xs text-gray-500 dark:text-gray-400">正确</div>
             </div>
-            <div className="p-3 bg-red-50 dark:bg-red-900/30 rounded-lg">
+            <div className="p-2 bg-orange-50 dark:bg-orange-900/30 rounded-lg">
+              <div className="text-xl font-bold text-orange-500 dark:text-orange-400">{partialCount}</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">部分正确</div>
+            </div>
+            <div className="p-2 bg-red-50 dark:bg-red-900/30 rounded-lg">
               <div className="text-xl font-bold text-red-600 dark:text-red-400">{wrongCount}</div>
               <div className="text-xs text-gray-500 dark:text-gray-400">错误</div>
             </div>
-            <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
               <div className="text-xl font-bold text-gray-400 dark:text-gray-500">{unansweredCount}</div>
               <div className="text-xs text-gray-500 dark:text-gray-400">未答</div>
             </div>

@@ -65,7 +65,7 @@ const currentVersion = '0.3.7';
  * 当前版本哈希（每次构建时更新）
  * 用于区分同一版本的不同构建
  */
-export const CURRENT_VERSION_HASH = 'a1b2c3d4'; // 每次发布时更新此值
+export const CURRENT_VERSION_HASH = '20250321f'; // 每次发布时更新此值
 
 /**
  * 检查当前系统架构

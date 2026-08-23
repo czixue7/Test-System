@@ -14,17 +14,31 @@ export function useSwipe(options: UseSwipeOptions) {
   const touchEndX = useRef(0);
   const touchEndY = useRef(0);
   const isSwiping = useRef(false);
+  const isScrolling = useRef(false);
 
   const handleTouchStart = useCallback((e: TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
     touchStartY.current = e.touches[0].clientY;
     isSwiping.current = false;
+    isScrolling.current = false;
   }, []);
 
   const handleTouchMove = useCallback((e: TouchEvent) => {
     const deltaX = e.touches[0].clientX - touchStartX.current;
     const deltaY = e.touches[0].clientY - touchStartY.current;
     
+    // 如果已经开始垂直滚动，不再处理水平滑动
+    if (isScrolling.current) {
+      return;
+    }
+    
+    // 如果垂直移动距离大于水平移动距离，认为是滚动操作
+    if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
+      isScrolling.current = true;
+      return;
+    }
+    
+    // 只有水平移动距离明显大于垂直移动距离时，才认为是滑动操作
     if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
       isSwiping.current = true;
       if (preventDefaultTouch) {
@@ -37,6 +51,12 @@ export function useSwipe(options: UseSwipeOptions) {
   }, [preventDefaultTouch]);
 
   const handleTouchEnd = useCallback(() => {
+    // 如果正在滚动，不处理滑动
+    if (isScrolling.current) {
+      isScrolling.current = false;
+      return;
+    }
+    
     if (!isSwiping.current) return;
     
     const deltaX = touchEndX.current - touchStartX.current;
@@ -99,7 +119,7 @@ export function useSwipe(options: UseSwipeOptions) {
       if (!element) return;
       
       element.addEventListener('touchstart', handleTouchStart, { passive: true });
-      element.addEventListener('touchmove', handleTouchMove, { passive: !preventDefaultTouch });
+      element.addEventListener('touchmove', handleTouchMove, { passive: true });
       element.addEventListener('touchend', handleTouchEnd);
       element.addEventListener('mousedown', handleMouseDown);
       element.addEventListener('mousemove', handleMouseMove);
@@ -127,6 +147,7 @@ export function useSwipeElement(
   const touchEndX = useRef(0);
   const touchEndY = useRef(0);
   const isSwiping = useRef(false);
+  const isScrolling = useRef(false);
 
   // 检查目标元素是否是输入框或文本域
   const isInputElement = (target: EventTarget | null): boolean => {
@@ -149,11 +170,13 @@ export function useSwipeElement(
       // 如果触摸的是输入框，不处理滑动
       if (isInputElement(e.target)) {
         isSwiping.current = false;
+        isScrolling.current = false;
         return;
       }
       touchStartX.current = e.touches[0].clientX;
       touchStartY.current = e.touches[0].clientY;
       isSwiping.current = false;
+      isScrolling.current = false;
     };
 
     const handleTouchMove = (e: TouchEvent) => {
@@ -161,9 +184,32 @@ export function useSwipeElement(
       if (isInputElement(e.target)) {
         return;
       }
+      
       const deltaX = e.touches[0].clientX - touchStartX.current;
       const deltaY = e.touches[0].clientY - touchStartY.current;
+      
+      // 如果已经开始垂直滚动，不再处理水平滑动
+      if (isScrolling.current) {
+        return;
+      }
+      
+      // 如果已经开始水平滑动，阻止默认行为（防止页面滚动）
+      if (isSwiping.current) {
+        if (preventDefaultTouch) {
+          e.preventDefault();
+        }
+        touchEndX.current = e.touches[0].clientX;
+        touchEndY.current = e.touches[0].clientY;
+        return;
+      }
 
+      // 如果垂直移动距离明显大于水平移动距离，认为是滚动操作
+      if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 5) {
+        isScrolling.current = true;
+        return;
+      }
+
+      // 只有水平移动距离明显大于垂直移动距离时，才认为是滑动操作
       if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
         isSwiping.current = true;
         if (preventDefaultTouch) {
@@ -176,6 +222,12 @@ export function useSwipeElement(
     };
 
     const handleTouchEnd = () => {
+      // 如果正在滚动，不处理滑动
+      if (isScrolling.current) {
+        isScrolling.current = false;
+        return;
+      }
+      
       if (!isSwiping.current) return;
 
       const deltaX = touchEndX.current - touchStartX.current;
@@ -237,7 +289,7 @@ export function useSwipeElement(
     };
 
     element.addEventListener('touchstart', handleTouchStart, { passive: true });
-    element.addEventListener('touchmove', handleTouchMove, { passive: !preventDefaultTouch });
+    element.addEventListener('touchmove', handleTouchMove, { passive: true });
     element.addEventListener('touchend', handleTouchEnd);
     element.addEventListener('mousedown', handleMouseDown);
     element.addEventListener('mousemove', handleMouseMove);
