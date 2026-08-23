@@ -130,17 +130,28 @@ export function isArm64Supported(): boolean {
 /**
  * 解析 GitHub Release body 中的版本哈希
  * 支持格式：hash:abc123 或 <!-- hash:abc123 -->
+ * 支持 8~16 位十六进制哈希
  */
 function parseVersionHash(body: string): string | null {
   if (!body) return null;
   
-  // 匹配 hash:xxx 或 <!-- hash:xxx --> 格式
-  const hashMatch = body.match(/hash[:\s]+([a-f0-9]{8})/i);
+  // 匹配 hash:xxx 或 <!-- hash:xxx --> 格式（8~16 位十六进制）
+  const hashMatch = body.match(/hash[:\s]+([a-f0-9]{8,16})/i);
   if (hashMatch) {
     return hashMatch[1].toLowerCase();
   }
   
   return null;
+}
+
+/**
+ * 统一哈希比较（取前 8 位进行比较）
+ * 避免因哈希长度不一致导致的误判
+ */
+function hashEquals(hash1: string, hash2: string): boolean {
+  const h1 = (hash1 || '').toLowerCase().substring(0, 8);
+  const h2 = (hash2 || '').toLowerCase().substring(0, 8);
+  return h1 === h2 && h1.length >= 8;
 }
 
 /**
@@ -197,7 +208,7 @@ export async function checkUpdate(): Promise<UpdateInfo> {
     if (versionCompare > 0) {
       hasUpdate = true;
       updateReason = `版本号更新 (${currentVersion} -> ${latestVersion})`;
-    } else if (versionCompare === 0 && latestHash && latestHash !== CURRENT_VERSION_HASH) {
+    } else if (versionCompare === 0 && latestHash && !hashEquals(latestHash, CURRENT_VERSION_HASH)) {
       hasUpdate = true;
       updateReason = `同一版本的新构建 (哈希: ${CURRENT_VERSION_HASH} -> ${latestHash})`;
     }
