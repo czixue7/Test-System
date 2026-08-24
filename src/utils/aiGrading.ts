@@ -2,6 +2,7 @@ import { calculateSimilarity, normalizeText } from './similarity';
 import { apiGradingService } from './apiGradingService';
 import { useSettingsStore } from '../store/settingsStore';
 import { GradingProvider, BlankResult } from '../types';
+import { normalizeAnswer } from './answerNormalize';
 
 export type GradingMode = 'ai' | 'fixed' | 'ai-fallback';
 
@@ -70,11 +71,7 @@ export async function autoLoadLastModel(): Promise<boolean> {
 }
 
 function normalizeForFillBlank(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/\s+/g, '')
-    .replace(/[，。！？；：""''、,.!?;:"'、\-—…·～～《》【】（）()\[\]（）]/g, '')
-    .trim();
+  return normalizeAnswer(text);
 }
 
 function generateFillBlankExplanation(
@@ -503,8 +500,8 @@ function parseFillBlankResponse(
     for (let i = 0; i < correctAnswers.length; i++) {
       const correctAns = correctAnswers[i];
       const userAns = userAnswers[i] || '';
-      const normalizedCorrect = correctAns.toLowerCase().trim();
-      const normalizedUser = userAns.toLowerCase().trim();
+      const normalizedCorrect = normalizeAnswer(correctAns);
+      const normalizedUser = normalizeAnswer(userAns);
       const isBlankCorrect = normalizedCorrect === normalizedUser;
       blankResults.push({
         userAnswer: userAns,
@@ -538,11 +535,11 @@ function fallbackFillBlank(
   const blankResults: BlankResult[] = [];
 
   if (allowDisorder) {
-    const correctAnswerSet = new Set(correctAnswers.map(a => a.toLowerCase().trim()));
+    const correctAnswerSet = new Set(correctAnswers.map(a => normalizeAnswer(a)));
     
     for (let i = 0; i < correctAnswers.length; i++) {
       const userAns = userAnswers[i] || '';
-      const normalizedUser = userAns.toLowerCase().trim();
+      const normalizedUser = normalizeAnswer(userAns);
       const isBlankCorrect = correctAnswerSet.has(normalizedUser) && normalizedUser !== '';
       
       totalScore += isBlankCorrect ? scorePerBlank : 0;
@@ -550,7 +547,7 @@ function fallbackFillBlank(
 
       let matchedCorrectAnswer: string;
       if (isBlankCorrect) {
-        matchedCorrectAnswer = correctAnswers.find(a => a.toLowerCase().trim() === normalizedUser) || '';
+        matchedCorrectAnswer = correctAnswers.find(a => normalizeAnswer(a) === normalizedUser) || '';
       } else {
         matchedCorrectAnswer = correctAnswers[i] || '';
       }
@@ -565,8 +562,8 @@ function fallbackFillBlank(
     for (let i = 0; i < correctAnswers.length; i++) {
       const correctAns = correctAnswers[i];
       const userAns = userAnswers[i] || '';
-      const normalizedCorrect = correctAns.toLowerCase().trim();
-      const normalizedUser = userAns.toLowerCase().trim();
+      const normalizedCorrect = normalizeAnswer(correctAns);
+      const normalizedUser = normalizeAnswer(userAns);
       const isBlankCorrect = normalizedCorrect === normalizedUser;
 
       totalScore += isBlankCorrect ? scorePerBlank : 0;
@@ -985,16 +982,16 @@ ${correctAnswersArray.map((_, i) => `- 第${i + 1}空：正确/错误`).join('\n
         // 生成 blankResults
         const blankResults: BlankResult[] = [];
         if (item.allowDisorder) {
-          const correctAnswerSet = new Set(correctAnswersArray.map(a => a.toLowerCase().trim()));
+          const correctAnswerSet = new Set(correctAnswersArray.map(a => normalizeAnswer(a)));
           
           for (let i = 0; i < correctAnswersArray.length; i++) {
             const userAns = userAnswersArray[i] || '';
-            const normalizedUser = userAns.toLowerCase().trim();
+            const normalizedUser = normalizeAnswer(userAns);
             const isBlankCorrect = correctAnswerSet.has(normalizedUser) && normalizedUser !== '';
             
             let matchedCorrectAnswer: string;
             if (isBlankCorrect) {
-              matchedCorrectAnswer = correctAnswersArray.find(a => a.toLowerCase().trim() === normalizedUser) || '';
+              matchedCorrectAnswer = correctAnswersArray.find(a => normalizeAnswer(a) === normalizedUser) || '';
             } else {
               matchedCorrectAnswer = correctAnswersArray[i] || '';
             }
@@ -1009,8 +1006,8 @@ ${correctAnswersArray.map((_, i) => `- 第${i + 1}空：正确/错误`).join('\n
           for (let i = 0; i < correctAnswersArray.length; i++) {
             const correctAns = correctAnswersArray[i];
             const userAns = userAnswersArray[i] || '';
-            const normalizedCorrect = correctAns.toLowerCase().trim();
-            const normalizedUser = userAns.toLowerCase().trim();
+            const normalizedCorrect = normalizeAnswer(correctAns);
+            const normalizedUser = normalizeAnswer(userAns);
             const isBlankCorrect = normalizedCorrect === normalizedUser;
 
             blankResults.push({
