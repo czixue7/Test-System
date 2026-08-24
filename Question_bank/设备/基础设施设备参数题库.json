@@ -65,10 +65,10 @@
       "content": "本数据中心UPS支持的并机模式为______。",
       "options": [],
       "correctAnswer": [
-        "单机/2/3/4并机"
+        "2/3/4并机"
       ],
       "score": 5,
-      "explanation": "华为UPS支持单机/2/3/4并机。",
+      "explanation": "华为UPS支持2/3/4并机。",
       "allowDisorder": false
     },
     {
