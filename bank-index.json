@@ -126,14 +126,6 @@
       "imagePath": "Question_bank/测试题库/image",
       "sha": "60c5f78bad6159b99135eea21599131eb1ccbc7afad0101801e649d47861c3fb",
       "images": []
-    },
-    {
-      "name": "设备",
-      "filename": "基础设施设备参数题库.json",
-      "downloadUrl": "https://raw.githubusercontent.com/czixue7/Test-System/main/Question_bank/设备/基础设施设备参数题库.json",
-      "imagePath": "Question_bank/设备/image",
-      "sha": "60a6f31dffd6e273dde3e8c0178c69ff58268ea1",
-      "images": []
     }
   ]
 }
