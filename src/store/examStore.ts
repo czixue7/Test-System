@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { Question, ExamState, UserAnswer, QuestionResult, QuestionStatus, AnswerWithImages, BlankResult } from '../types';
 import { calculateSubjectiveScore } from '../utils/similarity';
+import { normalizeAnswer } from '../utils/answerNormalize';
 import { useSettingsStore } from './settingsStore';
 import {
   gradeFillBlankQuestion,
@@ -113,11 +114,11 @@ const checkAnswer = (question: Question, answer: string | string[]): { isCorrect
 
     if (allowDisorder) {
       // 乱序模式：检查每个用户答案是否存在于正确答案集合中
-      const correctAnswerSet = new Set(correctAnswers.map(a => a.toLowerCase().trim()));
+      const correctAnswerSet = new Set(correctAnswers.map(a => normalizeAnswer(a)));
       
       for (let i = 0; i < correctAnswers.length; i++) {
         const userAns = userAnswers[i] || '';
-        const normalizedUser = userAns.toLowerCase().trim();
+        const normalizedUser = normalizeAnswer(userAns);
         
         // 检查用户答案是否在正确答案集合中
         const isBlankCorrect = correctAnswerSet.has(normalizedUser) && normalizedUser !== '';
@@ -130,7 +131,7 @@ const checkAnswer = (question: Question, answer: string | string[]): { isCorrect
         let matchedCorrectAnswer: string;
         if (isBlankCorrect) {
           // 答案正确：显示匹配到的正确答案
-          matchedCorrectAnswer = correctAnswers.find(a => a.toLowerCase().trim() === normalizedUser) || '';
+          matchedCorrectAnswer = correctAnswers.find(a => normalizeAnswer(a) === normalizedUser) || '';
         } else {
           // 答案错误：显示该位置的标准答案（用于提示用户）
           matchedCorrectAnswer = correctAnswers[i] || '';
@@ -148,8 +149,8 @@ const checkAnswer = (question: Question, answer: string | string[]): { isCorrect
         const correctAns = correctAnswers[i];
         const userAns = userAnswers[i] || '';
 
-        const normalizedCorrect = correctAns.toLowerCase().trim();
-        const normalizedUser = userAns.toLowerCase().trim();
+        const normalizedCorrect = normalizeAnswer(correctAns);
+        const normalizedUser = normalizeAnswer(userAns);
         const isBlankCorrect = normalizedCorrect === normalizedUser;
 
         if (isBlankCorrect) {
@@ -300,11 +301,11 @@ export const checkAnswerWithAI = async (
     
     if (question.allowDisorder) {
       // 乱序模式：检查每个用户答案是否存在于正确答案集合中
-      const correctAnswerSet = new Set(correctAnswers.map(a => a.toLowerCase().trim()));
+      const correctAnswerSet = new Set(correctAnswers.map(a => normalizeAnswer(a)));
       
       for (let i = 0; i < correctAnswers.length; i++) {
         const userAns = userAnswers[i] || '';
-        const normalizedUser = userAns.toLowerCase().trim();
+        const normalizedUser = normalizeAnswer(userAns);
         
         // 检查用户答案是否在正确答案集合中
         const isBlankCorrect = correctAnswerSet.has(normalizedUser) && normalizedUser !== '';
@@ -313,7 +314,7 @@ export const checkAnswerWithAI = async (
         let matchedCorrectAnswer: string;
         if (isBlankCorrect) {
           // 答案正确：显示匹配到的正确答案
-          matchedCorrectAnswer = correctAnswers.find(a => a.toLowerCase().trim() === normalizedUser) || '';
+          matchedCorrectAnswer = correctAnswers.find(a => normalizeAnswer(a) === normalizedUser) || '';
         } else {
           // 答案错误：显示该位置的标准答案（用于提示用户）
           matchedCorrectAnswer = correctAnswers[i] || '';
@@ -330,8 +331,8 @@ export const checkAnswerWithAI = async (
       for (let i = 0; i < correctAnswers.length; i++) {
         const correctAns = correctAnswers[i];
         const userAns = userAnswers[i] || '';
-        const normalizedCorrect = correctAns.toLowerCase().trim();
-        const normalizedUser = userAns.toLowerCase().trim();
+        const normalizedCorrect = normalizeAnswer(correctAns);
+        const normalizedUser = normalizeAnswer(userAns);
         const isBlankCorrect = normalizedCorrect === normalizedUser;
         blankResults.push({
           userAnswer: userAns,
