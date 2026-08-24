@@ -31,6 +31,13 @@
   - 修复本地导入题库退出后丢失的问题
   - 使用 Tauri Store 持久化存储本地题库数据
   - 重新进入软件后本地导入的题库依然保留
+- **更新检测缓存问题修复**：
+  - 修复 GitHub Release body 中构建哈希 `20260824f` 被截断为 `20260824` 导致误识别更新的问题
+  - **根因**：Android WebView 的 HTTP 缓存返回了旧的 GitHub API 响应，前端 `fetch()` 无法有效绕过
+  - **方案**：将 GitHub API 调用从前端 `fetch()` 移到 Rust 后端 `check_github_update` 命令，使用 `reqwest` 直接请求，彻底绕过 WebView 缓存层
+  - Rust 端解析 JSON 并提取哈希（`parse_hash_from_body`），返回结构化数据给前端
+  - 非 Tauri 环境保留 `fetch()` 作为回退
+  - 清理了之前会话中修改 `RustWebView.kt`（自动生成文件）的无效方案 — 该文件在重新构建时被覆盖
 - **安全区域检测完善**：
   - 重写 `useSafeArea`，采用三层降级检测策略（CSS env() → screen 差值 → 设备默认值）
   - 修复状态栏遮挡、底部导航栏遮挡问题，支持绝大多数 Android/iOS 设备
@@ -54,6 +61,70 @@
   - 底部边距自动取安全区域和键盘高度的较大值
 
 ### 技术细节
+
+#### 更新检测缓存问题修复
+
+**修改文件：** `src-tauri/src/lib.rs`、`src/utils/updater.ts`
+
+**问题根因：**
+
+GitHub Release body 中构建哈希为 `<!-- hash:20260824f -->`，但应用只能解析出 `20260824`，导致哈希不匹配误报更新。经排查发现正则表达式 `/hash[:\s]+([a-f0-9]+)/i` 本身没有问题（`f` 是合法的十六进制字符，Node.js 实测正确匹配），真正原因是 **Android WebView 的 HTTP 缓存**返回了旧的 GitHub API 响应。
+
+之前会话尝试修改 `RustWebView.kt` 来禁用 WebView 缓存，但该文件头部标注了 `/* THIS FILE IS AUTO-GENERATED. DO NOT MODIFY!! */`，重新构建 APK 时修改被覆盖丢失。
+
+**解决方案：** 将 GitHub API 调用移到 Rust 后端，完全绕过 WebView 缓存层。
+
+**Rust 后端新增：**
+
+```rust
+// src-tauri/src/lib.rs
+
+fn parse_hash_from_body(body: &str) -> Option<String> {
+    let lower = body.to_lowercase();
+    let pos = lower.find("hash")?;
+    let after = &body[pos + 4..];
+    let trimmed = after.trim_start_matches(|c: char| c == ':' || c.is_whitespace());
+    let hash: String = trimmed.chars()
+        .take_while(|c| c.is_ascii_hexdigit())
+        .collect();
+    if hash.is_empty() { None } else { Some(hash.to_lowercase()) }
+}
+
+#[tauri::command]
+async fn check_github_update() -> Result<UpdateCheckResult, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+    let response = client
+        .get("https://api.github.com/repos/czixue7/Test-System/releases/latest")
+        .header("Accept", "application/vnd.github.v3+json")
+        .header("User-Agent", "Answer-Test-App")
+        .send().await?;
+    // 解析 JSON，提取 tag_name、body 中的 hash、assets 列表
+    // 返回结构化数据给前端
+}
+```
+
+**前端调用：**
+
+```typescript
+// src/utils/updater.ts
+
+export async function checkUpdate(): Promise<UpdateInfo> {
+  if (isTauri()) {
+    // 优先通过 Rust 后端获取，绕过 WebView 缓存
+    const result = await invoke('check_github_update');
+    latestVersion = result.latest_version;
+    latestHash = result.version_hash;
+    assets = result.assets;
+  } else {
+    // 非 Tauri 环境回退到 fetch
+    const response = await fetch(apiUrl, { cache: 'no-store' });
+    // ...
+  }
+  // 版本号和哈希比较逻辑不变
+}
+```
 
 #### 安全区域三层降级检测
 

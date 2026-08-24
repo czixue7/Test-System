@@ -130,57 +130,66 @@ export function isArm64Supported(): boolean {
 /**
  * 解析 GitHub Release body 中的版本哈希
  * 支持格式：hash:abc123 或 <!-- hash:abc123 -->
- * 支持 8~16 位十六进制哈希
  */
 function parseVersionHash(body: string): string | null {
   if (!body) return null;
-  
-  // 匹配 hash:xxx 或 <!-- hash:xxx --> 格式（8~16 位十六进制）
-  const hashMatch = body.match(/hash[:\s]+([a-f0-9]{8,16})/i);
+  const hashMatch = body.match(/hash[:\s]+([a-f0-9]+)/i);
   if (hashMatch) {
     return hashMatch[1].toLowerCase();
   }
-  
   return null;
 }
 
 /**
- * 统一哈希比较（取前 8 位进行比较）
- * 避免因哈希长度不一致导致的误判
- */
-function hashEquals(hash1: string, hash2: string): boolean {
-  const h1 = (hash1 || '').toLowerCase().substring(0, 8);
-  const h2 = (hash2 || '').toLowerCase().substring(0, 8);
-  return h1 === h2 && h1.length >= 8;
-}
-
-/**
  * 检查更新
- * 从 GitHub Releases 获取最新版本信息
- * 同时比较版本号和哈希值
+ * 优先通过 Rust 后端获取 GitHub Release 信息（绕过 WebView 缓存）
+ * 非 Tauri 环境回退到 fetch
  */
 export async function checkUpdate(): Promise<UpdateInfo> {
   console.log('[Updater] 开始检查更新...');
   console.log(`[Updater] 当前版本: ${currentVersion}, 当前哈希: ${CURRENT_VERSION_HASH}`);
 
   try {
-    const response = await fetch('https://api.github.com/repos/czixue7/Test-System/releases/latest');
+    let latestVersion: string;
+    let latestHash: string | null;
+    let assets: { name: string; browser_download_url: string }[];
 
-    if (!response.ok) {
-      throw new Error(`无法获取版本信息: ${response.status}`);
+    if (isTauri()) {
+      console.log('[Updater] 使用 Rust 后端获取 GitHub Release 信息（绕过 WebView 缓存）');
+      const result = await invoke<{
+        latest_version: string;
+        version_hash: string | null;
+        assets: { name: string; browser_download_url: string }[];
+      }>('check_github_update');
+
+      latestVersion = result.latest_version;
+      latestHash = result.version_hash;
+      assets = result.assets || [];
+
+      console.log(`[Updater] Rust 后端返回: 版本=${latestVersion}, 哈希=${latestHash || '未提供'}`);
+    } else {
+      console.log('[Updater] 非 Tauri 环境，回退到 fetch');
+      const cacheBuster = `_t=${Date.now()}`;
+      const apiUrl = `https://api.github.com/repos/czixue7/Test-System/releases/latest?${cacheBuster}`;
+      const response = await fetch(apiUrl, {
+        cache: 'no-store',
+        headers: { 'Accept': 'application/vnd.github.v3+json' },
+      });
+      if (!response.ok) {
+        throw new Error(`无法获取版本信息: ${response.status}`);
+      }
+      const data = await response.json();
+      latestVersion = data.tag_name?.replace(/^v/, '') || '0.0.0';
+      latestHash = parseVersionHash(data.body);
+      assets = data.assets || [];
     }
 
-    const data = await response.json();
-    const latestVersion = data.tag_name?.replace(/^v/, '') || '0.0.0';
-    const latestHash = parseVersionHash(data.body);
-
     console.log(`[Updater] 最新版本: ${latestVersion}, 最新哈希: ${latestHash || '未提供'}`);
-    console.log(`[Updater] GitHub API 返回的资产数量: ${data.assets?.length || 0}`);
-    
-    // 打印所有资产名称用于调试
-    if (data.assets && Array.isArray(data.assets)) {
+    console.log(`[Updater] GitHub API 返回的资产数量: ${assets.length}`);
+
+    if (assets.length > 0) {
       console.log('[Updater] GitHub 可用资产列表:');
-      data.assets.forEach((asset: any, index: number) => {
+      assets.forEach((asset, index) => {
         console.log(`  [${index}] ${asset.name}`);
       });
     }
@@ -198,17 +207,14 @@ export async function checkUpdate(): Promise<UpdateInfo> {
     };
 
     const versionCompare = compareVersions(latestVersion, currentVersion);
-    
-    // 判断是否需要更新：
-    // 1. 版本号更高 -> 需要更新
-    // 2. 版本号相同但哈希值不同 -> 需要更新（同一版本的不同构建）
+
     let hasUpdate = false;
     let updateReason = '';
 
     if (versionCompare > 0) {
       hasUpdate = true;
       updateReason = `版本号更新 (${currentVersion} -> ${latestVersion})`;
-    } else if (versionCompare === 0 && latestHash && !hashEquals(latestHash, CURRENT_VERSION_HASH)) {
+    } else if (versionCompare === 0 && latestHash && latestHash !== CURRENT_VERSION_HASH) {
       hasUpdate = true;
       updateReason = `同一版本的新构建 (哈希: ${CURRENT_VERSION_HASH} -> ${latestHash})`;
     }
@@ -217,9 +223,7 @@ export async function checkUpdate(): Promise<UpdateInfo> {
 
     if (hasUpdate) {
       console.log('[Updater] 发现新版本或新构建');
-
-      // 获取适合当前平台的下载链接
-      const asset = getPlatformAsset(data.assets);
+      const asset = getPlatformAsset(assets);
 
       if (asset) {
         console.log(`[Updater] 找到适合的下载链接: ${asset.browser_download_url}`);
@@ -241,7 +245,6 @@ export async function checkUpdate(): Promise<UpdateInfo> {
       }
     } else {
       console.log('[Updater] 当前已是最新版本');
-      // 存储当前版本哈希
       storeVersionHash(CURRENT_VERSION_HASH);
       return {
         hasUpdate: false,
