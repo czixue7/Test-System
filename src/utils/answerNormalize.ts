@@ -2,13 +2,14 @@
  * 填空题答案标准化函数
  * 处理不影响答案正确性的格式差异：
  * 1. 全角转半角（Ａ→A, １→1, ，→,）
- * 2. 大小写统一
- * 3. 分隔符统一（/、，,|；; → /）
- * 4. 数字格式统一（去尾零：36.0→36, 36.50→36.5）
- * 5. 去除正号前缀、补全小数前0（.5→0.5）
- * 6. 去除首尾引号和简单括号
- * 7. 去除末尾标点
- * 8. 空格标准化
+ * 2. 数学符号统一（×→*, ÷→/, −→-）
+ * 3. 大小写统一
+ * 4. 分隔符统一（/、，,|；; → /）
+ * 5. 数字格式统一（去尾零：36.0→36, 36.50→36.5）
+ * 6. 去除正号前缀、补全小数前0（.5→0.5）
+ * 7. 去除首尾引号和简单括号
+ * 8. 去除末尾标点
+ * 9. 空格标准化
  */
 export function normalizeAnswer(text: string): string {
   if (!text) return '';
@@ -16,6 +17,9 @@ export function normalizeAnswer(text: string): string {
   return text
     .replace(/[\uFF01-\uFF5E]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
     .replace(/\u3000/g, ' ')
+    .replace(/[\u00D7\u2715\u2716\u2A2F]/g, '*')
+    .replace(/\u00F7/g, '/')
+    .replace(/\u2212/g, '-')
     .toLowerCase()
     .replace(/[、，,|；;]/g, '/')
     .replace(/\s*\/\s*/g, '/')
