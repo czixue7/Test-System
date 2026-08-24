@@ -7,6 +7,7 @@ import { useSwipeElement } from '../hooks/useSwipe';
 import { useKeyboard } from '../hooks/useKeyboard';
 import { useSafeArea } from '../hooks/useSafeArea';
 import ImageViewer from '../components/ImageViewer';
+import { normalizeAnswer } from '../utils/answerNormalize';
 
 const shuffleArray = <T,>(array: T[]): T[] => {
   const shuffled = [...array];
@@ -377,10 +378,10 @@ const Practice: React.FC = () => {
                 let isMatch = false;
                 if (allowDisorder) {
                   const correctAnswers = currentQuestion.correctAnswer as string[];
-                  const trimmedUserAnswer = userAnswer.trim();
-                  isMatch = correctAnswers.some(ans => String(ans).trim() === trimmedUserAnswer);
+                  const normalizedUserAnswer = normalizeAnswer(userAnswer);
+                  isMatch = correctAnswers.some(ans => normalizeAnswer(String(ans)) === normalizedUserAnswer);
                 } else {
-                  isMatch = userAnswer.trim() === String(correctAns).trim();
+                  isMatch = normalizeAnswer(userAnswer) === normalizeAnswer(String(correctAns));
                 }
                 
                 let inputClass = 'w-full p-3 border-2 border-transparent rounded-lg text-gray-800 dark:text-gray-100 dark:placeholder-gray-400 transition-colors duration-300 outline-none focus:border-blue-300 focus:outline-none';
