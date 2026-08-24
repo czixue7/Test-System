@@ -6,14 +6,111 @@ use tauri::ipc::Channel;
 use tauri::plugin::{Builder as PluginBuilder, PluginHandle, TauriPlugin};
 #[cfg(target_os = "android")]
 use tauri::Manager;
-#[cfg(target_os = "android")]
-use serde_json::Value;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DownloadProgress {
     pub downloaded: u64,
     pub total: u64,
     pub percentage: f32,
+}
+
+#[derive(Serialize, Deserialize)]
+struct UpdateAsset {
+    name: String,
+    browser_download_url: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct UpdateCheckResult {
+    latest_version: String,
+    version_hash: Option<String>,
+    assets: Vec<UpdateAsset>,
+}
+
+fn parse_hash_from_body(body: &str) -> Option<String> {
+    let lower = body.to_lowercase();
+    let pos = lower.find("hash")?;
+    let after = &body[pos + 4..];
+    let trimmed = after.trim_start_matches(|c: char| c == ':' || c.is_whitespace());
+    let hash: String = trimmed.chars()
+        .take_while(|c| c.is_ascii_hexdigit())
+        .collect();
+    if hash.is_empty() { None } else { Some(hash.to_lowercase()) }
+}
+
+#[tauri::command]
+async fn check_github_update() -> Result<UpdateCheckResult, String> {
+    log::info!("check_github_update: 开始通过 Rust 后端检查 GitHub 更新");
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| {
+            let msg = format!("创建HTTP客户端失败: {}", e);
+            log::error!("{}", msg);
+            msg
+        })?;
+
+    let response = client
+        .get("https://api.github.com/repos/czixue7/Test-System/releases/latest")
+        .header("Accept", "application/vnd.github.v3+json")
+        .header("User-Agent", "Answer-Test-App")
+        .send()
+        .await
+        .map_err(|e| {
+            let msg = format!("GitHub API 请求失败: {}", e);
+            log::error!("{}", msg);
+            msg
+        })?;
+
+    let body_text = response.text()
+        .await
+        .map_err(|e| {
+            let msg = format!("读取GitHub响应失败: {}", e);
+            log::error!("{}", msg);
+            msg
+        })?;
+
+    let json: serde_json::Value = serde_json::from_str(&body_text)
+        .map_err(|e| {
+            let msg = format!("解析GitHub JSON失败: {}", e);
+            log::error!("{}", msg);
+            msg
+        })?;
+
+    let latest_version = json["tag_name"]
+        .as_str()
+        .unwrap_or("0.0.0")
+        .trim_start_matches('v')
+        .to_string();
+
+    let body = json["body"].as_str().unwrap_or("");
+    let version_hash = parse_hash_from_body(body);
+
+    let assets: Vec<UpdateAsset> = json["assets"]
+        .as_array()
+        .map(|arr| {
+            arr.iter().filter_map(|asset| {
+                Some(UpdateAsset {
+                    name: asset["name"].as_str()?.to_string(),
+                    browser_download_url: asset["browser_download_url"].as_str()?.to_string(),
+                })
+            }).collect()
+        })
+        .unwrap_or_default();
+
+    log::info!(
+        "check_github_update: 版本={}, 哈希={}, 资产数={}",
+        latest_version,
+        version_hash.as_deref().unwrap_or("无"),
+        assets.len()
+    );
+
+    Ok(UpdateCheckResult {
+        latest_version,
+        version_hash,
+        assets,
+    })
 }
 
 #[cfg(target_os = "android")]
@@ -47,8 +144,6 @@ async fn download_apk(
     #[cfg(not(target_os = "android"))]
     let download_dir = {
         use tauri::Manager;
-#[cfg(target_os = "android")]
-use serde_json::Value;
         _app.path().download_dir()
             .map_err(|e| format!("获取下载目录失败: {}", e))?
     };
@@ -234,13 +329,12 @@ pub fn run() {
             download_apk,
             install_apk,
             download_and_install_apk,
+            check_github_update,
         ])
         .setup(move |_app| {
             #[cfg(all(debug_assertions, not(target_os = "android")))]
             {
                 use tauri::Manager;
-#[cfg(target_os = "android")]
-use serde_json::Value;
                 if let Some(window) = _app.get_webview_window("main") {
                     window.open_devtools();
                 }
