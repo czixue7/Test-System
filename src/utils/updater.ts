@@ -67,7 +67,7 @@ const currentVersion = '0.3.8';
  * 当前版本哈希（每次构建时更新）
  * 用于区分同一版本的不同构建
  */
-export const CURRENT_VERSION_HASH = '20260824f'; // 每次发布时更新此值
+export const CURRENT_VERSION_HASH = '20260825A'; // 每次发布时更新此值
 
 /**
  * 检查当前系统架构
@@ -216,7 +216,7 @@ export async function checkUpdate(): Promise<UpdateInfo> {
     if (versionCompare > 0) {
       hasUpdate = true;
       updateReason = `版本号更新 (${currentVersion} -> ${latestVersion})`;
-    } else if (versionCompare === 0 && latestHash && latestHash !== CURRENT_VERSION_HASH) {
+    } else if (versionCompare === 0 && latestHash && latestHash !== CURRENT_VERSION_HASH.toLowerCase()) {
       hasUpdate = true;
       updateReason = `同一版本的新构建 (哈希: ${CURRENT_VERSION_HASH} -> ${latestHash})`;
     }
