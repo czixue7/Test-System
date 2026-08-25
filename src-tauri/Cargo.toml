@@ -35,6 +35,7 @@ jni = "0.21"
 
 [features]
 default = []
+custom-protocol = ["tauri/custom-protocol"]
 
 [profile.release]
 panic = "abort"
