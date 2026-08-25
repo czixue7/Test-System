@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuestionBankStore } from '../store/questionBankStore';
-import { useExamStore } from '../store/examStore';
+import { useExamStore, SavedProgress } from '../store/examStore';
 import { Question, QuestionBank, PracticeMode } from '../types';
 import { useSwipeElement } from '../hooks/useSwipe';
 import { useKeyboard } from '../hooks/useKeyboard';
 import { useSafeArea } from '../hooks/useSafeArea';
 import ImageViewer from '../components/ImageViewer';
+import ExitConfirmModal from '../components/ExitConfirmModal';
+import ResumePromptModal from '../components/ResumePromptModal';
 import { normalizeAnswer } from '../utils/answerNormalize';
 
 const shuffleArray = <T,>(array: T[]): T[] => {
@@ -25,7 +27,7 @@ const Practice: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { getBank } = useQuestionBankStore();
-  const { setAnswer, getAnswer, confirmAnswer, getResult, startExam } = useExamStore();
+  const { setAnswer, getAnswer, confirmAnswer, getResult, startExam, loadExamProgress, saveExamProgress, restoreExamProgress, clearExamProgress } = useExamStore();
 
   const [practiceQuestions, setPracticeQuestions] = useState<Question[]>([]);
   const [practiceIndex, setPracticeIndex] = useState(0);
@@ -37,6 +39,11 @@ const Practice: React.FC = () => {
   const [viewerImages, setViewerImages] = useState<string[] | null>(null);
   const [viewerInitialIndex, setViewerInitialIndex] = useState(0);
   const [sourceRect, setSourceRect] = useState<DOMRect | null>(null);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [practiceStartTime, setPracticeStartTime] = useState<number>(0);
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const [showResumePrompt, setShowResumePrompt] = useState(false);
+  const [resumeData, setResumeData] = useState<SavedProgress | null>(null);
   const navRef = useRef<HTMLDivElement>(null);
   const swipeRef = useRef<HTMLDivElement>(null);
   const { isOpen: isKeyboardOpen, bottom: keyboardBottom } = useKeyboard();
@@ -80,33 +87,70 @@ const Practice: React.FC = () => {
   useEffect(() => {
     if (!bank || !practiceMode || isInitialized) return;
 
-    const getQuestionsForMode = (mode: PracticeMode, bank: QuestionBank): Question[] => {
-      switch (mode) {
-        case 'sequential':
-        case 'view':
-          return [...bank.questions];
-        case 'wrong':
-          return wrongQuestions.length > 0 ? shuffleArray([...wrongQuestions]) : [];
-        case 'favorites':
-        case 'common':
-          return commonQuestions.length > 0 ? [...commonQuestions] : [];
-        default:
-          return [...bank.questions];
+    const init = async () => {
+      // 仅顺序练题模式支持进度保存/恢复
+      const isProgressMode = practiceMode === 'sequential';
+
+      if (isProgressMode) {
+        const saved = await loadExamProgress();
+        if (saved && saved.mode === 'practice' && saved.bankId === bank.id && saved.practiceMode === practiceMode) {
+          // 匹配：立即完整恢复（题目、位置、答案、计时器），弹窗询问继续/重新开始
+          await restoreExamProgress(saved);
+          setPracticeQuestions(saved.questions);
+          setPracticeIndex(saved.currentIndex);
+          setShowAnswer(false);
+          setPracticeStartTime(Date.now() - saved.elapsedTime * 1000);
+          setElapsedTime(saved.elapsedTime);
+          setResumeData(saved);
+          setShowResumePrompt(true);
+          setIsInitialized(true);
+          return;
+        }
       }
+
+      const getQuestionsForMode = (mode: PracticeMode, bank: QuestionBank): Question[] => {
+        switch (mode) {
+          case 'sequential':
+          case 'view':
+            return [...bank.questions];
+          case 'wrong':
+            return wrongQuestions.length > 0 ? shuffleArray([...wrongQuestions]) : [];
+          case 'favorites':
+          case 'common':
+            return commonQuestions.length > 0 ? [...commonQuestions] : [];
+          default:
+            return [...bank.questions];
+        }
+      };
+
+      const questions = getQuestionsForMode(practiceMode, bank);
+
+      if (questions.length === 0 && (practiceMode === 'wrong' || practiceMode === 'common')) {
+        return;
+      }
+
+      setPracticeQuestions(questions);
+      setPracticeIndex(0);
+      setShowAnswer(false);
+      setPracticeStartTime(Date.now());
+      setElapsedTime(0);
+      startExam(bank.id, bank.name, questions);
+      setIsInitialized(true);
     };
 
-    const questions = getQuestionsForMode(practiceMode, bank);
-    
-    if (questions.length === 0 && (practiceMode === 'wrong' || practiceMode === 'common')) {
-      return;
+    init();
+  }, [bank, practiceMode, wrongQuestions, commonQuestions, isInitialized, startExam, loadExamProgress, restoreExamProgress]);
+
+  // 计时器：顺序练题显示（与模拟考试画风统一）
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    if (practiceMode === 'sequential' && isInitialized && practiceStartTime > 0 && !showResumePrompt) {
+      interval = setInterval(() => {
+        setElapsedTime(Math.floor((Date.now() - practiceStartTime) / 1000));
+      }, 1000);
     }
-    
-    setPracticeQuestions(questions);
-    setPracticeIndex(0);
-    setShowAnswer(false);
-    startExam(bank.id, bank.name, questions);
-    setIsInitialized(true);
-  }, [bank, practiceMode, wrongQuestions, commonQuestions, isInitialized, startExam]);
+    return () => clearInterval(interval);
+  }, [practiceMode, isInitialized, practiceStartTime, showResumePrompt]);
 
   useEffect(() => {
     if (navRef.current && practiceQuestions.length > 0) {
@@ -125,12 +169,43 @@ const Practice: React.FC = () => {
     }));
   }, []);
 
-  const handleGoBack = () => {
+  const goBack = () => {
     if (window.history.length > 1 && location.key !== 'default') {
       navigate(-1);
     } else {
       navigate('/');
     }
+  };
+
+  const handleGoBack = () => {
+    // 仅顺序练题模式弹窗提醒保存；其他模式直接退出
+    if (practiceMode === 'sequential') {
+      setShowExitConfirm(true);
+    } else {
+      goBack();
+    }
+  };
+
+  const handleSaveAndExit = async () => {
+    await saveExamProgress('practice', elapsedTime, practiceMode);
+    goBack();
+  };
+
+  const handleExitWithoutSave = async () => {
+    await clearExamProgress();
+    goBack();
+  };
+
+  const handleResumeProgress = () => {
+    setShowResumePrompt(false);
+    setResumeData(null);
+  };
+
+  const handleStartFresh = async () => {
+    await clearExamProgress();
+    setShowResumePrompt(false);
+    setResumeData(null);
+    setIsInitialized(false);
   };
 
   const handleConfirmAnswer = async () => {
@@ -592,7 +667,14 @@ const Practice: React.FC = () => {
           <button onClick={handleGoBack} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
           </button>
-          <h1 className="text-lg font-semibold">{getModeTitle()}</h1>
+          {practiceMode === 'sequential' && practiceQuestions.length > 0 ? (
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium">{practiceIndex + 1}/{practiceQuestions.length}</span>
+              <span className="text-sm font-medium">{Math.floor(elapsedTime / 60)}:{String(elapsedTime % 60).padStart(2, '0')}</span>
+            </div>
+          ) : (
+            <h1 className="text-lg font-semibold">{getModeTitle()}</h1>
+          )}
           <div className="w-8 h-8" />
         </div>
       </header>
@@ -687,6 +769,26 @@ const Practice: React.FC = () => {
           onClose={closeImageViewer}
           initialIndex={viewerInitialIndex}
           sourceRect={sourceRect}
+        />
+      )}
+
+      {showExitConfirm && (
+        <ExitConfirmModal
+          message="退出后未保存的答题进度将丢失，是否保存当前进度？"
+          onSave={handleSaveAndExit}
+          onExitWithoutSave={handleExitWithoutSave}
+          onCancel={() => setShowExitConfirm(false)}
+        />
+      )}
+
+      {showResumePrompt && resumeData && (
+        <ResumePromptModal
+          mode="practice"
+          currentQuestion={resumeData.currentIndex}
+          totalQuestions={resumeData.questions.length}
+          elapsedSeconds={resumeData.elapsedTime}
+          onResume={handleResumeProgress}
+          onRestart={handleStartFresh}
         />
       )}
     </div>

@@ -52,19 +52,9 @@ const readFromCSSEnv = (): SafeAreaInsets | null => {
   const left = parsePx(computedStyle.getPropertyValue('--safe-area-inset-left'));
   const right = parsePx(computedStyle.getPropertyValue('--safe-area-inset-right'));
 
-  // 如果四个值都是 0，可能是 CSS env 不支持或未正确设置
+  // 如果四个值都是 0，说明 CSS env 不支持或未正确设置
   if (top === 0 && bottom === 0 && left === 0 && right === 0) {
-    // 尝试直接从 CSS 环境变量读取
-    const directTop = parsePx(computedStyle.getPropertyValue('env(safe-area-inset-top)'));
-    if (directTop > 0) {
-      return {
-        top: directTop,
-        bottom: parsePx(computedStyle.getPropertyValue('env(safe-area-inset-bottom)')),
-        left: parsePx(computedStyle.getPropertyValue('env(safe-area-inset-left)')),
-        right: parsePx(computedStyle.getPropertyValue('env(safe-area-inset-right)')),
-      };
-    }
-    return null; // 表示 CSS env 不可用
+    return null;
   }
 
   return { top, bottom, left, right };
@@ -84,14 +74,16 @@ const estimateFromScreenDiff = (): SafeAreaInsets | null => {
   const dpr = getDPR();
   const isLandscape = innerWidth > innerHeight;
   
-  // 将 screen 尺寸转换为 CSS 像素（screen.height 通常是物理像素，
-  // 但在移动端浏览器中有时已经是 CSS 像素，这里做保守估计）
-  // 实际上 window.screen.height 在大多数浏览器中返回的是 CSS 像素
+  // 判断 screen 尺寸的单位：
+  // - 若 screenHeight / dpr ≈ innerHeight，说明 screen 是物理像素（Android WebView 常见）
+  // - 若 screenHeight ≈ innerHeight，说明 screen 已是 CSS 像素
   let availableHeight = screenHeight;
   let availableWidth = screenWidth;
   
-  // 如果 screen 尺寸明显大于 inner 尺寸 * DPR，可能是物理像素
-  if (screenHeight > innerHeight * dpr * 1.5) {
+  if (
+    Math.abs(screenHeight / dpr - innerHeight) < 50 &&
+    Math.abs(screenWidth / dpr - innerWidth) < 50
+  ) {
     availableHeight = screenHeight / dpr;
     availableWidth = screenWidth / dpr;
   }
@@ -102,6 +94,9 @@ const estimateFromScreenDiff = (): SafeAreaInsets | null => {
   // 差值太小可能是因为浏览器工具栏，不是系统栏
   if (heightDiff < 20 && widthDiff < 20) return null;
   
+  // 差值过大：可能是地址栏/异常环境，不做估算（避免算出荒谬的安全区）
+  if (heightDiff > 160 || widthDiff > 160) return null;
+  
   // 竖屏时：顶部是状态栏，底部可能是导航栏
   if (!isLandscape) {
     // 估算状态栏高度（顶部）
@@ -111,7 +106,7 @@ const estimateFromScreenDiff = (): SafeAreaInsets | null => {
     
     return {
       top: estimatedTop,
-      bottom: Math.max(0, estimatedBottom),
+      bottom: Math.max(0, Math.min(estimatedBottom, 60)),
       left: 0,
       right: 0,
     };
@@ -127,26 +122,20 @@ const estimateFromScreenDiff = (): SafeAreaInsets | null => {
   }
 };
 
-// 基于 Android 设计规范的默认值（dp 转 px）
+// 基于 Android 设计规范的默认值（单位：CSS px，Android 中 1dp = 1 CSS px）
 const getAndroidDefaults = (): SafeAreaInsets => {
-  const dpr = getDPR();
   const isLandscape = 
     typeof window !== 'undefined' && 
     window.innerWidth > window.innerHeight;
   
-  // Android 标准状态栏高度: 24dp
-  const statusBarHeight = 24 * dpr;
-  // Android 底部导航栏高度（三键导航）: 48dp
-  // 手势导航底部条: 约 4-12dp，这里取保守值 24dp
-  const navBarHeight = 48 * dpr;
-  const gestureBarHeight = 12 * dpr;
-  
+  // Android 标准：状态栏 24dp、底部导航栏（三键）48dp、手势导航条约 12-24dp
+  // 这里直接使用 CSS px 值（dp 与 CSS px 1:1，不能再乘 dpr）
   if (!isLandscape) {
     // 竖屏：顶部状态栏 + 底部导航栏
-    // 不确定是手势还是三键，取中间值偏保守
+    // 不确定是手势还是三键，取手势导航的保守值
     return {
-      top: statusBarHeight,
-      bottom: Math.min(navBarHeight, Math.max(gestureBarHeight, 32 * dpr)),
+      top: 24,
+      bottom: 20,
       left: 0,
       right: 0,
     };
@@ -154,8 +143,8 @@ const getAndroidDefaults = (): SafeAreaInsets => {
     // 横屏：左右可能有挖孔，底部可能有导航栏
     return {
       top: 0,
-      bottom: gestureBarHeight,
-      left: statusBarHeight, // 保守估计左侧挖孔
+      bottom: 12,
+      left: 24,
       right: 0,
     };
   }
