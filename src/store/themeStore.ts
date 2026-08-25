@@ -1,66 +1,91 @@
 import { create } from 'zustand';
 
-export type Theme = 'light' | 'dark';
+export type ThemeStyle = 'classic' | 'immersive';
+export type Theme = 'light' | 'dark' | 'system';
 
 interface ThemeStore {
+  themeStyle: ThemeStyle;
   theme: Theme;
+  setThemeStyle: (style: ThemeStyle) => void;
   setTheme: (theme: Theme) => void;
   initTheme: () => void;
 }
 
-const getSystemTheme = (): Theme => {
+const getSystemDark = (): boolean => {
   if (typeof window !== 'undefined' && window.matchMedia) {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
   }
-  return 'light';
+  return false;
 };
 
 const getStoredTheme = (): Theme | null => {
   if (typeof window !== 'undefined') {
     const stored = localStorage.getItem('theme-preference');
-    if (stored === 'light' || stored === 'dark') {
+    if (stored === 'light' || stored === 'dark' || stored === 'system') {
       return stored;
     }
   }
   return null;
 };
 
-const applyTheme = (theme: Theme) => {
+const getStoredThemeStyle = (): ThemeStyle | null => {
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('theme-style');
+    if (stored === 'classic' || stored === 'immersive') {
+      return stored;
+    }
+  }
+  return null;
+};
+
+const applyTheme = (style: ThemeStyle, theme: Theme) => {
   if (typeof document !== 'undefined') {
     const root = document.documentElement;
-    if (theme === 'dark') {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
+    root.setAttribute('data-theme', style);
+    const isDark = theme === 'dark' || (theme === 'system' && getSystemDark());
+    root.classList.toggle('dark', isDark);
   }
 };
 
-export const useThemeStore = create<ThemeStore>((set) => ({
-  theme: 'light',
+let mediaQuery: MediaQueryList | null = null;
+let mediaListener: ((e: MediaQueryListEvent) => void) | null = null;
+
+export const useThemeStore = create<ThemeStore>((set, get) => ({
+  // 默认：沉浸式布局主题 + 自适应系统深浅色
+  themeStyle: 'immersive',
+  theme: 'system',
+
+  setThemeStyle: (style) => {
+    localStorage.setItem('theme-style', style);
+    applyTheme(style, get().theme);
+    set({ themeStyle: style });
+  },
 
   setTheme: (theme) => {
     localStorage.setItem('theme-preference', theme);
-    applyTheme(theme);
+    applyTheme(get().themeStyle, theme);
     set({ theme });
   },
 
   initTheme: () => {
+    const style = getStoredThemeStyle() || 'immersive';
     const storedTheme = getStoredTheme();
-    const theme = storedTheme || getSystemTheme();
-    applyTheme(theme);
-    set({ theme });
+    const theme: Theme = storedTheme || 'system';
+    applyTheme(style, theme);
+    set({ themeStyle: style, theme });
 
+    // 监听系统深浅色变化（仅跟随系统模式时生效）
     if (typeof window !== 'undefined' && window.matchMedia) {
-      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-      const handleChange = (e: MediaQueryListEvent) => {
-        if (!getStoredTheme()) {
-          const newTheme = e.matches ? 'dark' : 'light';
-          applyTheme(newTheme);
-          set({ theme: newTheme });
+      if (mediaQuery && mediaListener) {
+        mediaQuery.removeEventListener('change', mediaListener);
+      }
+      mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      mediaListener = (e: MediaQueryListEvent) => {
+        if (get().theme === 'system') {
+          document.documentElement.classList.toggle('dark', e.matches);
         }
       };
-      mediaQuery.addEventListener('change', handleChange);
+      mediaQuery.addEventListener('change', mediaListener);
     }
   },
 }));

@@ -14,6 +14,8 @@ export interface UpdateInfo {
   downloadUrl?: string;
   assetName?: string;
   versionHash?: string;
+  /** 检查过程是否出错（网络失败等），出错时 hasUpdate 恒为 false */
+  error?: boolean;
 }
 
 /**
@@ -253,11 +255,14 @@ export async function checkUpdate(): Promise<UpdateInfo> {
       };
     }
   } catch (error) {
+    // Tauri invoke 失败时抛出的是字符串，统一转换，避免显示笼统的"检查更新失败"
+    const detail = error instanceof Error ? error.message : String(error || '未知错误');
     console.error('[Updater] 检查更新失败:', error);
     return {
       hasUpdate: false,
       latestVersion: currentVersion,
-      message: error instanceof Error ? error.message : '检查更新失败'
+      message: detail,
+      error: true
     };
   }
 }

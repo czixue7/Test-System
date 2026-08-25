@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useThemeStore, Theme } from '../store/themeStore';
+import { useThemeStore, Theme, ThemeStyle } from '../store/themeStore';
 import { useSafeArea } from '../hooks/useSafeArea';
 import { checkUpdate, downloadApk, installApk, isTauri, isAndroid, UpdateInfo, DownloadProgress, CURRENT_VERSION_HASH } from '../utils/updater';
 
@@ -13,7 +13,7 @@ const Profile: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [activeModal, setActiveModal] = useState<'about' | 'theme' | null>(null);
-  const { theme, setTheme } = useThemeStore();
+  const { theme, setTheme, themeStyle, setThemeStyle } = useThemeStore();
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [downloadStatus, setDownloadStatus] = useState<DownloadStatus>('idle');
@@ -74,13 +74,17 @@ const Profile: React.FC = () => {
     try {
       const info = await checkUpdate();
       setUpdateInfo(info);
-      addLog(`检查结果: ${info.message}`);
+      if (info.error) {
+        addLog(`❌ 检查失败: ${info.message}`);
+      } else {
+        addLog(`检查结果: ${info.message}`);
+      }
 
       if (info.downloadUrl) {
         addLog(`下载链接: ${info.downloadUrl}`);
       }
     } catch (error) {
-      addLog(`检查更新失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      addLog(`❌ 检查更新失败: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setCheckingUpdate(false);
     }
@@ -119,7 +123,6 @@ const Profile: React.FC = () => {
         filename,
         (progress) => {
           setDownloadProgress(progress);
-          addLog(`下载进度: ${progress.percentage.toFixed(1)}%`);
         }
       );
 
@@ -180,6 +183,17 @@ const Profile: React.FC = () => {
     setDownloadProgress({ downloaded: 0, total: 0, percentage: 0 });
   };
 
+  // 日志级别样式（按消息内容自动归类）
+  const logStyle = (msg: string) => {
+    if (/❌|失败|错误/.test(msg)) return { dot: 'bg-red-500', color: 'text-red-500 dark:text-red-400' };
+    if (/⚠️|警告/.test(msg)) return { dot: 'bg-amber-500', color: 'text-amber-600 dark:text-amber-400' };
+    if (/✅|完成|成功|已是最新/.test(msg)) return { dot: 'bg-emerald-500', color: 'text-emerald-600 dark:text-emerald-400' };
+    return { dot: 'bg-blue-400', color: 'text-gray-600 dark:text-gray-300' };
+  };
+
+  const themeModeLabel = theme === 'system' ? '跟随系统' : theme === 'light' ? '浅色' : '深色';
+  const themeStyleLabel = themeStyle === 'immersive' ? '沉浸式' : '经典';
+
   const menuItems = [
     {
       icon: (
@@ -198,7 +212,7 @@ const Profile: React.FC = () => {
         </svg>
       ),
       title: '主题',
-      value: theme === 'light' ? '浅色' : '深色',
+      value: `${themeStyleLabel} · ${themeModeLabel}`,
       onClick: () => setShowThemeModal(true)
     },
     {
@@ -315,24 +329,26 @@ const Profile: React.FC = () => {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="text-center">
-              <div className="w-16 h-16 mx-auto mb-3 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg">
-                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-1">答题测试库</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">版本 {currentVersion}</p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">构建 {CURRENT_VERSION_HASH}</p>
-              <div className="text-sm text-gray-600 dark:text-gray-300 space-y-1.5 mb-4">
-                <p>一款帮助用户学习和备考的应用</p>
-                <p>支持题库管理、模拟测试、错题回顾等功能</p>
-                <p>支持 AI 智能判题</p>
-                <div className="pt-2 mt-2 border-t border-gray-200 dark:border-gray-700">
+              <div className="im-about-card rounded-2xl p-4 mb-4 bg-white/70 dark:bg-gray-800/70 border border-gray-200/60 dark:border-gray-700/60">
+                <div className="w-16 h-16 mx-auto mb-3 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg">
+                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-1">答题测试库</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">版本 {currentVersion}</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">构建 {CURRENT_VERSION_HASH}</p>
+                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 text-left">
+                  <div className="text-sm text-gray-600 dark:text-gray-300 space-y-1.5">
+                    <p>一款帮助用户学习和备考的应用</p>
+                    <p>支持题库管理、模拟测试、错题回顾等功能</p>
+                    <p>支持 AI 智能判题</p>
+                  </div>
                   <a
                     href="https://github.com/czixue7/Test-System"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-blue-600 dark:text-blue-400 hover:underline flex items-center justify-center gap-1"
+                    className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 text-blue-600 dark:text-blue-400 hover:underline flex items-center justify-center gap-1"
                   >
                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                       <path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd" />
@@ -344,19 +360,32 @@ const Profile: React.FC = () => {
 
               {/* 日志显示区域 */}
               {logs.length > 0 && (
-                <div className="mb-4 bg-gray-100 dark:bg-gray-700 rounded-lg p-3 text-left">
-                  <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
-                    调试日志 ({logs.length}条):
+                <div className="im-log-panel mb-4 rounded-xl p-3 text-left bg-gray-50/80 dark:bg-gray-800/80 border border-gray-200/60 dark:border-gray-700/60">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 tracking-wide">
+                      调试日志
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-900/5 dark:bg-white/10 text-gray-400 dark:text-gray-500">
+                      {logs.length} 条
+                    </span>
                   </div>
-                  <div 
+                  <div
                     ref={logsContainerRef}
-                    className="max-h-40 overflow-y-auto text-xs font-mono space-y-1 scroll-smooth"
+                    className="max-h-44 overflow-y-auto text-[11px] font-mono space-y-1.5 scroll-smooth pr-1"
                   >
-                    {logs.map((log, index) => (
-                      <div key={index} className="text-gray-600 dark:text-gray-300 break-all">
-                        {log}
-                      </div>
-                    ))}
+                    {logs.map((log, index) => {
+                      const m = log.match(/^\[(.*?)\] (.*)$/);
+                      const time = m?.[1] ?? '';
+                      const msg = m?.[2] ?? log;
+                      const st = logStyle(msg);
+                      return (
+                        <div key={index} className="flex items-start gap-1.5 leading-relaxed">
+                          <span className={`mt-1 w-1.5 h-1.5 rounded-full flex-shrink-0 ${st.dot}`} />
+                          <span className="text-gray-400 dark:text-gray-500 flex-shrink-0">{time}</span>
+                          <span className={`break-all ${st.color}`}>{msg}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -404,13 +433,15 @@ const Profile: React.FC = () => {
                     className={`w-full py-2.5 text-white rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${
                       updateInfo?.hasUpdate
                         ? 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700'
+                        : updateInfo?.error
+                        ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700'
                         : 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700'
                     }`}
                   >
                     <svg className={`w-4 h-4 ${checkingUpdate ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                     </svg>
-                    {checkingUpdate ? '检查中...' : updateInfo?.hasUpdate ? '立即更新' : updateInfo && !updateInfo.hasUpdate ? '当前已是最新版本' : '检查更新'}
+                    {checkingUpdate ? '检查中...' : updateInfo?.hasUpdate ? '立即更新' : updateInfo?.error ? '检查失败，点击重试' : updateInfo ? '当前已是最新版本' : '检查更新'}
                   </button>
                 )}
               </div>
@@ -441,60 +472,77 @@ const Profile: React.FC = () => {
             <div className="text-center mb-4">
               <h2 className="text-lg font-bold text-gray-800 dark:text-white">选择主题</h2>
             </div>
-            <div className="space-y-2">
+
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 text-left">布局风格</p>
+            <div className="space-y-2 mb-4">
               {[
-                {
-                  value: 'light' as Theme,
-                  label: '浅色',
-                  icon: (
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                    </svg>
-                  )
-                },
-                {
-                  value: 'dark' as Theme,
-                  label: '深色',
-                  icon: (
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                    </svg>
-                  )
-                },
+                { value: 'immersive' as ThemeStyle, label: '沉浸式', desc: 'Hero 大卡 · 模式网格 · 浮动导航' },
+                { value: 'classic' as ThemeStyle, label: '经典', desc: '原有布局 · 简洁蓝白' },
               ].map((option) => (
                 <div
                   key={option.value}
-                  onClick={() => {
-                    setTheme(option.value);
-                    setShowThemeModal(false);
-                  }}
-                  className={`flex items-center justify-between px-4 py-3 rounded-lg cursor-pointer transition-all ${
+                  onClick={() => setThemeStyle(option.value)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-all ${
+                    themeStyle === option.value
+                      ? 'bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-500 dark:border-blue-400'
+                      : 'bg-gray-50 dark:bg-gray-700 border-2 border-transparent hover:bg-gray-100 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
+                    themeStyle === option.value ? 'border-blue-500' : 'border-gray-300 dark:border-gray-600'
+                  }`}>
+                    {themeStyle === option.value && (
+                      <div className="w-3 h-3 rounded-full bg-blue-500" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className={`text-sm font-medium ${themeStyle === option.value ? 'text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-200'}`}>
+                      {option.label}
+                    </span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{option.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 text-left">深浅色</p>
+            <div className="space-y-2">
+              {[
+                { value: 'system' as Theme, label: '跟随系统', desc: '随手机系统自动切换' },
+                { value: 'light' as Theme, label: '浅色', desc: '始终使用浅色外观' },
+                { value: 'dark' as Theme, label: '深色', desc: '始终使用深色外观' },
+              ].map((option) => (
+                <div
+                  key={option.value}
+                  onClick={() => setTheme(option.value)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-all ${
                     theme === option.value
                       ? 'bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-500 dark:border-blue-400'
                       : 'bg-gray-50 dark:bg-gray-700 border-2 border-transparent hover:bg-gray-100 dark:hover:bg-gray-600'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <span className={`${theme === option.value ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-300'}`}>
-                      {option.icon}
-                    </span>
-                    <span className={`font-medium ${theme === option.value ? 'text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-200'}`}>
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
+                    theme === option.value ? 'border-blue-500' : 'border-gray-300 dark:border-gray-600'
+                  }`}>
+                    {theme === option.value && (
+                      <div className="w-3 h-3 rounded-full bg-blue-500" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className={`text-sm font-medium ${theme === option.value ? 'text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-200'}`}>
                       {option.label}
                     </span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{option.desc}</p>
                   </div>
-                  {theme === option.value && (
-                    <svg className="w-5 h-5 text-blue-500 dark:text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                  )}
                 </div>
               ))}
             </div>
+
             <button
               onClick={() => setShowThemeModal(false)}
               className="w-full mt-4 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-all"
             >
-              取消
+              完成
             </button>
           </div>
         </div>
