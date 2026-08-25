@@ -112,8 +112,10 @@ const estimateKeyboardHeightFromResize = (): { height: number; isKeyboard: boole
 // 估算默认键盘高度（用于键盘弹出中但高度还没稳定时）
 const getEstimatedKeyboardHeight = (): number => {
   if (typeof window === 'undefined') return 280;
+  // 桌面端不会弹出虚拟键盘，不估算（调用方也应做守卫）
+  if (!safeAreaUtils.isMobileDevice()) return 0;
+  // 使用 CSS 像素的 innerHeight（screen.height 在 Android WebView 中是物理像素，不能直接用）
   const screenHeight = window.innerHeight || 600;
-  const dpr = window.devicePixelRatio || 1;
   
   // Android 键盘高度大约是屏幕高度的 40%~50%
   // iOS 键盘高度约 216pt (非 plus) 或 271pt (plus)
@@ -122,8 +124,8 @@ const getEstimatedKeyboardHeight = (): number => {
     return hasNotch ? 301 : 216; // 包含顶部工具条
   }
   
-  // Android 估算
-  return Math.min(screenHeight * 0.45, 400 * dpr);
+  // Android 保守估算：不超过可视区域 35%，上限 300（宁可偏小，避免抬升过多出现空白）
+  return Math.min(screenHeight * 0.35, 300);
 };
 
 export function useKeyboard(): KeyboardState {
@@ -141,6 +143,9 @@ export function useKeyboard(): KeyboardState {
     consecutiveOpenChecks: 0,  // 连续检测到键盘打开的次数
   });
   
+  // 布局视口基准高度：键盘关闭时的 innerHeight，用于判断窗口是否随键盘缩小（adjustResize）
+  const baseInnerHeightRef = useRef<number>(0);
+  
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const animationFrameRef = useRef<number | null>(null);
 
@@ -149,11 +154,16 @@ export function useKeyboard(): KeyboardState {
     const state = stateRef.current;
     const threshold = getKeyboardThreshold();
     
+    // 高度上限保护：键盘高度不可能超过可视区域 60%，避免异常值把底部栏抬得过高出现空白
+    const maxHeight = Math.max(0, (window.innerHeight || 600) * 0.6);
+    const clampedHeight = Math.min(height, maxHeight);
+    
     // 防抖：连续多次检测到才确认状态变化
+    // （clampedHeight === 0 表示 adjustResize 模式下窗口已让位，是强信号，无需连续确认）
     if (isOpen && !state.isOpen) {
       state.consecutiveOpenChecks++;
       state.consecutiveCloseChecks = 0;
-      if (state.consecutiveOpenChecks < 2 && height < threshold) {
+      if (state.consecutiveOpenChecks < 2 && clampedHeight > 0 && clampedHeight < threshold) {
         return; // 需要至少两次确认或高度超过阈值
       }
     } else if (!isOpen && state.isOpen) {
@@ -168,50 +178,64 @@ export function useKeyboard(): KeyboardState {
     }
     
     // 状态未变化时不更新
-    if (state.isOpen === isOpen && Math.abs(state.height - height) < 5) {
+    if (state.isOpen === isOpen && Math.abs(state.height - clampedHeight) < 5) {
       return;
     }
     
     state.isOpen = isOpen;
-    state.height = height;
+    state.height = clampedHeight;
     state.consecutiveOpenChecks = 0;
     state.consecutiveCloseChecks = 0;
     
-    // 底部边距 = 键盘高度
-    // （安全区域底部已经在页面 padding 中处理，键盘高度本身不含安全区域）
-    const bottom = isOpen ? height : 0;
+    // 底部边距 = 键盘高度（visualViewport 差值已天然处理 adjustResize：窗口让位时差值为 0）
+    const bottom = isOpen ? clampedHeight : 0;
     
     setKeyboardState({
       isOpen,
-      height,
+      height: clampedHeight,
       bottom,
     });
     
-    console.log('[useKeyboard] State updated:', { isOpen, height, bottom });
+    console.log('[useKeyboard] State updated:', { isOpen, height: clampedHeight, bottom });
   }, []);
 
   // 检测并更新键盘高度
   const detectKeyboard = useCallback(() => {
+    // 桌面端不会弹出虚拟键盘，直接保持关闭
+    if (!safeAreaUtils.isMobileDevice()) {
+      updateKeyboardState(false, 0);
+      return;
+    }
+
     // 优先使用 visualViewport
     if (window.visualViewport) {
       const vvHeight = getKeyboardHeightFromVisualViewport();
       const threshold = getKeyboardThreshold();
       
       if (vvHeight > threshold) {
+        // adjustPan：布局视口不变，差值 = 键盘占用高度，底部栏抬升该值
         updateKeyboardState(true, vvHeight);
-      } else if (vvHeight < threshold * 0.5) {
-        // 只有在没有聚焦输入框时才确认键盘关闭
-        if (!stateRef.current.hasFocusedInput) {
+      } else {
+        // 差值很小：可能键盘已关闭，或窗口已随键盘缩小（adjustResize 模式，窗口已让位）
+        const shrunk = baseInnerHeightRef.current - window.innerHeight;
+        if (shrunk > threshold) {
+          // adjustResize：窗口已缩小到键盘上方，无需再额外抬升底部栏
+          updateKeyboardState(true, 0);
+        } else if (!stateRef.current.hasFocusedInput) {
           updateKeyboardState(false, 0);
+          // 键盘关闭，刷新基准高度
+          baseInnerHeightRef.current = window.innerHeight;
         }
+        // 聚焦中但都未检测到键盘：保持现状，等待后续事件（避免跳变）
       }
       return;
     }
     
-    // fallback: 使用 resize 差值
+    // fallback: 使用 resize 差值（此方法只能检测到窗口缩小的 adjustResize 模式；
+    // 该模式下窗口已让位，无需再额外抬升底部栏）
     const result = estimateKeyboardHeightFromResize();
     if (result.isKeyboard) {
-      updateKeyboardState(true, result.height);
+      updateKeyboardState(true, 0);
     } else if (!stateRef.current.hasFocusedInput) {
       updateKeyboardState(false, 0);
     }
@@ -250,6 +274,7 @@ export function useKeyboard(): KeyboardState {
     if (typeof window !== 'undefined') {
       lastInnerHeight = window.innerHeight;
       lastInnerWidth = window.innerWidth;
+      baseInnerHeightRef.current = window.innerHeight;
     }
 
     // === visualViewport 监听（首选）===
@@ -293,16 +318,13 @@ export function useKeyboard(): KeyboardState {
       const target = e.target as HTMLElement;
       if (!isInputElement(target)) return;
       
+      // 桌面端不会弹出虚拟键盘，无需处理
+      if (!safeAreaUtils.isMobileDevice()) return;
+      
       stateRef.current.hasFocusedInput = true;
       
       // 立即检测一次
       detectKeyboard();
-      
-      // 如果键盘还没检测到，先给一个估计值
-      if (!stateRef.current.isOpen) {
-        const estimatedHeight = getEstimatedKeyboardHeight();
-        smoothUpdateHeight(estimatedHeight, 150);
-      }
       
       // 延迟多次检测（等待键盘完全弹出）
       const checkTimings = [100, 200, 350, 500, 800, 1200];
@@ -313,6 +335,17 @@ export function useKeyboard(): KeyboardState {
           }
         }, delay);
       });
+      
+      // 兜底：聚焦后仍检测不到键盘（如 WebView 不支持 visualViewport）且窗口未随键盘缩小
+      // （非 adjustResize）时，才给保守估算。宁可偏小，避免抬升过多出现空白。
+      setTimeout(() => {
+        if (stateRef.current.hasFocusedInput && !stateRef.current.isOpen) {
+          const shrunk = baseInnerHeightRef.current - window.innerHeight;
+          if (shrunk <= getKeyboardThreshold()) {
+            updateKeyboardState(true, getEstimatedKeyboardHeight());
+          }
+        }
+      }, 600);
       
       // 滚动输入框到可视区域
       setTimeout(() => {
@@ -358,6 +391,7 @@ export function useKeyboard(): KeyboardState {
       // 方向变化时重置基准
       lastInnerHeight = window.innerHeight;
       lastInnerWidth = window.innerWidth;
+      baseInnerHeightRef.current = window.innerHeight;
       
       // 方向变化时键盘通常会收起
       stateRef.current.hasFocusedInput = false;

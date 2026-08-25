@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuestionBankStore } from '../store/questionBankStore';
-import { useExamStore } from '../store/examStore';
+import { useExamStore, SavedProgress } from '../store/examStore';
 import { useRecordStore } from '../store/recordStore';
 import { useSettingsStore } from '../store/settingsStore';
 
 import { Question } from '../types';
 import ConfirmModal from '../components/ConfirmModal';
+import ExitConfirmModal from '../components/ExitConfirmModal';
+import ResumePromptModal from '../components/ResumePromptModal';
 import { useSwipeElement } from '../hooks/useSwipe';
 import { useSafeArea } from '../hooks/useSafeArea';
 import { useKeyboard } from '../hooks/useKeyboard';
@@ -68,14 +70,17 @@ const Exam: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { getBank } = useQuestionBankStore();
-  const { startExam, examState, setAnswer, getAnswer, nextQuestion, prevQuestion, goToQuestion, getCurrentQuestion, resetExam, finishExam, setResult } = useExamStore();
+  const { startExam, examState, setAnswer, getAnswer, nextQuestion, prevQuestion, goToQuestion, getCurrentQuestion, resetExam, finishExam, setResult, loadExamProgress, saveExamProgress, restoreExamProgress, clearExamProgress } = useExamStore();
   const { addRecord } = useRecordStore();
 
+  const [isInitialized, setIsInitialized] = useState(false);
   const [examStartTime, setExamStartTime] = useState<number>(0);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [submitType, setSubmitType] = useState<'partial' | 'complete' | null>(null);
+  const [showResumePrompt, setShowResumePrompt] = useState(false);
+  const [resumeData, setResumeData] = useState<SavedProgress | null>(null);
   const [isGrading, setIsGrading] = useState(false);
   const [gradingPhase, setGradingPhase] = useState<'connecting' | 'processing' | 'generating'>('connecting');
   const [progressText, setProgressText] = useState<string>('');
@@ -88,23 +93,40 @@ const Exam: React.FC = () => {
   const bank = getBank(bankId!);
 
   useEffect(() => {
-    if (bank && bank.questions.length > 0) {
-      const shuffledQuestions = shuffleArray(bank.questions);
-      startExam(bank.id, bank.name, shuffledQuestions);
-      setExamStartTime(Date.now());
-      setElapsedTime(0);
+    if (bank && bank.questions.length > 0 && !isInitialized) {
+      const init = async () => {
+        // 检查是否存在本题库的考试进度
+        const saved = await loadExamProgress();
+        if (saved && saved.mode === 'exam' && saved.bankId === bank.id) {
+          // 匹配：立即完整恢复（题目、位置、答案、计时器），弹窗询问继续/重新开始
+          await restoreExamProgress(saved);
+          setExamStartTime(Date.now() - saved.elapsedTime * 1000);
+          setElapsedTime(saved.elapsedTime);
+          setResumeData(saved);
+          setShowResumePrompt(true);
+          setIsInitialized(true);
+          return;
+        }
+        // 无进度，正常开始
+        const shuffledQuestions = shuffleArray(bank.questions);
+        startExam(bank.id, bank.name, shuffledQuestions);
+        setExamStartTime(Date.now());
+        setElapsedTime(0);
+        setIsInitialized(true);
+      };
+      init();
     }
-  }, [bank, startExam]);
+  }, [bank, startExam, isInitialized, loadExamProgress, restoreExamProgress]);
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
-    if (examState && !examState.isFinished && examStartTime > 0) {
+    if (examState && !examState.isFinished && examStartTime > 0 && !showResumePrompt) {
       interval = setInterval(() => {
         setElapsedTime(Math.floor((Date.now() - examStartTime) / 1000));
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [examState?.isFinished, examStartTime]);
+  }, [examState?.isFinished, examStartTime, showResumePrompt]);
 
   useEffect(() => {
     if (navRef.current && examState) {
@@ -133,8 +155,7 @@ const Exam: React.FC = () => {
     setShowExitConfirm(true);
   };
 
-  const handleExitConfirm = () => {
-    resetExam();
+  const goBack = () => {
     if (window.history.length > 1 && location.key !== 'default') {
       navigate(-1);
     } else {
@@ -142,8 +163,27 @@ const Exam: React.FC = () => {
     }
   };
 
-  const handleExitCancel = () => {
-    setShowExitConfirm(false);
+  const handleSaveAndExit = async () => {
+    await saveExamProgress('exam', elapsedTime);
+    goBack();
+  };
+
+  const handleExitWithoutSave = async () => {
+    await clearExamProgress();
+    resetExam();
+    goBack();
+  };
+
+  const handleResumeProgress = () => {
+    setShowResumePrompt(false);
+    setResumeData(null);
+  };
+
+  const handleStartFresh = async () => {
+    await clearExamProgress();
+    setShowResumePrompt(false);
+    setResumeData(null);
+    setIsInitialized(false);
   };
 
   const handleFinishExam = () => {
@@ -257,6 +297,8 @@ const Exam: React.FC = () => {
         maxScore,
         useSettingsStore.getState().gradingMode
       );
+      // 交卷成功，清除已保存的进度
+      await clearExamProgress();
       resetExam();
       navigate(`/result/${recordId}`);
     } finally {
@@ -572,13 +614,23 @@ const Exam: React.FC = () => {
       </div>
 
       {showExitConfirm && (
-        <ConfirmModal
-          message="确定要退出考试吗？"
-          onConfirm={handleExitConfirm}
-          onCancel={handleExitCancel}
-          confirmText="退出"
-          cancelText="继续答题"
-          type="warning"
+        <ExitConfirmModal
+          title="退出考试"
+          message="退出后未保存的答题进度将丢失，是否保存当前进度？"
+          onSave={handleSaveAndExit}
+          onExitWithoutSave={handleExitWithoutSave}
+          onCancel={() => setShowExitConfirm(false)}
+        />
+      )}
+
+      {showResumePrompt && resumeData && (
+        <ResumePromptModal
+          mode="exam"
+          currentQuestion={resumeData.currentIndex}
+          totalQuestions={resumeData.questions.length}
+          elapsedSeconds={resumeData.elapsedTime}
+          onResume={handleResumeProgress}
+          onRestart={handleStartFresh}
         />
       )}
 

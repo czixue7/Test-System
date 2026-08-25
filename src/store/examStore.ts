@@ -3,6 +3,7 @@ import { Question, ExamState, UserAnswer, QuestionResult, QuestionStatus, Answer
 import { calculateSubjectiveScore } from '../utils/similarity';
 import { normalizeAnswer } from '../utils/answerNormalize';
 import { useSettingsStore } from './settingsStore';
+import { getStoreValue, setStoreValue, removeStoreValue } from '../utils/tauriStore';
 import {
   gradeFillBlankQuestion,
   gradeSubjective,
@@ -10,6 +11,22 @@ import {
   gradeBatchWithStream,
   BatchGradingItem
 } from '../utils/aiGrading';
+
+const PROGRESS_KEY = 'exam-progress';
+
+export interface SavedProgress {
+  mode: 'practice' | 'exam';
+  bankId: string;
+  bankName: string;
+  questions: Question[];
+  currentIndex: number;
+  answers: Array<[string, string | string[]]>;
+  results: Array<[string, QuestionResult]>;
+  startTime: number;
+  elapsedTime: number;
+  practiceMode?: string;
+  savedAt: number;
+}
 
 function isAnswerWithImages(answer: unknown): answer is AnswerWithImages {
   return typeof answer === 'object' && answer !== null && 'text' in answer;
@@ -47,6 +64,10 @@ interface ExamStore {
   getProgress: () => { answered: number; total: number };
   getStatistics: () => { correct: number; incorrect: number; totalScore: number; maxScore: number };
   isAllConfirmed: () => boolean;
+  loadExamProgress: () => Promise<SavedProgress | null>;
+  saveExamProgress: (mode: 'practice' | 'exam', elapsedTime: number, practiceMode?: string) => Promise<void>;
+  restoreExamProgress: (progress: SavedProgress) => Promise<void>;
+  clearExamProgress: () => Promise<void>;
 }
 
 const checkAnswer = (question: Question, answer: string | string[]): { isCorrect: 0 | 1 | 2; score: number; blankResults?: BlankResult[] } => {
@@ -1078,5 +1099,53 @@ export const useExamStore = create<ExamStore>((set, get) => ({
     const state = get();
     if (!state.examState) return false;
     return state.examState.results.size === state.examState.questions.length;
+  },
+
+  // 只读加载保存的进度，不修改任何状态（无副作用）
+  loadExamProgress: async () => {
+    const progress = await getStoreValue<SavedProgress | null>(PROGRESS_KEY, null);
+    return progress;
+  },
+
+  // 保存当前答题进度
+  saveExamProgress: async (mode, elapsedTime, practiceMode) => {
+    const state = get();
+    if (!state.examState) return;
+
+    const progress: SavedProgress = {
+      mode,
+      bankId: state.examState.bankId || '',
+      bankName: state.examState.bankName || '',
+      questions: state.examState.questions,
+      currentIndex: state.examState.currentIndex,
+      answers: Array.from(state.examState.answers.entries()),
+      results: Array.from(state.examState.results.entries()),
+      startTime: state.examState.startTime,
+      elapsedTime,
+      practiceMode,
+      savedAt: Date.now()
+    };
+
+    await setStoreValue(PROGRESS_KEY, progress);
+  },
+
+  // 显式恢复答题进度（仅在调用方确认匹配后调用）
+  restoreExamProgress: async (progress) => {
+    set({
+      examState: {
+        bankId: progress.bankId,
+        bankName: progress.bankName,
+        questions: progress.questions,
+        currentIndex: progress.currentIndex,
+        answers: new Map(progress.answers),
+        results: new Map(progress.results),
+        startTime: progress.startTime,
+        isFinished: false
+      }
+    });
+  },
+
+  clearExamProgress: async () => {
+    await removeStoreValue(PROGRESS_KEY);
   }
 }));
