@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useQuestionBankStore } from './store/questionBankStore';
 import { useRecordStore } from './store/recordStore';
+import { useDutyScheduleStore } from './store/dutyScheduleStore';
 import { autoLoadLastModel } from './utils/aiGrading';
 import Toast from './components/Toast';
 
@@ -15,10 +16,13 @@ const Records = lazy(() => import('./pages/Records'));
 const Import = lazy(() => import('./pages/Import'));
 const DownloadBanks = lazy(() => import('./pages/DownloadBanks'));
 const ManageBanks = lazy(() => import('./pages/ManageBanks'));
+const DutySchedule = lazy(() => import('./pages/DutySchedule'));
+const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase'));
 
 const App: React.FC = () => {
   const { loadBanks } = useQuestionBankStore();
   const { loadRecords } = useRecordStore();
+  const { loadDuties } = useDutyScheduleStore();
   const [initializing, setInitializing] = useState(true);
 
   useEffect(() => {
@@ -26,13 +30,14 @@ const App: React.FC = () => {
       try {
         // 设置最大加载时间，避免加载过久
         const maxWaitTime = new Promise(resolve => setTimeout(resolve, 3000));
-        
+
         // 并行加载数据，但设置超时
         const loadData = Promise.all([
           loadBanks().catch(err => console.error('加载题库失败:', err)),
-          loadRecords().catch(err => console.error('加载记录失败:', err))
+          loadRecords().catch(err => console.error('加载记录失败:', err)),
+          loadDuties().catch(err => console.error('加载值班表失败:', err))
         ]);
-        
+
         // 等待数据加载或超时（最多3秒）
         await Promise.race([loadData, maxWaitTime]);
         
@@ -50,7 +55,7 @@ const App: React.FC = () => {
       }
     };
     init();
-  }, [loadBanks, loadRecords]);
+  }, [loadBanks, loadRecords, loadDuties]);
 
   if (initializing) {
     return (
@@ -88,6 +93,8 @@ const App: React.FC = () => {
             <Route path="/import" element={<Import />} />
             <Route path="/download-banks" element={<DownloadBanks />} />
             <Route path="/manage-banks" element={<ManageBanks />} />
+            <Route path="/duty" element={<DutySchedule />} />
+            <Route path="/placeholder" element={<KnowledgeBase />} />
           </Routes>
         </Suspense>
       </BrowserRouter>

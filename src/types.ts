@@ -183,4 +183,91 @@ export type QuestionStatus = 'unanswered' | 'answered' | 'marked' | 'correct' | 
 
 export type PracticeMode = 'all' | 'wrong' | 'marked' | 'sequential' | 'view' | 'favorites' | 'common';
 
+// ===== 值班表相关类型 =====
+
+// 班次类型
+export type DutyShiftType = 'morning' | 'noon' | 'night' | 'allday';
+
+// 值班表中的一条班次记录（单个日期下的一个班次）
+export interface DutyShift {
+  id: string;
+  date: string;           // YYYY-MM-DD
+  shiftType: DutyShiftType; // 班次类型
+  startTime?: string;     // HH:mm
+  endTime?: string;       // HH:mm
+  tasks: string[];        // 任务列表
+  personInCharge?: string; // 负责人
+  notes?: string;         // 备注
+  group?: string;         // 班组：A/B/C/D，空字符串为长白班
+}
+
+// 演练抽检计划中的一项：某日期某班组对应的演练名称
+export interface DutyDrill {
+  date: string;   // YYYY-MM-DD
+  group: string;  // 班组 A/B/C/D
+  name: string;   // 演练名称
+}
+
+// 一份值班表（可包含多天、多班次）
+export interface DutySchedule {
+  id: string;
+  name: string;
+  description?: string;
+  shifts: DutyShift[];
+  drills?: DutyDrill[];   // 演练抽检计划（日期+班组→演练名称）
+  createdAt: string;
+  updatedAt: string;
+  sourceSha?: string;
+  sourceFilename?: string;
+  sourceType?: 'system' | 'user';
+}
+
+// 索引文件中的一项（与 BankIndexItem 对应）
+export interface DutyIndexItem {
+  name: string;
+  filename: string;
+  downloadUrl: string;
+  sha: string;
+}
+
+// 索引文件结构
+export interface DutyIndex {
+  systemDuties: DutyIndexItem[];
+  userDuties: DutyIndexItem[];
+}
+
+// 用于本地 JSON 导入的原始数据结构
+export interface JsonDutyShiftData {
+  date: string;
+  shiftType?: string;
+  startTime?: string;
+  endTime?: string;
+  tasks?: string[];
+  personInCharge?: string;
+  notes?: string;
+  group?: string;
+}
+
+export interface JsonDutyScheduleData {
+  name: string;
+  description?: string;
+  shifts: JsonDutyShiftData[];
+}
+
+// ===== 知识库相关类型 =====
+
+// 知识库条目（导入的文档）
+export interface KnowledgeItem {
+  id: string;
+  title: string;       // 标题
+  category: string;    // 分类（专业领域）
+  content: string;     // 正文内容
+  createdAt: string;
+  updatedAt: string;
+}
+
+// 知识库搜索数据源
+export type KnowledgeSearchSource = 'knowledge' | 'questionBank' | 'combined' | 'ai';
+
+
 

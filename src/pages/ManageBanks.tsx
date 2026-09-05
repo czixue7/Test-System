@@ -6,11 +6,14 @@ import { useToast } from '../hooks/useToast';
 import { QuestionBank, BankIndex, BankImageInfo } from '../types';
 import { useSafeArea } from '../hooks/useSafeArea';
 import { fetchBankIndex, checkBankUpdate, findBankInIndex } from '../utils/bankIndex';
+import { useKnowledgeStore } from '../store/knowledgeStore';
+import { getOrCreateSummary, downloadSummary, SummaryType } from '../utils/knowledgeSummary';
 
 const ManageBanks: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { banks, deleteBank, updateBankWithSha, loadBanks } = useQuestionBankStore();
+  const { items: knowledgeItems } = useKnowledgeStore();
   const { showSuccess, showWarning, showInfo, showError } = useToast();
   const safeArea = useSafeArea();
   const banksRef = useRef(banks);
@@ -25,6 +28,25 @@ const ManageBanks: React.FC = () => {
     user: true,
     builtIn: true
   });
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  // 导出总结文件
+  const handleExportSummary = async (type: SummaryType) => {
+    setExporting(true);
+    try {
+      const { content, generated } = await getOrCreateSummary(type, knowledgeItems, banks);
+      const label = type === 'knowledge' ? '知识库' : type === 'questionBank' ? '题库' : '综合';
+      const date = new Date().toISOString().slice(0, 10);
+      downloadSummary(content, `${label}总结_${date}.md`);
+      showSuccess(generated ? `${label}总结已生成并导出` : `${label}总结已导出`);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : '导出失败');
+    } finally {
+      setExporting(false);
+      setShowExportModal(false);
+    }
+  };
 
   // 刷新：获取远程索引 + 重新加载本地题库
   const fetchRemoteBanks = useCallback(async () => {
@@ -247,21 +269,30 @@ const ManageBanks: React.FC = () => {
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
           </button>
           <h1 className="text-lg font-semibold">题库管理</h1>
-          <button
-            onClick={fetchRemoteBanks}
-            disabled={loadingRemote}
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors disabled:opacity-50"
-            title="检查更新"
-          >
-            <svg
-              className={`w-5 h-5 ${loadingRemote ? 'animate-spin' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setShowExportModal(true)}
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors"
+              title="导出总结"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
-            </svg>
-          </button>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" /></svg>
+            </button>
+            <button
+              onClick={fetchRemoteBanks}
+              disabled={loadingRemote}
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors disabled:opacity-50"
+              title="检查更新"
+            >
+              <svg
+                className={`w-5 h-5 ${loadingRemote ? 'animate-spin' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+              </svg>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -363,6 +394,52 @@ const ManageBanks: React.FC = () => {
                 className="flex-1 py-2.5 bg-red-500 text-white rounded-lg font-medium hover:bg-red-600 transition-all"
               >
                 删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showExportModal && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowExportModal(false)}
+        >
+          <div
+            className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-bold text-gray-800 dark:text-white">导出总结</h2>
+              <button
+                onClick={() => setShowExportModal(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-400"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">选择要导出的总结文件（首次生成后缓存）：</p>
+            <div className="space-y-2">
+              <button
+                onClick={() => handleExportSummary('knowledge')}
+                disabled={exporting}
+                className="w-full py-2.5 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg font-medium hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors disabled:opacity-50"
+              >
+                📚 知识库总结
+              </button>
+              <button
+                onClick={() => handleExportSummary('questionBank')}
+                disabled={exporting}
+                className="w-full py-2.5 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 rounded-lg font-medium hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors disabled:opacity-50"
+              >
+                📝 题库总结
+              </button>
+              <button
+                onClick={() => handleExportSummary('combined')}
+                disabled={exporting}
+                className="w-full py-2.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 rounded-lg font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors disabled:opacity-50"
+              >
+                🔗 综合总结（知识库 + 题库）
               </button>
             </div>
           </div>
