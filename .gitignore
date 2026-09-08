@@ -94,3 +94,8 @@ import-local-model-lag.md
 
 # Encryption tool (contains sensitive API keys and passwords)
 encrypt-tool/
+
+# Excel tables (not version controlled)
+*.xlsx
+*.xls
+
