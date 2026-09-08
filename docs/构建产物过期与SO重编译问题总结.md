@@ -32,6 +32,8 @@ dev: cfg!(not(feature = "custom-protocol")),
 
 本项目 `Cargo.toml` 曾缺失该特性（`[features]` 只有 `default = []`），导致手动 `cargo build` 出来的二进制全部是开发模式。
 
+> **v0.3.9 更新**：已改为 `default = ["custom-protocol"]`，任何 `cargo build`（含手动 Android .so 编译）默认启用生产模式。注意 `tauri-build` 没有 `custom-protocol` feature（可用：codegen/config-json/isolation 等），只给 `tauri` 主 crate 加即可。验证方式：编译后在二进制内搜索前端 chunk 名（如 `KnowledgeBase-*.js`），能搜到即内嵌成功。
+
 ### 2.3 增量编译陷阱
 
 cargo 按 Rust 源码的指纹决定是否重编译。**前端 dist 的变化不在 cargo 的输入指纹里**，所以：

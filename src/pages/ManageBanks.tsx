@@ -20,6 +20,7 @@ const ManageBanks: React.FC = () => {
   banksRef.current = banks;
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteModalClosing, setDeleteModalClosing] = useState(false);
   const [bankToDelete, setBankToDelete] = useState<string | null>(null);
   const [bankIndex, setBankIndex] = useState<BankIndex | null>(null);
   const [loadingRemote, setLoadingRemote] = useState(false);
@@ -29,7 +30,29 @@ const ManageBanks: React.FC = () => {
     builtIn: true
   });
   const [showExportModal, setShowExportModal] = useState(false);
+  const [exportModalClosing, setExportModalClosing] = useState(false);
   const [exporting, setExporting] = useState(false);
+
+  // 删除确认弹窗（带关闭动效）
+  const closeDeleteModal = () => {
+    if (deleteModalClosing) return;
+    setDeleteModalClosing(true);
+    setTimeout(() => {
+      setShowDeleteModal(false);
+      setBankToDelete(null);
+      setDeleteModalClosing(false);
+    }, 180);
+  };
+
+  // 导出总结弹窗（带关闭动效）
+  const closeExportModal = () => {
+    if (exportModalClosing) return;
+    setExportModalClosing(true);
+    setTimeout(() => {
+      setShowExportModal(false);
+      setExportModalClosing(false);
+    }, 180);
+  };
 
   // 导出总结文件
   const handleExportSummary = async (type: SummaryType) => {
@@ -44,7 +67,7 @@ const ManageBanks: React.FC = () => {
       showError(err instanceof Error ? err.message : '导出失败');
     } finally {
       setExporting(false);
-      setShowExportModal(false);
+      closeExportModal();
     }
   };
 
@@ -117,8 +140,7 @@ const ManageBanks: React.FC = () => {
       deleteBank(bankToDelete);
       showSuccess(`题库「${bank?.name}」已删除`);
     }
-    setShowDeleteModal(false);
-    setBankToDelete(null);
+    closeDeleteModal();
   };
 
   const handleUpdateBank = async (bank: QuestionBank) => {
@@ -362,13 +384,15 @@ const ManageBanks: React.FC = () => {
         )}
       </div>
 
-      {showDeleteModal && (
+      {(showDeleteModal || deleteModalClosing) && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowDeleteModal(false)}
+          style={{ animation: deleteModalClosing ? 'modal-fade-out 0.18s ease-in forwards' : 'modal-fade 0.2s ease-out' }}
+          onClick={closeDeleteModal}
         >
           <div 
             className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl"
+            style={{ animation: deleteModalClosing ? 'modal-pop-out 0.18s ease-in forwards' : 'modal-pop 0.25s ease-out' }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="text-center mb-4">
@@ -384,7 +408,7 @@ const ManageBanks: React.FC = () => {
             </div>
             <div className="flex gap-3">
               <button
-                onClick={() => setShowDeleteModal(false)}
+                onClick={closeDeleteModal}
                 className="flex-1 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-all"
               >
                 取消
@@ -400,19 +424,21 @@ const ManageBanks: React.FC = () => {
         </div>
       )}
 
-      {showExportModal && (
+      {(showExportModal || exportModalClosing) && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowExportModal(false)}
+          style={{ animation: exportModalClosing ? 'modal-fade-out 0.18s ease-in forwards' : 'modal-fade 0.2s ease-out' }}
+          onClick={closeExportModal}
         >
           <div
             className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl"
+            style={{ animation: exportModalClosing ? 'modal-pop-out 0.18s ease-in forwards' : 'modal-pop 0.25s ease-out' }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-bold text-gray-800 dark:text-white">导出总结</h2>
               <button
-                onClick={() => setShowExportModal(false)}
+                onClick={closeExportModal}
                 className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-400"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>

@@ -1,6 +1,6 @@
 [package]
 name = "Answer_Test"
-version = "0.3.8"
+version = "0.3.9"
 description = "答题测试库"
 authors = ["you"]
 edition = "2021"
@@ -34,7 +34,7 @@ android_logger = "0.14"
 jni = "0.21"
 
 [features]
-default = []
+default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 
 [profile.release]
@@ -48,3 +48,7 @@ strip = true
 [profile.dev]
 codegen-units = 16
 opt-level = 0
+
+# 本地 patch：indexmap 1.9.3 简化 build script，规避构建环境执行 build-script 失败问题
+[patch.crates-io]
+indexmap = { path = "vendor/indexmap-1.9.3" }

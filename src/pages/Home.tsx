@@ -246,7 +246,7 @@ const Home: React.FC = () => {
             <span className="text-xs mt-0.5">值班表</span>
           </button>
           <button onClick={() => navigate('/placeholder')} className="flex flex-col items-center py-1 px-4 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z" /></svg>
             <span className="text-xs mt-0.5">知识库</span>
           </button>
           <button onClick={() => navigate('/profile')} className="flex flex-col items-center py-1 px-4 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
@@ -266,9 +266,9 @@ const Home: React.FC = () => {
         className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg dark:from-blue-700 dark:to-blue-800 transition-colors"
         style={{ paddingTop: safeArea.top }}
       >
-        <div className="max-w-lg mx-auto px-4 pt-1 pb-1 flex items-center justify-between">
+        <div className="relative max-w-lg mx-auto px-4 h-12 flex items-center justify-between">
           <div className="w-8 h-8" />
-          <h1 className="text-lg font-semibold">学习</h1>
+          <h1 className="absolute left-1/2 -translate-x-1/2 text-base font-semibold pointer-events-none">学习</h1>
           <button onClick={() => setShowAddModal(true)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
           </button>
@@ -390,7 +390,7 @@ const Home: React.FC = () => {
             <span className="text-xs mt-0.5">值班表</span>
           </button>
           <button onClick={() => navigate('/placeholder')} className="flex flex-col items-center py-1 px-4 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z" /></svg>
             <span className="text-xs mt-0.5">知识库</span>
           </button>
           <button onClick={() => navigate('/profile')} className="flex flex-col items-center py-1 px-4 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">

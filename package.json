@@ -1,6 +1,6 @@
 {
   "name": "Answer_Test",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "答题测试库",
   "type": "module",
   "scripts": {
@@ -21,7 +21,10 @@
     "@tauri-apps/plugin-store": "^2.4.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^6.26.0",
+    "rehype-raw": "^7.0.0",
+    "remark-gfm": "^4.0.1",
     "string-similarity": "^4.0.4",
     "xlsx": "^0.18.5",
     "zustand": "^4.5.4"

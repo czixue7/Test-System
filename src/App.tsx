@@ -18,6 +18,7 @@ const DownloadBanks = lazy(() => import('./pages/DownloadBanks'));
 const ManageBanks = lazy(() => import('./pages/ManageBanks'));
 const DutySchedule = lazy(() => import('./pages/DutySchedule'));
 const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase'));
+const KnowledgeItemView = lazy(() => import('./pages/KnowledgeItemView'));
 
 const App: React.FC = () => {
   const { loadBanks } = useQuestionBankStore();
@@ -95,6 +96,7 @@ const App: React.FC = () => {
             <Route path="/manage-banks" element={<ManageBanks />} />
             <Route path="/duty" element={<DutySchedule />} />
             <Route path="/placeholder" element={<KnowledgeBase />} />
+            <Route path="/knowledge-item/:id" element={<KnowledgeItemView />} />
           </Routes>
         </Suspense>
       </BrowserRouter>

@@ -264,6 +264,7 @@ export interface KnowledgeItem {
   content: string;     // 正文内容
   createdAt: string;
   updatedAt: string;
+  kind?: 'note';       // 由"帮我记"创建的汇总条目（同一分类只保留一个，记录追加写入）
 }
 
 // 知识库搜索数据源

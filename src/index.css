@@ -360,6 +360,11 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+/* 预留滚动条位置，避免内容过长出现滚动条时页面宽度变化、切换 tab 时抖动 */
+html {
+  scrollbar-gutter: stable;
+}
+
 /* 全局主题过渡效果 */
 *, *::before, *::after {
   transition-property: background-color, border-color, color, fill, stroke;
@@ -921,5 +926,159 @@ table {
 
 .vc-storage-item .vc-storage-value {
   font-size: 12px;
+}
+
+/* ============================================================
+   弹窗动画（打开 + 关闭）
+   ============================================================ */
+@keyframes modal-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes modal-pop {
+  from { opacity: 0; transform: scale(0.95) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes modal-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes modal-pop-out {
+  from { opacity: 1; transform: scale(1) translateY(0); }
+  to { opacity: 0; transform: scale(0.95) translateY(8px); }
+}
+
+/* ============================================================
+   Markdown 渲染样式（知识库回答 / 知识总结弹窗）
+   ============================================================ */
+.markdown-body {
+  font-size: 13.5px;
+  line-height: 1.7;
+  word-break: break-word;
+}
+.markdown-body > *:first-child { margin-top: 0; }
+.markdown-body > *:last-child { margin-bottom: 0; }
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 14px 0 8px;
+  color: inherit;
+}
+.markdown-body h1 { font-size: 17px; border-bottom: 1px solid var(--color-border); padding-bottom: 6px; }
+.markdown-body h2 { font-size: 15px; border-bottom: 1px solid var(--color-border-light); padding-bottom: 4px; }
+.markdown-body h3 { font-size: 14px; }
+.markdown-body h4 { font-size: 13.5px; }
+.markdown-body p { margin: 6px 0; }
+.markdown-body ul,
+.markdown-body ol { margin: 6px 0; padding-left: 20px; }
+.markdown-body ul { list-style: disc; }
+.markdown-body ol { list-style: decimal; }
+.markdown-body li { margin: 3px 0; }
+.markdown-body li > p { margin: 2px 0; }
+.markdown-body strong { font-weight: 600; }
+.markdown-body em { font-style: italic; }
+.markdown-body blockquote {
+  margin: 8px 0;
+  padding: 4px 12px;
+  border-left: 3px solid var(--color-border);
+  color: var(--color-text-secondary);
+  background: var(--color-bg-tertiary);
+  border-radius: 0 8px 8px 0;
+}
+.markdown-body code {
+  font-family: 'SF Mono', Consolas, 'Courier New', monospace;
+  font-size: 12.5px;
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border-light);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.markdown-body pre {
+  margin: 8px 0;
+  padding: 10px 12px;
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border-light);
+  border-radius: 10px;
+  overflow-x: auto;
+}
+.markdown-body pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 12.5px;
+  white-space: pre-wrap;
+}
+/* 覆盖范围折叠框（总结头部元信息，默认收起） */
+.markdown-body details {
+  margin: 8px 0;
+  border: 1px solid var(--color-border-light);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--color-bg-tertiary);
+}
+.markdown-body summary {
+  cursor: pointer;
+  user-select: none;
+  padding: 7px 12px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-tertiary);
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.markdown-body summary::-webkit-details-marker { display: none; }
+.markdown-body details[open] > summary {
+  border-bottom: 1px solid var(--color-border-light);
+}
+.markdown-body .kb-summary-time { white-space: nowrap; }
+.markdown-body .kb-summary-count { white-space: nowrap; }
+/* 展开/收起提示文字随状态切换 */
+.markdown-body .kb-expanded { display: none; }
+.markdown-body details[open] .kb-collapsed { display: none; }
+.markdown-body details[open] .kb-expanded { display: inline; }
+/* 折叠框展开内容区 */
+.markdown-body .kb-details-content {
+  padding: 4px 12px 8px;
+}
+.markdown-body .kb-details-content p {
+  margin: 4px 0;
+  font-size: 12.5px;
+  color: var(--color-text-secondary);
+  line-height: 1.7;
+  word-break: break-word;
+}
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 12.5px;
+}
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--color-border);
+  padding: 5px 8px;
+  text-align: left;
+}
+.markdown-body th {
+  background: var(--color-bg-tertiary);
+  font-weight: 600;
+}
+.markdown-body a {
+  color: #2563eb;
+  text-decoration: none;
+}
+.dark .markdown-body a { color: #60a5fa; }
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 12px 0;
 }
 

@@ -10,9 +10,9 @@ const Profile: React.FC = () => {
   const navigate = useNavigate();
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [showThemeModal, setShowThemeModal] = useState(false);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [isClosing, setIsClosing] = useState(false);
-  const [activeModal, setActiveModal] = useState<'about' | 'theme' | null>(null);
+  // 各弹窗独立的关闭动效状态（避免跨弹窗共享状态导致的时序闪烁）
+  const [aboutClosing, setAboutClosing] = useState(false);
+  const [themeClosing, setThemeClosing] = useState(false);
   const { theme, setTheme, themeStyle, setThemeStyle } = useThemeStore();
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
@@ -44,23 +44,35 @@ const Profile: React.FC = () => {
     }
   }, [logs]);
 
-  useEffect(() => {
-    if (showAboutModal || showThemeModal) {
-      setIsClosing(false);
-      setActiveModal(showAboutModal ? 'about' : 'theme');
-      const timer = setTimeout(() => setModalVisible(true), 10);
-      return () => clearTimeout(timer);
-    } else {
-      setIsClosing(true);
-      const timer = setTimeout(() => {
-        setModalVisible(false);
-        setActiveModal(null);
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-  }, [showAboutModal, showThemeModal]);
+  // 弹窗开关：打开时同步复位 closing，确保新开弹窗播放进入动画
+  const openAboutModal = () => {
+    setAboutClosing(false);
+    setShowAboutModal(true);
+  };
+  const openThemeModal = () => {
+    setThemeClosing(false);
+    setShowThemeModal(true);
+  };
 
-  const currentVersion = '0.3.8';
+  // 显式关闭弹窗：同步标记 closing，立即播放关闭动画（背景由暗变亮），动画结束后卸载
+  const closeModal = (modal: 'about' | 'theme') => {
+    if (modal === 'about') {
+      if (aboutClosing) return;
+      setAboutClosing(true);
+      setShowAboutModal(false);
+      setUpdateInfo(null);
+      setDownloadStatus('idle');
+      setLogs([]);
+      setTimeout(() => setAboutClosing(false), 260);
+    } else {
+      if (themeClosing) return;
+      setThemeClosing(true);
+      setShowThemeModal(false);
+      setTimeout(() => setThemeClosing(false), 260);
+    }
+  };
+
+  const currentVersion = '0.3.9';
 
   const handleCheckUpdate = async () => {
     setCheckingUpdate(true);
@@ -213,7 +225,7 @@ const Profile: React.FC = () => {
       ),
       title: '主题',
       value: `${themeStyleLabel} · ${themeModeLabel}`,
-      onClick: () => setShowThemeModal(true)
+      onClick: () => openThemeModal()
     },
     {
       icon: (
@@ -240,7 +252,7 @@ const Profile: React.FC = () => {
         </svg>
       ),
       title: '关于',
-      onClick: () => setShowAboutModal(true)
+      onClick: () => openAboutModal()
     }
   ];
 
@@ -250,9 +262,9 @@ const Profile: React.FC = () => {
         className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg dark:from-blue-700 dark:to-blue-800 transition-colors"
         style={{ paddingTop: safeArea.top }}
       >
-        <div className="max-w-lg mx-auto px-4 pt-1 pb-1 flex items-center justify-between">
+        <div className="relative max-w-lg mx-auto px-4 h-12 flex items-center justify-between">
           <div className="w-8 h-8" />
-          <h1 className="text-lg font-semibold">我的</h1>
+          <h1 className="absolute left-1/2 -translate-x-1/2 text-base font-semibold pointer-events-none">我的</h1>
           <div className="w-8 h-8" />
         </div>
       </header>
@@ -317,7 +329,8 @@ const Profile: React.FC = () => {
             className="flex flex-col items-center py-1 px-4 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z" />
             </svg>
             <span className="text-xs mt-0.5">知识库</span>
           </Link>
@@ -333,17 +346,15 @@ const Profile: React.FC = () => {
         </div>
       </nav>
 
-      {(showAboutModal || (modalVisible && activeModal === 'about')) && (
+      {(showAboutModal || aboutClosing) && (
         <div
-          className={`fixed inset-0 bg-black flex items-center justify-center z-50 p-4 transition-all duration-300 ease-in-out ${isClosing ? 'bg-opacity-0' : 'bg-opacity-50'}`}
-          onClick={() => { setShowAboutModal(false); setUpdateInfo(null); setDownloadStatus('idle'); setLogs([]); }}
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          style={{ animation: aboutClosing ? 'modal-fade-out 0.25s ease-in forwards' : 'modal-fade 0.25s ease-out' }}
+          onClick={() => closeModal('about')}
         >
           <div
-            className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl transform transition-all duration-300 ease-in-out max-h-[90vh] overflow-y-auto"
-            style={{
-              transform: isClosing || !modalVisible ? 'scale(0)' : 'scale(1)',
-              opacity: isClosing || !modalVisible ? 0 : 1
-            }}
+            className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto"
+            style={{ animation: aboutClosing ? 'modal-pop-out 0.25s ease-in forwards' : 'modal-pop 0.25s ease-out' }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="text-center">
@@ -465,7 +476,7 @@ const Profile: React.FC = () => {
               </div>
             </div>
             <button
-              onClick={() => { setShowAboutModal(false); setUpdateInfo(null); setDownloadStatus('idle'); setLogs([]); }}
+              onClick={() => closeModal('about')}
               className="w-full py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg font-medium hover:from-blue-600 hover:to-blue-700 transition-all"
             >
               确定
@@ -474,17 +485,15 @@ const Profile: React.FC = () => {
         </div>
       )}
 
-      {(showThemeModal || (modalVisible && activeModal === 'theme')) && (
+      {(showThemeModal || themeClosing) && (
         <div
-          className={`fixed inset-0 bg-black flex items-center justify-center z-50 p-4 transition-all duration-300 ease-in-out ${isClosing ? 'bg-opacity-0' : 'bg-opacity-50'}`}
-          onClick={() => setShowThemeModal(false)}
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          style={{ animation: themeClosing ? 'modal-fade-out 0.25s ease-in forwards' : 'modal-fade 0.25s ease-out' }}
+          onClick={() => closeModal('theme')}
         >
           <div
-            className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl transform transition-all duration-300 ease-in-out"
-            style={{
-              transform: isClosing || !modalVisible ? 'scale(0)' : 'scale(1)',
-              opacity: isClosing || !modalVisible ? 0 : 1
-            }}
+            className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl"
+            style={{ animation: themeClosing ? 'modal-pop-out 0.25s ease-in forwards' : 'modal-pop 0.25s ease-out' }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="text-center mb-4">
@@ -557,7 +566,7 @@ const Profile: React.FC = () => {
             </div>
 
             <button
-              onClick={() => setShowThemeModal(false)}
+              onClick={() => closeModal('theme')}
               className="w-full mt-4 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-all"
             >
               完成

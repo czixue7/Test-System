@@ -89,13 +89,44 @@ const DutySchedule: React.FC = () => {
   const [isClosing, setIsClosing] = useState(false);
 
   const [showForecastModal, setShowForecastModal] = useState(false);
+  const [forecastClosing, setForecastClosing] = useState(false);
   const [forecastEndDate, setForecastEndDate] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-12-31`;
   });
 
-  // 演练名称弹窗
+  // 演练名称弹窗（带关闭动效）
   const [drillModalText, setDrillModalText] = useState<string | null>(null);
+  const [drillClosing, setDrillClosing] = useState(false);
+  const closeDrillModal = () => {
+    if (drillClosing) return;
+    setDrillClosing(true);
+    setTimeout(() => {
+      setDrillModalText(null);
+      setDrillClosing(false);
+    }, 180);
+  };
+
+  // 推算未来排班弹窗（带关闭动效）
+  const closeForecastModal = () => {
+    if (forecastClosing) return;
+    setForecastClosing(true);
+    setTimeout(() => {
+      setShowForecastModal(false);
+      setForecastClosing(false);
+    }, 180);
+  };
+
+  // 删除确认弹窗（带关闭动效）
+  const closeDeleteModal = () => {
+    if (deleteClosing) return;
+    setDeleteClosing(true);
+    setTimeout(() => {
+      setShowDeleteModal(false);
+      setDutyToDelete(null);
+      setDeleteClosing(false);
+    }, 180);
+  };
 
   const importFileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
@@ -109,6 +140,7 @@ const DutySchedule: React.FC = () => {
   const [remoteError, setRemoteError] = useState<string | null>(null);
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteClosing, setDeleteClosing] = useState(false);
   const [dutyToDelete, setDutyToDelete] = useState<string | null>(null);
 
   useEffect(() => { loadDuties(); }, [loadDuties]);
@@ -275,7 +307,7 @@ const DutySchedule: React.FC = () => {
       const result = generateDutyForecast(currentDuty.shifts, forecastEndDate);
       if (result.shifts.length === 0) {
         showInfo('当前排班已覆盖到截止日期，无需推算');
-        setShowForecastModal(false);
+        closeForecastModal();
         return;
       }
       // 生成独立记录：原有排班 + 推算的未来排班
@@ -295,7 +327,7 @@ const DutySchedule: React.FC = () => {
         setSelectedDate(result.fromDate);
       }
       showSuccess(`已推算未来排班至 ${result.endDate}，新增 ${result.shifts.length} 条班次`);
-      setShowForecastModal(false);
+      closeForecastModal();
     } catch (err) {
       showError(err instanceof Error ? err.message : '推算失败');
     }
@@ -362,7 +394,8 @@ const DutySchedule: React.FC = () => {
     if (!dutyToDelete) return;
     deleteDuty(dutyToDelete);
     if (currentDutyId === dutyToDelete) { setCurrentDutyId(null); localStorage.removeItem(STORAGE_KEY_CURRENT_DUTY); }
-    setShowDeleteModal(false); setDutyToDelete(null); showSuccess('已删除');
+    showSuccess('已删除');
+    closeDeleteModal();
   };
 
   // ===== 下载面板 =====
@@ -424,7 +457,7 @@ const DutySchedule: React.FC = () => {
   const selectedDayOfMonth = selectedDateObj ? selectedDateObj.getDate() : 0;
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-900" style={{ paddingTop: safeArea.top + 44, paddingBottom: safeArea.bottom + 70 }}>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900" style={{ paddingTop: safeArea.top + 48, paddingBottom: safeArea.bottom + 70 }}>
       <style>{`
         @keyframes duty-marquee {
           0% { transform: translateX(0); }
@@ -440,11 +473,11 @@ const DutySchedule: React.FC = () => {
         }
       `}</style>
       <header className="fixed top-0 left-0 right-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800" style={{ paddingTop: safeArea.top }}>
-        <div className="max-w-lg mx-auto px-4 h-11 flex items-center justify-between">
+        <div className="relative max-w-lg mx-auto px-4 h-12 flex items-center justify-between">
           <button onClick={() => navigate('/')} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-300">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
           </button>
-          <h1 className="text-base font-semibold text-gray-800 dark:text-white">值班表</h1>
+          <h1 className="absolute left-1/2 -translate-x-1/2 text-base font-semibold text-gray-800 dark:text-white pointer-events-none">值班表</h1>
           <div className="flex items-center gap-1">
             <button onClick={() => setShowForecastModal(true)} title="推算未来排班" className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-300">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
@@ -569,7 +602,7 @@ const DutySchedule: React.FC = () => {
                 className={`h-11 rounded-lg flex flex-col items-center justify-center relative transition-all
                   ${isSelected ? 'bg-blue-100 dark:bg-blue-900/40 ring-2 ring-blue-400 scale-[1.02]' :
                     cell.isToday ? 'bg-blue-50 dark:bg-blue-900/20' :
-                    hasDuty ? 'bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800/30'}`}>
+                    hasDuty ? 'bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800' : 'hover:bg-gray-100 dark:hover:bg-gray-800/30'}`}>
                 <span className={`text-sm font-bold leading-none
                   ${cell.isToday ? 'text-blue-600 dark:text-blue-400' :
                     isWeekend ? 'text-red-400' : 'text-gray-800 dark:text-gray-200'}`}>
@@ -599,7 +632,7 @@ const DutySchedule: React.FC = () => {
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <span className="text-2xl font-bold text-gray-800 dark:text-white">{selectedDayOfMonth}</span>
-                  <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">{viewYear}年{viewMonth + 1}月 · 周{selectedWeekday}</span>
+                  <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">{selectedDateObj ? `${selectedDateObj.getFullYear()}年${selectedDateObj.getMonth() + 1}月` : `${viewYear}年${viewMonth + 1}月`} · 周{selectedWeekday}</span>
                 </div>
                 <span className="text-xs text-gray-400">{getLunarLike(selectedDayOfMonth)}</span>
               </div>
@@ -735,7 +768,7 @@ const DutySchedule: React.FC = () => {
                           {!isNight && drillNames.length > 0 && (
                             <div className="mb-2 space-y-1">
                               {drillNames.map((name, i) => (
-                                <DrillMarquee key={i} text={name} onClick={() => setDrillModalText(drillNames.join('\n'))} />
+                                <DrillMarquee key={i} text={name} onClick={() => { setDrillClosing(false); setDrillModalText(drillNames.join('\n')); }} />
                               ))}
                             </div>
                           )}
@@ -787,7 +820,7 @@ const DutySchedule: React.FC = () => {
             <span className="text-xs mt-0.5 font-medium">值班表</span>
           </button>
           <button onClick={() => navigate('/placeholder')} className="flex flex-col items-center py-1 px-4 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z" /></svg>
             <span className="text-xs mt-0.5">知识库</span>
           </button>
           <button onClick={() => navigate('/profile')} className="flex flex-col items-center py-1 px-4 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
@@ -907,11 +940,11 @@ const DutySchedule: React.FC = () => {
 
       {/* 推算未来排班 */}
       {showForecastModal && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" style={{ animation: 'modal-fade 0.2s ease-out' }} onClick={() => setShowForecastModal(false)}>
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl" style={{ animation: 'modal-pop 0.25s ease-out' }} onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" style={{ animation: forecastClosing ? 'modal-fade-out 0.18s ease-in forwards' : 'modal-fade 0.2s ease-out' }} onClick={closeForecastModal}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl" style={{ animation: forecastClosing ? 'modal-pop-out 0.18s ease-in forwards' : 'modal-pop 0.25s ease-out' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-lg font-semibold dark:text-white">推算未来排班</h3>
-              <button onClick={() => setShowForecastModal(false)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-400">
+              <button onClick={closeForecastModal} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-400">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
@@ -927,20 +960,26 @@ const DutySchedule: React.FC = () => {
                 className="w-full px-3 py-2.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
             </label>
             <div className="flex gap-2">
-              <button onClick={() => setShowForecastModal(false)} className="flex-1 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg font-medium">取消</button>
+              <button onClick={closeForecastModal} className="flex-1 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg font-medium">取消</button>
               <button onClick={handleForecast} className="flex-1 py-2.5 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors">开始推算</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 演练名称弹窗 */}
+      {/* 演练名称弹窗（关闭带淡出/缩放动效） */}
       {drillModalText !== null && (
-        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4" style={{ animation: 'modal-fade 0.2s ease-out' }} onClick={() => setDrillModalText(null)}>
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl" style={{ animation: 'modal-pop 0.25s ease-out' }} onClick={e => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4"
+          style={{ animation: drillClosing ? 'modal-fade-out 0.18s ease-in forwards' : 'modal-fade 0.2s ease-out' }}
+          onClick={closeDrillModal}>
+          <div
+            className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl"
+            style={{ animation: drillClosing ? 'modal-pop-out 0.18s ease-in forwards' : 'modal-pop 0.25s ease-out' }}
+            onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-lg font-semibold dark:text-white">演练名称</h3>
-              <button onClick={() => setDrillModalText(null)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-400">
+              <button onClick={closeDrillModal} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-400">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
@@ -953,12 +992,12 @@ const DutySchedule: React.FC = () => {
 
       {/* 删除确认 */}
       {showDeleteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" style={{ animation: 'modal-fade 0.2s ease-out' }} onClick={() => { setShowDeleteModal(false); setDutyToDelete(null); }}>
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl" style={{ animation: 'modal-pop 0.25s ease-out' }} onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" style={{ animation: deleteClosing ? 'modal-fade-out 0.18s ease-in forwards' : 'modal-fade 0.2s ease-out' }} onClick={closeDeleteModal}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl" style={{ animation: deleteClosing ? 'modal-pop-out 0.18s ease-in forwards' : 'modal-pop 0.25s ease-out' }} onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-semibold mb-2 dark:text-white">删除值班表</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">确定删除？此操作不可撤销。</p>
             <div className="flex gap-2">
-              <button onClick={() => { setShowDeleteModal(false); setDutyToDelete(null); }} className="flex-1 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg font-medium">取消</button>
+              <button onClick={closeDeleteModal} className="flex-1 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg font-medium">取消</button>
               <button onClick={handleDeleteConfirm} className="flex-1 py-2.5 bg-red-500 text-white rounded-lg font-medium">删除</button>
             </div>
           </div>
