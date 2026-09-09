@@ -689,7 +689,7 @@ useEffect(() => {
   - ARM64 设备优先下载 ARM64 版本（~11MB），不支持的设备回退到 Universal 版本（~38MB）
   - 使用 Tauri HTTP 插件下载 APK 到 `/storage/emulated/0/Download/` 目录
   - 调试日志实时显示，支持自动滚动
-  - 下载完成后支持调用系统安装器进行安装
+  - 下载完成后通过 Tauri 移动端插件调用 Android 原生安装（FileProvider + content:// URI）
 - **应用内更新功能**：
   - 检查更新按钮优化：检查中显示加载动画，无更新时按钮显示"当前已是最新版本"
   - 有更新时按钮变为橙色显示"可更新"
@@ -728,6 +728,12 @@ useEffect(() => {
 - **按钮颜色统一**：交卷和提交按钮改为绿色
 - **警告图标尺寸优化**：警告弹窗中 SVG 图标从 w-6 h-6 改为 w-8 h-8
 - **警告弹窗背景优化**：警告类型背景从不刺眼的黄色改为红色
+
+### 修复
+
+- **Cargo.lock 校验修复**：手动改版本导致 `Cargo.lock` 中 `field-offset 0.3.3` 的 checksum 与本机 registry 索引不一致，已更新校验值
+- **BOM 编码修复**：`package.json` 被写入 BOM 导致 Vite JSON 解析失败，已移除 BOM
+- **Cargo.toml description 乱码修复**：`src-tauri/Cargo.toml` 的 `description` 字段中文乱码，已修复编码
 
 ### 技术细节
 
@@ -789,6 +795,67 @@ const getPlatformAsset = (assets: { name: string; browser_download_url: string }
 // 修改后
 <div className="max-w-lg mx-auto px-4 py-4 pt-16">
 ```
+
+#### Android APK 安装插件实现
+
+**修改文件：** `src-tauri/src/lib.rs`、`src-tauri/gen/android/app/src/main/java/com/exam/test_system/InstallApkPlugin.kt`
+
+**Rust 侧（插件注册与调用）：**
+
+- 在 `AppHandle` 中注册自定义 Kotlin 插件 `installer`
+- 插件句柄保存在 `State<AndroidInstaller>` 中
+- 通过 `run_mobile_plugin` 调用原生安装方法
+- 返回值统一用 JSON 承载 status 字段
+
+```rust
+#[cfg(target_os = "android")]
+#[derive(Clone)]
+struct AndroidInstaller(PluginHandle<tauri::Wry>);
+
+fn installer_plugin() -> TauriPlugin<tauri::Wry> {
+    PluginBuilder::new("installer")
+        .setup(|app, api| {
+            let handle = api.register_android_plugin("com.exam.test_system", "InstallApkPlugin")?;
+            app.manage(AndroidInstaller(handle));
+            Ok(())
+        })
+        .build()
+}
+
+#[tauri::command]
+async fn install_apk(app: tauri::AppHandle, apk_path: String) -> Result<String, String> {
+    let installer = app.try_state::<AndroidInstaller>()
+        .ok_or_else(|| "Android 安装插件未初始化".to_string())?;
+    let result: Value = installer.0.run_mobile_plugin::<Value>("install", apk_path)?;
+    let status = result.get("status").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
+    Ok(status.to_string())
+}
+```
+
+**Kotlin 侧（FileProvider + content:// URI）：**
+
+- Android 7+ 禁止 `file://` 暴露，使用 `FileProvider.getUriForFile` 生成 `content://`
+- 添加 `FLAG_GRANT_READ_URI_PERMISSION` 将文件读取权限临时授予安装器
+- Android 8+ 检查“未知来源安装”权限，必要时跳转设置
+- `invoke.resolve` 统一返回 `JSObject`（JSON）给 Rust 侧
+
+```kotlin
+val authority = activity.packageName + ".fileprovider"
+val apkUri = FileProvider.getUriForFile(activity, authority, apkFile)
+val intent = Intent(Intent.ACTION_VIEW).apply {
+    setDataAndType(apkUri, "application/vnd.android.package-archive")
+    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+}
+activity.startActivity(intent)
+val result = JSObject().put("status", "INSTALL_INTENT_SENT")
+invoke.resolve(result)
+```
+
+#### 产物位置
+
+- **APK**：`src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk`
+- **AAB**：`src-tauri/gen/android/app/build/outputs/bundle/universalRelease/app-universal-release.aab`
 
 ---
 
@@ -2023,10 +2090,15 @@ tasks.whenTaskAdded {
 ## 版本说明
 
 - **[Unreleased]**: 开发中的功能
+- **[0.3.9]**: 知识库 AI 总结（覆盖全部题库）、Markdown 渲染、多会话对话管理、AI 搜索双通道回答、"帮我记"、导入优化、8 处弹窗进出动效、自定义协议白屏修复
+- **[0.3.8]**: 判题逻辑修复、更新检测缓存修复（迁移 Rust 后端）、安全区域三层降级、键盘检测、填空题答案标准化、沉浸式主题、退出保存恢复进度
+- **[0.3.7]**: 下载进度实时显示、更新检测哈希比对
+- **[0.3.5]**: 批量 AI 判题优化、测试记录持久化、题库索引文件、API 模型配置加密、模型列表刷新
 - **[0.3.4]**: 图片查看器增强、参考答案图片显示、滑动切换优化
-- **[0.3.3]**: 应用内更新功能、页面头部固定
-- **[0.3.2]**: 检查更新、下载题库、题库管理、UI 优化
-- **[0.3.0]**: 设置页面重构、判题模式设置、模型下载管理、AI 判题接口预留
+- **[0.3.3]**: APK 自动更新、应用内更新、页面头部固定、API 云端判题、Android 安装插件
+- **[0.3.2]**: 检查更新、下载题库、题库管理、UI 优化、移除 GGUF 模型
+- **[0.3.1]**: GGUF 模型真正推理、离线模型导入、AI 考试评价、AI 判题解析
+- **[0.3.0]**: AI 智能判题、模型管理、设置页面重构、移动端适配
 - **[0.2.2]**: vConsole 优化、自定义确认弹窗、滚动条美化、主题过渡优化、答题导航滚动、PC/Android 打包签名
 - **[0.2.1]**: 全局错题记录、答题流程优化、输入显示修复
 - **[0.2.0]**: 现代化移动应用风格布局重构、页面路由重构
