@@ -9,6 +9,7 @@ interface SettingsState {
   gradingProvider: GradingProvider;
   apiKey: string | null;
   apiModel: string;
+  apiEndpoint: string;
   apiProvider: string;
   apiPassword: string;
   vconsoleEnabled: boolean;
@@ -16,6 +17,7 @@ interface SettingsState {
   setGradingProvider: (provider: GradingProvider) => void;
   setApiKey: (key: string | null) => void;
   setApiModel: (model: string) => void;
+  setApiEndpoint: (endpoint: string) => void;
   setApiProvider: (provider: string) => void;
   setApiPassword: (password: string) => void;
   setVconsoleEnabled: (enabled: boolean) => void;
@@ -29,6 +31,7 @@ export const useSettingsStore = create<SettingsState>()(
       gradingProvider: 'api',
       apiKey: null,
       apiModel: '',
+      apiEndpoint: '',
       apiProvider: '',
       apiPassword: '',
       vconsoleEnabled: false,
@@ -36,12 +39,14 @@ export const useSettingsStore = create<SettingsState>()(
       setGradingProvider: (provider) => set({ gradingProvider: provider }),
       setApiKey: (key) => set({ apiKey: key }),
       setApiModel: (model) => set({ apiModel: model }),
+      setApiEndpoint: (endpoint) => set({ apiEndpoint: endpoint }),
       setApiProvider: (provider) => set({ apiProvider: provider }),
       setApiPassword: (password) => set({ apiPassword: password }),
       setVconsoleEnabled: (enabled) => set({ vconsoleEnabled: enabled }),
       resetApiConfig: () => set({
         apiKey: null,
         apiModel: '',
+        apiEndpoint: '',
         apiProvider: '',
         apiPassword: '',
       }),

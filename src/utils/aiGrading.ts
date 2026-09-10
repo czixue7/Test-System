@@ -42,11 +42,12 @@ function getGradingProvider(): GradingProvider {
   return useSettingsStore.getState().gradingProvider;
 }
 
-function getAPIConfig(): { apiKey: string | null; apiModel: string } {
+function getAPIConfig(): { apiKey: string | null; apiModel: string; apiEndpoint: string } {
   const state = useSettingsStore.getState();
   return {
     apiKey: state.apiKey,
     apiModel: state.apiModel,
+    apiEndpoint: state.apiEndpoint,
   };
 }
 
@@ -58,6 +59,7 @@ export async function isModelReady(): Promise<boolean> {
       apiGradingService.setConfig({
         apiKey: config.apiKey,
         model: config.apiModel,
+        endpoint: config.apiEndpoint,
       });
     }
     return apiGradingService.isConfigured();
@@ -177,6 +179,7 @@ async function generateWithProvider(prompt: string, maxTokens: number): Promise<
     apiGradingService.setConfig({
       apiKey: config.apiKey,
       model: config.apiModel,
+      endpoint: config.apiEndpoint,
     });
     return apiGradingService.callAPI(prompt, maxTokens);
   }
@@ -199,6 +202,7 @@ async function generateWithProviderStream(
     apiGradingService.setConfig({
       apiKey: config.apiKey,
       model: config.apiModel,
+      endpoint: config.apiEndpoint,
     });
     return apiGradingService.gradeWithStream(prompt, maxTokens, {
       onChunk,
@@ -346,7 +350,7 @@ function buildFillBlankPrompt(
   allowDisorder?: boolean
 ): string {
   const scorePerBlank = (maxScore / correctAnswers.length).toFixed(1);
-  
+
   if (allowDisorder) {
     const answersComparison = userAnswers.map((user, index) => {
       const userStr = user || '';
@@ -482,7 +486,7 @@ function parseFillBlankResponse(
   // 解析逐空分析
   const blankResults: BlankResult[] = [];
   const analysisMatch = response.match(/逐空分析[：:]([\s\S]+?)(?=综合解析|$)/);
-  
+
   if (analysisMatch) {
     const analysisText = analysisMatch[1];
     for (let i = 0; i < correctAnswers.length; i++) {
@@ -536,12 +540,12 @@ function fallbackFillBlank(
 
   if (allowDisorder) {
     const correctAnswerSet = new Set(correctAnswers.map(a => normalizeAnswer(a)));
-    
+
     for (let i = 0; i < correctAnswers.length; i++) {
       const userAns = userAnswers[i] || '';
       const normalizedUser = normalizeAnswer(userAns);
       const isBlankCorrect = correctAnswerSet.has(normalizedUser) && normalizedUser !== '';
-      
+
       totalScore += isBlankCorrect ? scorePerBlank : 0;
       if (isBlankCorrect) correctCount++;
 
@@ -590,9 +594,9 @@ function fallbackFillBlank(
     score: Math.round(totalScore),
     isCorrect,
     gradingMode: isAIFallback ? 'ai-fallback' : 'fixed',
-    feedback: isCorrect === 2 
+    feedback: isCorrect === 2
       ? (isAIFallback ? 'AI降级判题：全部正确' : '固定判题：全部正确')
-      : isCorrect === 1 
+      : isCorrect === 1
         ? (isAIFallback ? 'AI降级判题：部分答案不正确' : '固定判题：部分答案不正确')
         : (isAIFallback ? 'AI降级判题：全部错误' : '固定判题：全部错误'),
     explanation: `【${isAIFallback ? 'AI降级判题模式' : '固定判题模式'}】\n标准答案：${correctAnswers.join('、')}\n你的答案：${userAnswers.join('、')}`,
@@ -983,12 +987,12 @@ ${correctAnswersArray.map((_, i) => `- 第${i + 1}空：正确/错误`).join('\n
         const blankResults: BlankResult[] = [];
         if (item.allowDisorder) {
           const correctAnswerSet = new Set(correctAnswersArray.map(a => normalizeAnswer(a)));
-          
+
           for (let i = 0; i < correctAnswersArray.length; i++) {
             const userAns = userAnswersArray[i] || '';
             const normalizedUser = normalizeAnswer(userAns);
             const isBlankCorrect = correctAnswerSet.has(normalizedUser) && normalizedUser !== '';
-            
+
             let matchedCorrectAnswer: string;
             if (isBlankCorrect) {
               matchedCorrectAnswer = correctAnswersArray.find(a => normalizeAnswer(a) === normalizedUser) || '';

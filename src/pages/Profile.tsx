@@ -3,44 +3,26 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useThemeStore, Theme, ThemeStyle } from '../store/themeStore';
 import { useSafeArea } from '../hooks/useSafeArea';
 import Modal from '../components/Modal';
-import { checkUpdate, downloadApk, installApk, isTauri, isAndroid, UpdateInfo, DownloadProgress, CURRENT_VERSION_HASH } from '../utils/updater';
-
-type DownloadStatus = 'idle' | 'downloading' | 'downloaded' | 'installing';
+import { CURRENT_VERSION_HASH } from '../utils/updater';
+import { useUpdaterStore } from '../store/updaterStore';
 
 const Profile: React.FC = () => {
   const navigate = useNavigate();
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [showThemeModal, setShowThemeModal] = useState(false);
   const { theme, setTheme, themeStyle } = useThemeStore();
-  const [checkingUpdate, setCheckingUpdate] = useState(false);
-  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
-  const [downloadStatus, setDownloadStatus] = useState<DownloadStatus>('idle');
-  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress>({
-    downloaded: 0,
-    total: 0,
-    percentage: 0
-  });
-  const [downloadedFilePath, setDownloadedFilePath] = useState<string>('');
-  const [logs, setLogs] = useState<string[]>([]);
   const safeArea = useSafeArea();
+  const updater = useUpdaterStore();
 
   // 日志容器引用，用于自动滚动
   const logsContainerRef = useRef<HTMLDivElement>(null);
-
-  // 添加日志
-  const addLog = (message: string) => {
-    const timestamp = new Date().toLocaleTimeString();
-    const logMessage = `[${timestamp}] ${message}`;
-    console.log(logMessage);
-    setLogs(prev => [...prev.slice(-49), logMessage]); // 保留最近50条日志
-  };
 
   // 日志自动滚动到底部
   useEffect(() => {
     if (logsContainerRef.current) {
       logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
     }
-  }, [logs]);
+  }, [updater.logs]);
 
   const openAboutModal = () => {
     setShowAboutModal(true);
@@ -52,9 +34,7 @@ const Profile: React.FC = () => {
   const closeModal = (modal: 'about' | 'theme') => {
     if (modal === 'about') {
       setShowAboutModal(false);
-      setUpdateInfo(null);
-      setDownloadStatus('idle');
-      setLogs([]);
+      // 注意：不重置更新状态，全局保留（检查中/下载中/日志等）
     } else {
       setShowThemeModal(false);
     }
@@ -62,126 +42,11 @@ const Profile: React.FC = () => {
 
   const currentVersion = '0.4.0';
 
-  const handleCheckUpdate = async () => {
-    setCheckingUpdate(true);
-    setUpdateInfo(null);
-    setDownloadStatus('idle');
-    setDownloadProgress({ downloaded: 0, total: 0, percentage: 0 });
-    setLogs([]);
 
-    addLog('开始检查更新...');
 
-    try {
-      const info = await checkUpdate();
-      setUpdateInfo(info);
-      if (info.error) {
-        addLog(`❌ 检查失败: ${info.message}`);
-      } else {
-        addLog(`检查结果: ${info.message}`);
-      }
 
-      if (info.downloadUrl) {
-        addLog(`下载链接: ${info.downloadUrl}`);
-      }
-    } catch (error) {
-      addLog(`❌ 检查更新失败: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setCheckingUpdate(false);
-    }
-  };
 
-  const handleDownload = async () => {
-    if (!updateInfo?.downloadUrl) {
-      addLog('错误: 没有可用的下载链接');
-      return;
-    }
 
-    // 检查是否在 Tauri Android 环境
-    if (!isTauri()) {
-      addLog('错误: 不在 Tauri 环境中，无法使用原生下载');
-      // 回退到浏览器下载
-      window.open(updateInfo.downloadUrl, '_blank');
-      return;
-    }
-
-    if (!isAndroid()) {
-      addLog('错误: 不在 Android 环境中');
-      // 回退到浏览器下载
-      window.open(updateInfo.downloadUrl, '_blank');
-      return;
-    }
-
-    setDownloadStatus('downloading');
-    addLog('开始下载 APK...');
-
-    try {
-      const filename = `app-update-${updateInfo.latestVersion}.apk`;
-      addLog(`文件名: ${filename}`);
-
-      const filePath = await downloadApk(
-        updateInfo.downloadUrl,
-        filename,
-        (progress) => {
-          setDownloadProgress(progress);
-        }
-      );
-
-      addLog(`下载完成: ${filePath}`);
-      setDownloadedFilePath(filePath);
-      setDownloadStatus('downloaded');
-    } catch (error) {
-      addLog(`下载失败: ${error instanceof Error ? error.message : '未知错误'}`);
-      setDownloadStatus('idle');
-    }
-  };
-
-  const handleInstall = async () => {
-    if (!downloadedFilePath) {
-      addLog('错误: 没有下载好的文件');
-      return;
-    }
-
-    // 检查是否在 Tauri Android 环境
-    if (!isTauri()) {
-      addLog('错误: 不在 Tauri 环境中');
-      return;
-    }
-
-    if (!isAndroid()) {
-      addLog('错误: 不在 Android 环境中');
-      return;
-    }
-
-    setDownloadStatus('installing');
-    addLog('开始安装 APK...');
-    addLog(`文件路径: ${downloadedFilePath}`);
-
-    try {
-      const result = await installApk(downloadedFilePath);
-      addLog(`安装结果: ${result}`);
-
-      if (result === 'REQUEST_INSTALL_PERMISSION') {
-        addLog('⚠️ 需要允许安装未知来源应用，已跳转系统设置');
-        addLog('请在系统设置中允许后，返回应用再次点击安装');
-      } else if (result === 'INSTALL_INTENT_SENT' || result.includes('已尝试打开') || result.includes('成功')) {
-        addLog('✅ 系统安装器已启动，请查看系统界面');
-      } else {
-        addLog('⚠️ 自动安装可能未成功');
-        addLog('请手动到下载目录中找到 APK 文件并点击安装');
-        addLog(`文件位置: ${downloadedFilePath}`);
-      }
-    } catch (error) {
-      addLog(`❌ 安装失败: ${error instanceof Error ? error.message : '未知错误'}`);
-      addLog('请手动到下载目录中找到 APK 文件并点击安装');
-      setDownloadStatus('downloaded');
-    }
-  };
-
-  const handleCancelDownload = () => {
-    addLog('用户取消下载');
-    setDownloadStatus('idle');
-    setDownloadProgress({ downloaded: 0, total: 0, percentage: 0 });
-  };
 
   // 日志级别样式（按消息内容自动归类）
   const logStyle = (msg: string) => {
@@ -366,21 +231,21 @@ const Profile: React.FC = () => {
               </div>
 
               {/* 日志显示区域 */}
-              {logs.length > 0 && (
+              {updater.logs.length > 0 && (
                 <div className="im-log-panel mb-4 rounded-xl p-3 text-left bg-gray-50/80 dark:bg-gray-800/80 border border-gray-200/60 dark:border-gray-700/60">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 tracking-wide">
                       调试日志
                     </span>
                     <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-900/5 dark:bg-white/10 text-gray-400 dark:text-gray-500">
-                      {logs.length} 条
+                      {updater.logs.length} 条
                     </span>
                   </div>
                   <div
                     ref={logsContainerRef}
                     className="max-h-44 overflow-y-auto text-[11px] font-mono space-y-1.5 scroll-smooth pr-1"
                   >
-                    {logs.map((log, index) => {
+                    {updater.logs.map((log, index) => {
                       const m = log.match(/^\[(.*?)\] (.*)$/);
                       const time = m?.[1] ?? '';
                       const msg = m?.[2] ?? log;
@@ -398,27 +263,27 @@ const Profile: React.FC = () => {
               )}
 
               <div className="mb-4">
-                {downloadStatus === 'downloading' ? (
+                {updater.downloadStatus === 'downloading' ? (
                   <div className="w-full py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-medium flex items-center gap-2 overflow-hidden">
                     <div className="flex-1 flex items-center gap-2 px-3">
                       <div className="flex-1 h-2 bg-white/30 rounded-full overflow-hidden">
                         <div
                           className="h-full bg-white transition-all duration-300"
-                          style={{ width: `${downloadProgress.percentage}%` }}
+                          style={{ width: `${updater.downloadProgress.percentage}%` }}
                         />
                       </div>
-                      <span className="text-sm whitespace-nowrap">{downloadProgress.percentage.toFixed(0)}%</span>
+                      <span className="text-sm whitespace-nowrap">{updater.downloadProgress.percentage.toFixed(0)}%</span>
                     </div>
                     <button
-                      onClick={handleCancelDownload}
+                      onClick={updater.cancelDownload}
                       className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded-r-lg text-sm transition-colors"
                     >
                       取消
                     </button>
                   </div>
-                ) : downloadStatus === 'downloaded' ? (
+                ) : updater.downloadStatus === 'downloaded' ? (
                   <button
-                    onClick={handleInstall}
+                    onClick={updater.installUpdate}
                     className="w-full py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg font-medium hover:from-blue-600 hover:to-blue-700 transition-all flex items-center justify-center gap-2"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -426,7 +291,7 @@ const Profile: React.FC = () => {
                     </svg>
                     点击安装
                   </button>
-                ) : downloadStatus === 'installing' ? (
+                ) : updater.downloadStatus === 'installing' ? (
                   <div className="w-full py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg font-medium flex items-center justify-center gap-2">
                     <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -435,20 +300,20 @@ const Profile: React.FC = () => {
                   </div>
                 ) : (
                   <button
-                    onClick={updateInfo?.hasUpdate ? handleDownload : handleCheckUpdate}
-                    disabled={checkingUpdate}
+                    onClick={updater.updateInfo?.hasUpdate ? updater.startDownload : updater.checkForUpdate}
+                    disabled={updater.checkingUpdate}
                     className={`w-full py-2.5 text-white rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${
-                      updateInfo?.hasUpdate
+                      updater.updateInfo?.hasUpdate
                         ? 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700'
-                        : updateInfo?.error
+                        : updater.updateInfo?.error
                         ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700'
                         : 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700'
                     }`}
                   >
-                    <svg className={`w-4 h-4 ${checkingUpdate ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className={`w-4 h-4 ${updater.checkingUpdate ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                     </svg>
-                    {checkingUpdate ? '检查中...' : updateInfo?.hasUpdate ? '立即更新' : updateInfo?.error ? '检查失败，点击重试' : updateInfo ? '当前已是最新版本' : '检查更新'}
+                    {updater.checkingUpdate ? '检查中...' : updater.updateInfo?.hasUpdate ? '立即更新' : updater.updateInfo?.error ? '检查失败，点击重试' : updater.updateInfo ? '当前已是最新版本' : '检查更新'}
                   </button>
                 )}
               </div>

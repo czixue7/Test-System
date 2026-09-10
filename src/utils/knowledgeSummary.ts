@@ -22,7 +22,7 @@ const SUMMARY_LABEL: Record<SummaryType, string> = {
 const CHUNK_SIZE = 8000;
 
 // 进度回调：done/total 为已处理块数，phase 为当前阶段
-export type SummaryProgress = (done: number, total: number, phase: 'summarize' | 'merge') => void;
+export type SummaryProgress = (done: number, total: number, phase: 'split' | 'summarize' | 'merge') => void;
 
 // 简单字符串 hash（用于判断内容是否变化）
 function hashCode(str: string): string {
@@ -157,7 +157,7 @@ function chunkRawText(rawText: string, chunkSize = CHUNK_SIZE): string[] {
 async function aiSummarizeChunk(index: number, total: number, label: string, chunkText: string): Promise<string> {
   const config = useSettingsStore.getState();
   if (!config.apiKey) throw new Error('未配置 API Key');
-  apiGradingService.setConfig({ apiKey: config.apiKey, model: config.apiModel });
+  apiGradingService.setConfig({ apiKey: config.apiKey, model: config.apiModel, endpoint: config.apiEndpoint });
 
   // 综合总结时声明冲突优先级：知识库为权威来源
   const conflictRule = label === '综合'
@@ -174,7 +174,7 @@ async function aiSummarizeChunk(index: number, total: number, label: string, chu
 async function aiMergeSummaries(type: SummaryType, label: string, parts: string[]): Promise<string> {
   const config = useSettingsStore.getState();
   if (!config.apiKey) throw new Error('未配置 API Key');
-  apiGradingService.setConfig({ apiKey: config.apiKey, model: config.apiModel });
+  apiGradingService.setConfig({ apiKey: config.apiKey, model: config.apiModel, endpoint: config.apiEndpoint });
 
   const joined = parts.map((p, i) => `【第 ${i + 1} 部分】\n${p}`).join('\n\n');
   // 综合总结时声明冲突优先级：知识库为权威来源
@@ -194,8 +194,8 @@ async function aiSummarize(type: SummaryType, rawText: string, onProgress?: Summ
   if (chunks.length === 0) {
     return `# ${label}总结\n\n> 生成时间：${new Date().toLocaleString()}\n\n（当前无内容）`;
   }
-  // 切分完成后立即回调总份数进度，避免用户在"准备中"停留过久
-  onProgress?.(0, chunks.length, 'summarize');
+  // 拆份完成：显示拆份阶段（① 拆份高亮，文字"内容已分为 X 份，即将开始总结..."）
+  onProgress?.(0, chunks.length, 'split');
 
   const results: (string | undefined)[] = new Array(chunks.length);
 
@@ -208,7 +208,9 @@ async function aiSummarize(type: SummaryType, rawText: string, onProgress?: Summ
         console.warn(`[总结] 第 ${i + 1}/${chunks.length} 块 AI 总结失败，降级为该块原文:`, err);
         results[i] = chunk;
       } finally {
-        onProgress?.(results.filter(Boolean).length, chunks.length, 'summarize');
+        const done = results.filter(Boolean).length;
+        // 第一个块完成后才切换到逐份总结阶段（② 高亮），确保①拆份阶段完整显示
+        onProgress?.(done, chunks.length, done > 0 ? 'summarize' : 'split');
       }
     })
   );

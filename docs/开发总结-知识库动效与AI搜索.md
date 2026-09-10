@@ -92,6 +92,27 @@
 | 选分类后触发文件选择时序问题 | 选分类后立即 `fileRef.click()` 可能读不到最新分类 | `setState` 异步 | 用 `useRef`（`pendingImportCategoryRef`）传递分类，设置后立即生效；`setTimeout 50ms` 后触发文件选择确保弹窗关闭 | 跨异步操作传递即时数据用 `useRef` 比 `useState` 可靠 |
 | 侧边栏空状态提示误导 | "暂无分类，导入知识内容后自动按专业领域分类"暗示有自动分类功能，实际不存在 | 文案承诺了不存在的功能 | 改为"暂无内容"，居中显示，不做功能承诺 | UI 文案不能承诺不存在的功能，误导比空白更糟 |
 
+### 1.7 AI 配置与手机端输入
+
+| 坑 | 现象 | 根因 | 解决方案 | 经验 |
+|---|---|---|---|---|
+| AI 配置加密解密过度设计 | API 地址/Key/模型用 XOR 加密存储，用户无法直接查看和修改 | 早期为"安全"设计了 modelConfigLoader 加密解密，但实际是本地存储，加密无意义且增加调试难度 | 去除 XOR 加密解密，还原为基本填写框（API 地址/Key/模型）；`modelConfigLoader.ts` 保留但无任何文件导入 | 本地配置不需要加密，过度设计只会增加维护成本和用户困惑 |
+| 手机端输入字符混淆 | 输入 `https://open.bigmodel.cn/...` 变成 `hsttp://...`，`glm-4.7-flash` 变成 `glm--7-.l-ash`，日志显示发送的也是混淆值 | 全面排查（全局事件监听/MutationObserver/Proxy/CSS text-transform/Rust 端/依赖库）确认代码中无任何修改输入内容的逻辑，判断为 Android 输入法自动纠错/组合输入导致 | 曾给输入框加 `autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}`，用户明确不信并要求撤销；撤销后用户确认输入正常 | 手机端输入异常优先怀疑输入法而非代码；四个输入框属性在某些 Android 机型上反而可能触发输入法异常行为 |
+| API Key 安全键盘禁止粘贴 | key 输入框不能粘贴，系统调起安全键盘 | 输入框用了 `type="password"`，Android 密码类型输入框会强制调起安全键盘（禁止粘贴） | 改为 `type="text"` | API Key 不是密码，不需要 password 类型；text 类型允许粘贴且不触发安全键盘 |
+| endpoint 自动补全与用户冲突 | 添加 `normalizeEndpoint()` 自动补全 `/chat/completions`，用户粘贴完整地址被修改 | 用户需要粘贴完整 API 地址，自动补全会修改用户输入 | 移除 normalizeEndpoint 和细化错误提示，保留基本填写框 | 输入框应尊重用户输入，自动补全应提供建议而非强制修改 |
+
+### 1.8 版本号与 Android 打包
+
+| 坑 | 现象 | 根因 | 解决方案 | 经验 |
+|---|---|---|---|---|
+| Android versionCode 误用构建号 | 手机安装提示上个版本更高无法安装 | 曾错误地把 versionCode 改为 20260910（构建号），但 versionCode 必须是递增整数，构建号格式不符合 | 用户明确纠正：构建号只用于软件内部更新检测（`CURRENT_VERSION_HASH`），不应用作 Android versionCode；改回自动计算 4000（0.4.0 → 4000） | Android versionCode 与 versionName 是两个独立概念：versionCode 用于安装覆盖判断（必须递增），versionName 用于显示（如 0.4.0）；构建号是应用内部概念，不应混入 Android 版本体系 |
+| `tauri android build` 重生成 tauri.properties | 手动修改 tauri.properties 的 versionCode 后，重新编译又被覆盖 | `tauri android build` 会根据 tauri.conf.json 的 version 自动计算并重生成 tauri.properties | 不手动修改 tauri.properties，让它自动生成（versionCode=4000） | 自动生成的文件不要手动改，改了也会被覆盖 |
+| `tauri.conf.json` 不允许 tauri.android 顶层属性 | Windows 打包失败 | 曾在 tauri.conf.json 添加 `tauri.android` 顶层属性配置 versionCode，导致 Windows 打包校验失败 | 移除该属性，versionCode 只通过 tauri.properties 配置 | tauri.conf.json 的 schema 严格，不认识的顶层属性会导致打包失败 |
+| APK 文件被进程占用导致 gradle 失败 | `packageArm64Release` 报 `Unable to delete directory ... Answer_Test_v0.4.0-arm64-release.apk` | 旧 APK 文件被杀毒软件/文件资源管理器/aapt 进程占用，gradle 无法删除旧文件 | 杀掉所有 java/aapt/adb/gradle 进程，等待 10 秒后删除旧 APK，再重新打包 | Windows 上文件被占用是常见问题，打包失败先检查是否有进程占用输出文件 |
+| Android 前端资源嵌入 .so | 修改前端代码后 APK 行为不变 | Tauri Android 的前端资源在编译 Rust .so 时嵌入（tauri-build 编译时嵌入 dist），仅前端改动也需重编 .so | 每次前端改动后必须重新编译 .so（`tauri android build --target aarch64`），然后手动复制 .so 到 jniLibs，再跑 gradlew | Android 与 Windows 不同：Windows 的前端资源在 exe 旁边的 dist 目录，Android 的前端资源嵌入 .so 中；改前端必须重编 .so |
+| `tauri android build` 符号链接必失败 | Windows 上创建符号链接权限不足 | Tauri CLI 的 Android 构建流程依赖 symlink，Windows 默认不允许非管理员创建 symlink | .so 编译成功后手动复制到 `gen/android/app/src/main/jniLibs/arm64-v8a/`，跳过 symlink 步骤 | Windows 上 symlink 权限问题是已知限制，手动复制是稳定的 workaround |
+
+
 ---
 
 ## 二、功能更新记录
@@ -271,6 +292,55 @@
 - **关于弹窗显示**：Profile.tsx 导入 `CURRENT_VERSION_HASH`，显示"版本 0.4.0 / 构建 20260910"。
 - **踩坑**：批量替换脚本中 package-lock.json 的 name 是大写 `Answer_Test`（不是小写 answer_test），匹配失败导致脚本提前 exit，后续文件未修改——需分两批执行，或用按行号精确替换根版本。
 
+### 2.17 AI 配置重构（去除加密解密）
+
+- **去除 XOR 加密解密**：`apiGradingService.ts` 移除 modelConfigLoader 导入，`APIGradingConfig` 新增 endpoint 字段；`settingsStore.ts` 新增 apiEndpoint；`Settings.tsx` 大幅简化为三个输入框（API 地址/Key/模型）+ 保存/测试按钮
+- **Key 输入框改为 type="text"**：避免 Android 安全键盘禁止粘贴
+- **移除 endpoint 自动补全**：尊重用户输入，不强制修改 API 地址
+- **`modelConfigLoader.ts` 保留但无引用**：XOR 加密解密完全不参与运行
+- 涉及文件：`apiGradingService.ts`、`settingsStore.ts`、`Settings.tsx`、`aiGrading.ts`、`knowledgeAI.ts`、`knowledgeSummary.ts`、`KnowledgeBase.tsx`（各 setConfig 调用添加 endpoint）
+
+### 2.18 关于页面更新状态全局化
+
+- **需求**：更新期间日志/下载/下载中等状态关闭弹窗或切换 tab 就丢失
+- **新增全局 store** `src/store/updaterStore.ts`（zustand）：将 `checkingUpdate/updateInfo/downloadStatus/downloadProgress/downloadedFilePath/logs` 及 `checkForUpdate/startDownload/cancelDownload/installUpdate/addLog/resetState` 全部移到全局
+- **`Profile.tsx` 重构**：移除局部 state，`closeModal` 不再重置更新状态，检查更新和下载在后台持续执行
+- 与知识总结全局 store（`knowledgeSummaryStore.ts`）采用相同模式：切换 tab 卸载组件时，async 任务通过闭包引用 store setState 继续执行
+
+### 2.19 知识总结进度阶段优化（split 阶段 + 重新生成图标）
+
+- **新增 'split'（拆份）阶段**：`SummaryPhase` 从 `'summarize' | 'merge'` 扩展为 `'split' | 'summarize' | 'merge'`
+- **阶段切换逻辑修正**：
+  - 初始进度 `phase='split'`
+  - 拆份完成后回调 `phase:'split'`（① 拆份高亮，文字"内容已分为 N 份，即将开始总结..."）
+  - **第一个块总结完成后（done > 0）才回调 `phase:'summarize'`**（② 逐份总结高亮），确保①拆份阶段完整显示，不会提前跳到②
+  - 合并阶段回调 `phase:'merge'`（③ 合并高亮）
+- **阶段标签显示逻辑修正**：
+  - ① 拆份：`phase==='split'` 蓝色实心（当前），`phase==='summarize'||'merge'` 浅蓝（已完成）
+  - ② 逐份总结：`phase==='summarize'` 蓝色实心（当前），`phase==='merge'` 浅蓝（已完成）
+  - ③ 合并：`phase==='merge'` 蓝色实心（当前）
+- **重新生成按钮图标改为顺时针箭头**：从刷新图标（双箭头圆形）改为 Heroicons arrow-path 图标（顺时针箭头），生成中 `animate-spin` 与顺时针方向一致
+- **踩坑**：最初拆份完成后连续回调 `split` 和 `summarize`，导致阶段标签立即跳到②，但文字还显示"即将开始总结"（因为 done===0），用户看到阶段与文字不一致；修复为第一个块完成后才切换到 summarize
+
+### 2.20 双端打包与验证（v0.4.0 / 20260910）
+
+- **版本号逻辑确认**：
+  - Android `versionCode=4000`（自动计算：0.4.0 → 4000），`versionName=0.4.0`
+  - 构建号 `20260910` 仅用于内部更新检测（`CURRENT_VERSION_HASH`），不影响 Android 安装
+  - `tauri.properties` 由 `tauri android build` 自动生成，不手动修改
+- **打包链路**：
+  1. 前端 `npm run build`
+  2. Windows：`npm run tauri:build`（先 taskkill Answer_Test.exe）
+  3. Android：`tauri android build --target aarch64` 编译 .so（symlink 必失败但 .so 已生成）→ 手动复制 .so 到 `jniLibs/arm64-v8a/` → `gradlew.bat assembleArm64Release`
+- **验证**：
+  - EXE 内嵌最新前端 chunk（二进制内可搜到 chunk 字符串）
+  - APK `aapt dump badging` 确认 versionCode=4000、versionName=0.4.0
+  - APK 内 `lib/arm64-v8a/libanswer_test_lib.so` 为新编译（12.83 MB），内嵌最新前端
+- **产物**：
+  - Windows：`Answer_Test.exe`（11.81 MB）+ `答题测试库_0.4.0_x64-setup.exe`（NSIS 安装包）
+  - Android：`Answer_Test_v0.4.0-arm64-release.apk`（18.16 MB）
+
+
 ## 三、修改文件清单
 
 | 文件 | 改动类型 | 说明 |
@@ -294,3 +364,14 @@
 | `src-tauri/vendor/indexmap-1.9.3/` | 新增（v0.3.9） | indexmap 本地 vendor 副本（build.rs 静态 has_std，去 autocfg） |
 | `src-tauri/tauri.conf.json` | 修改（v0.3.9） | 版本 0.3.9 |
 | `src-tauri/gen/android/app/tauri.properties` | 修改（v0.3.9） | versionName 0.3.9、versionCode 20260908 |
+| `src/store/updaterStore.ts` | 新增（v0.4.0） | 关于页面更新状态全局 store（zustand） |
+| `src/store/knowledgeSummaryStore.ts` | 修改（v0.4.0） | SummaryPhase 新增 'split'，新增 summaryScrollTop 全局滚动位置 |
+| `src/utils/knowledgeSummary.ts` | 修改（v0.4.0） | SummaryProgress 新增 'split'，拆份/总结阶段回调分离，第一个块完成后才切换到 summarize |
+| `src/utils/apiGradingService.ts` | 修改（v0.4.0） | 移除 modelConfigLoader/normalizeEndpoint，APIGradingConfig 新增 endpoint |
+| `src/store/settingsStore.ts` | 修改（v0.4.0） | 新增 apiEndpoint 字段/setter/reset |
+| `src/pages/Settings.tsx` | 修改（v0.4.0） | 简化为三个输入框（API 地址/Key/模型），Key 框 type="text" |
+| `src/pages/Profile.tsx` | 修改（v0.4.0） | 更新状态迁移到全局 updaterStore，版本号显示 0.4.0/20260910 |
+| `src/pages/KnowledgeBase.tsx` | 修改（v0.4.0） | 重新生成按钮图标改为顺时针箭头，进度阶段初始 phase='split'，阶段标签逻辑修正，滚动位置全局记忆 |
+| `src/utils/modelConfigLoader.ts` | 保留（v0.4.0） | XOR 加密解密，无任何文件导入（已不参与运行） |
+| `src-tauri/tauri.conf.json` | 修改（v0.4.0） | version=0.4.0，无 tauri.android 顶层属性 |
+| `src-tauri/gen/android/app/tauri.properties` | 自动生成（v0.4.0） | versionCode=4000，versionName=0.4.0（不手动修改） |

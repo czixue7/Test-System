@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type SummaryPhase = 'summarize' | 'merge';
+export type SummaryPhase = 'split' | 'summarize' | 'merge';
 export interface SummaryProgress {
   done: number;
   total: number;

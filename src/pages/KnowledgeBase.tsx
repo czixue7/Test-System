@@ -302,7 +302,7 @@ const KnowledgeBase: React.FC = () => {
     if (summaryRunning) return; // 后台正在生成，等待进度/结果更新
     setSummaryRunning(true);
     // 立即设置初始进度并切换到进度视图，避免"准备中"过久
-    setSummaryProgress({ done: 0, total: 0, phase: 'summarize' });
+    setSummaryProgress({ done: 0, total: 0, phase: 'split' });
     setSummaryViewMode('progress');
     try {
       const type: SummaryType = source === 'knowledge' ? 'knowledge' : source === 'questionBank' ? 'questionBank' : 'combined';
@@ -332,7 +332,7 @@ const KnowledgeBase: React.FC = () => {
     }
     if (summaryRunning) return;
     // 重新生成：保留旧文档（不清空 summaryContent），立即显示进度动画，后台生成新总结
-    setSummaryProgress({ done: 0, total: 0, phase: 'summarize' });
+    setSummaryProgress({ done: 0, total: 0, phase: 'split' });
     setSummaryViewMode('progress');
     setSummaryScrollTop(0);
     setSummaryRunning(true);
@@ -505,7 +505,7 @@ const KnowledgeBase: React.FC = () => {
       showError('请先在「我的 → 设置」中配置 API Key');
       return;
     }
-    apiGradingService.setConfig({ apiKey: config.apiKey, model: config.apiModel });
+    apiGradingService.setConfig({ apiKey: config.apiKey, model: config.apiModel, endpoint: config.apiEndpoint });
     setNoteBusy(true);
     try {
       const prompt = category
@@ -825,7 +825,7 @@ const KnowledgeBase: React.FC = () => {
                   disabled={summaryLoading && !summaryProgress}
                   className="flex flex-shrink-0 items-center gap-1 whitespace-nowrap px-2.5 h-8 text-xs text-gray-600 dark:text-gray-300 rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40"
                   title={summaryProgress ? (summaryViewMode === 'content' ? '查看当前生成进度' : '返回查看文档') : '强制忽略缓存，重新生成总结'}>
-                  <svg className={`w-4 h-4 -scale-x-100 ${summaryProgress ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                  <svg className={`w-4 h-4 ${summaryProgress ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
                   {summaryProgress ? (summaryViewMode === 'content' ? '查看进度' : '查看文档') : '重新生成'}
                 </button>
                 <button
@@ -843,7 +843,7 @@ const KnowledgeBase: React.FC = () => {
                 <div className="py-6 px-2">
                   {/* 阶段标识 */}
                   <div className="flex items-center justify-center gap-1.5 mb-4 text-[11px]">
-                    <span className={`px-2 py-0.5 rounded-full ${summaryProgress.phase === 'summarize' || summaryProgress.phase === 'merge' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300' : 'bg-gray-100 text-gray-400 dark:bg-gray-700'}`}>① 拆份</span>
+                    <span className={`px-2 py-0.5 rounded-full ${summaryProgress.phase === 'split' ? 'bg-blue-500 text-white' : summaryProgress.phase === 'summarize' || summaryProgress.phase === 'merge' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300' : 'bg-gray-100 text-gray-400 dark:bg-gray-700'}`}>① 拆份</span>
                     <span className="text-gray-300 dark:text-gray-600">→</span>
                     <span className={`px-2 py-0.5 rounded-full ${summaryProgress.phase === 'summarize' ? 'bg-blue-500 text-white' : summaryProgress.phase === 'merge' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300' : 'bg-gray-100 text-gray-400 dark:bg-gray-700'}`}>② 逐份总结</span>
                     <span className="text-gray-300 dark:text-gray-600">→</span>

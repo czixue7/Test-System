@@ -1,8 +1,7 @@
-import { modelConfigLoader } from './modelConfigLoader';
-
 export interface APIGradingConfig {
   apiKey: string;
   model: string;
+  endpoint: string;
 }
 
 export interface StreamCallbacks {
@@ -36,24 +35,6 @@ class APIGradingService {
     return this.config !== null && this.config.apiKey.length > 0;
   }
 
-  // 根据模型ID查找提供商
-  private async findProviderByModel(modelId: string): Promise<{ providerId: string; endpoint: string } | null> {
-    let config = modelConfigLoader.getConfig();
-    // 如果配置未加载，尝试加载
-    if (!config) {
-      config = await modelConfigLoader.loadConfig();
-    }
-    if (!config) return null;
-
-    for (const provider of config.providers) {
-      const model = provider.models.find(m => m.id === modelId);
-      if (model) {
-        return { providerId: provider.id, endpoint: provider.endpoint };
-      }
-    }
-    return null;
-  }
-
   async testConnection(): Promise<{ success: boolean; message: string }> {
     if (!this.isConfigured()) {
       return { success: false, message: 'API未配置' };
@@ -82,13 +63,7 @@ class APIGradingService {
       throw new Error('API未配置');
     }
 
-    // 从配置文件获取端点
-    const providerInfo = await this.findProviderByModel(this.config.model);
-    if (!providerInfo) {
-      throw new Error('未找到模型配置');
-    }
-
-    const endpoint = providerInfo.endpoint;
+    const endpoint = this.config.endpoint;
     const modelId = this.config.model;
 
     console.log('[API判题] 发送流式请求到:', endpoint);
@@ -166,13 +141,7 @@ class APIGradingService {
       throw new Error('API未配置');
     }
 
-    // 从配置文件获取端点
-    const providerInfo = await this.findProviderByModel(this.config.model);
-    if (!providerInfo) {
-      throw new Error('未找到模型配置');
-    }
-
-    const endpoint = providerInfo.endpoint;
+    const endpoint = this.config.endpoint;
     const modelId = this.config.model;
 
     console.log('[API判题] 发送请求到:', endpoint);
@@ -200,9 +169,9 @@ class APIGradingService {
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content || '';
-    
+
     console.log('[API判题] 响应内容:', content.substring(0, 200) + '...');
-    
+
     return content;
   }
 

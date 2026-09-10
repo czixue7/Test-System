@@ -201,7 +201,7 @@ export async function searchKnowledgeAI(
   if (!config.apiKey) {
     throw new Error('请先在「我的 → 设置」中配置 API Key');
   }
-  apiGradingService.setConfig({ apiKey: config.apiKey, model: config.apiModel });
+  apiGradingService.setConfig({ apiKey: config.apiKey, model: config.apiModel, endpoint: config.apiEndpoint });
 
   const prompt = buildKnowledgePrompt(query, source, summary);
 
@@ -217,7 +217,7 @@ export async function classifyContentWithAI(content: string, categories: string[
   if (!config.apiKey) {
     throw new Error('请先在「我的 → 设置」中配置 API Key');
   }
-  apiGradingService.setConfig({ apiKey: config.apiKey, model: config.apiModel });
+  apiGradingService.setConfig({ apiKey: config.apiKey, model: config.apiModel, endpoint: config.apiEndpoint });
 
   const categoryList = categories.length > 0 ? categories.join('、') : '（暂无分类，你可以新建）';
   const sample = content.length > 2000 ? content.slice(0, 2000) : content;
