@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useSafeArea } from '../hooks/useSafeArea';
 import { useToast } from '../hooks/useToast';
 import { useKnowledgeStore } from '../store/knowledgeStore';
+import { useKnowledgeSummaryStore } from '../store/knowledgeSummaryStore';
 import { useQuestionBankStore } from '../store/questionBankStore';
 import { useChatStore } from '../store/chatStore';
 import { parseKnowledgeFile } from '../utils/knowledgeParser';
@@ -14,6 +15,7 @@ import { useSettingsStore } from '../store/settingsStore';
 import { apiGradingService } from '../utils/apiGradingService';
 import MarkdownView from '../components/MarkdownView';
 import ConfirmDialog from '../components/ConfirmDialog';
+import Modal from '../components/Modal';
 import { KnowledgeSearchSource, KnowledgeItem } from '../types';
 
 const SOURCE_OPTIONS: Array<{ value: KnowledgeSearchSource; label: string; icon: string }> = [
@@ -133,37 +135,41 @@ const KnowledgeBase: React.FC = () => {
   const [searching, setSearching] = useState(false);
   const [newCategory, setNewCategory] = useState('');
   const [chatManageOpen, setChatManageOpen] = useState(false);
-  const [chatManageClosing, setChatManageClosing] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
-  const [summaryClosing, setSummaryClosing] = useState(false);
-  const [summaryContent, setSummaryContent] = useState('');
-  const [summaryProgress, setSummaryProgress] = useState<{ done: number; total: number; phase: 'summarize' | 'merge' } | null>(null);
+  // 总结状态全局存储：切换 tab 卸载组件时后台生成不中断、状态不丢失
+  const summaryContent = useKnowledgeSummaryStore((s) => s.summaryContent);
+  const summaryProgress = useKnowledgeSummaryStore((s) => s.summaryProgress);
+  const summaryViewMode = useKnowledgeSummaryStore((s) => s.summaryViewMode);
+  const summaryRunning = useKnowledgeSummaryStore((s) => s.summaryRunning);
+  const setSummaryContent = useKnowledgeSummaryStore((s) => s.setSummaryContent);
+  const setSummaryProgress = useKnowledgeSummaryStore((s) => s.setSummaryProgress);
+  const setSummaryViewMode = useKnowledgeSummaryStore((s) => s.setSummaryViewMode);
+  const setSummaryRunning = useKnowledgeSummaryStore((s) => s.setSummaryRunning);
+  const summaryScrollTop = useKnowledgeSummaryStore((s) => s.summaryScrollTop);
+  const setSummaryScrollTop = useKnowledgeSummaryStore((s) => s.setSummaryScrollTop);
+  const summaryScrollRef = useRef<HTMLDivElement>(null);
   // 准备中：弹窗已打开但内容和进度都还没出来
   const summaryLoading = summaryOpen && !summaryContent && !summaryProgress;
 
-  // 对话管理弹窗（带关闭动效）
+  // 弹窗打开时恢复之前的滚动位置（全局记录，切换 tab 不丢失）
+  useEffect(() => {
+    if (summaryOpen && summaryScrollRef.current) {
+      summaryScrollRef.current.scrollTop = summaryScrollTop;
+    }
+  }, [summaryOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 对话管理弹窗
   const closeChatManage = () => {
-    if (chatManageClosing) return;
-    setChatManageClosing(true);
-    setTimeout(() => {
-      setChatManageOpen(false);
-      setChatManageClosing(false);
-    }, 180);
+    setChatManageOpen(false);
   };
 
-  // 知识总结弹窗（带关闭动效）
+  // 知识总结弹窗
   const closeSummary = () => {
-    if (summaryClosing) return;
-    setSummaryClosing(true);
-    setTimeout(() => {
-      setSummaryOpen(false);
-      setSummaryClosing(false);
-    }, 180);
+    setSummaryOpen(false);
   };
 
   // 导入分类选择
   const [importCategoryModalOpen, setImportCategoryModalOpen] = useState(false);
-  const [importCategoryClosing, setImportCategoryClosing] = useState(false);
   const [newImportCategory, setNewImportCategory] = useState('');
   const pendingImportCategoryRef = useRef<string>('');
 
@@ -171,16 +177,10 @@ const KnowledgeBase: React.FC = () => {
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteVisible, setNoteVisible] = useState(false);
   const [noteSettingsOpen, setNoteSettingsOpen] = useState(false);
-  const [noteSettingsClosing, setNoteSettingsClosing] = useState(false);
 
-  // 转换设置弹窗（带关闭动效）
+  // 转换设置弹窗
   const closeNoteSettings = () => {
-    if (noteSettingsClosing) return;
-    setNoteSettingsClosing(true);
-    setTimeout(() => {
-      setNoteSettingsOpen(false);
-      setNoteSettingsClosing(false);
-    }, 180);
+    setNoteSettingsOpen(false);
   };
   const [noteText, setNoteText] = useState('');
   const [noteCategory, setNoteCategory] = useState('');
@@ -194,15 +194,10 @@ const KnowledgeBase: React.FC = () => {
   const fileRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  // 导入分类弹窗（带关闭动效，关闭后可选触发文件选择）
+  // 导入分类弹窗（关闭后可选触发文件选择）
   const closeImportCategoryModal = (thenPickFile = false) => {
-    if (importCategoryClosing) return;
-    setImportCategoryClosing(true);
-    setTimeout(() => {
-      setImportCategoryModalOpen(false);
-      setImportCategoryClosing(false);
-      if (thenPickFile) fileRef.current?.click();
-    }, 180);
+    setImportCategoryModalOpen(false);
+    if (thenPickFile) fileRef.current?.click();
   };
 
   // 侧边栏：开启动效
@@ -295,14 +290,20 @@ const KnowledgeBase: React.FC = () => {
   };
 
   // 查看/生成知识总结（弹窗展示，供用户参考）
+  // 关闭弹窗/切换 tab 不中断后台生成；重新打开时：有文档显示文档，有进度显示进度，都没有才开始生成
   const handleViewSummary = async () => {
     if (summaryOpen) {
       closeSummary();
       return;
     }
     setSummaryOpen(true);
-    setSummaryContent('');
-    setSummaryProgress(null);
+    // 保留全局 store 中的 summaryContent / summaryProgress，不清空
+    if (summaryContent || summaryProgress) return; // 已有文档或进度，直接显示
+    if (summaryRunning) return; // 后台正在生成，等待进度/结果更新
+    setSummaryRunning(true);
+    // 立即设置初始进度并切换到进度视图，避免"准备中"过久
+    setSummaryProgress({ done: 0, total: 0, phase: 'summarize' });
+    setSummaryViewMode('progress');
     try {
       const type: SummaryType = source === 'knowledge' ? 'knowledge' : source === 'questionBank' ? 'questionBank' : 'combined';
       await ensureBanksLoaded();
@@ -312,29 +313,46 @@ const KnowledgeBase: React.FC = () => {
       });
       setSummaryContent(result.content);
       setSummaryProgress(null);
+      setSummaryViewMode('content');
     } catch (err) {
       setSummaryContent(`总结生成失败：${err instanceof Error ? err.message : '未知错误'}`);
       setSummaryProgress(null);
+    } finally {
+      setSummaryRunning(false);
     }
   };
 
   // 重新生成知识总结（强制忽略缓存，重新调用 AI）
-  const handleRegenerateSummary = async () => {
-    if (summaryProgress) return;
-    setSummaryContent('');
-    setSummaryProgress(null);
-    try {
-      const type: SummaryType = source === 'knowledge' ? 'knowledge' : source === 'questionBank' ? 'questionBank' : 'combined';
-      await ensureBanksLoaded();
-      const result = await getOrCreateSummary(type, undefined, undefined, (done, total, phase) => {
-        setSummaryProgress({ done, total, phase });
-      }, true);
-      setSummaryContent(result.content);
-      setSummaryProgress(null);
-    } catch (err) {
-      setSummaryContent(`重新生成失败：${err instanceof Error ? err.message : '未知错误'}`);
-      setSummaryProgress(null);
+  // 重新生成期间保留旧文档可查看；按钮在"查看进度"/"查看文档"间切换，点击切换显示模式
+  const handleRegenerateSummary = () => {
+    if (summaryProgress) {
+      // 正在生成：切换查看模式（旧文档 ↔ 进度动画）
+      setSummaryViewMode(summaryViewMode === 'content' ? 'progress' : 'content');
+      return;
     }
+    if (summaryRunning) return;
+    // 重新生成：保留旧文档（不清空 summaryContent），立即显示进度动画，后台生成新总结
+    setSummaryProgress({ done: 0, total: 0, phase: 'summarize' });
+    setSummaryViewMode('progress');
+    setSummaryScrollTop(0);
+    setSummaryRunning(true);
+    (async () => {
+      try {
+        const type: SummaryType = source === 'knowledge' ? 'knowledge' : source === 'questionBank' ? 'questionBank' : 'combined';
+        await ensureBanksLoaded();
+        const result = await getOrCreateSummary(type, undefined, undefined, (done, total, phase) => {
+          setSummaryProgress({ done, total, phase });
+        }, true);
+        setSummaryContent(result.content);
+        setSummaryProgress(null);
+        setSummaryViewMode('content');
+      } catch (err) {
+        setSummaryContent(`重新生成失败：${err instanceof Error ? err.message : '未知错误'}`);
+        setSummaryProgress(null);
+      } finally {
+        setSummaryRunning(false);
+      }
+    })();
   };
 
   const handleImport = async (files: FileList | null) => {
@@ -678,7 +696,7 @@ const KnowledgeBase: React.FC = () => {
                   value={newCategory}
                   onChange={(e) => setNewCategory(e.target.value)}
                   placeholder="新分类名"
-                  className="flex-1 px-2 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  className="flex-1 min-w-0 px-2 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-400" />
                 <button onClick={handleAddCategory} className="flex-shrink-0 whitespace-nowrap px-3 py-1.5 text-sm bg-blue-500 text-white rounded-lg">添加</button>
               </div>
             </div>
@@ -752,15 +770,7 @@ const KnowledgeBase: React.FC = () => {
       </div>
 
       {/* 对话管理弹窗 */}
-      {(chatManageOpen || chatManageClosing) && (
-        <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4"
-          style={{ animation: chatManageClosing ? 'modal-fade-out 0.18s ease-in forwards' : 'modal-fade 0.2s ease-out' }}
-          onClick={closeChatManage}>
-          <div
-            className="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-xl overflow-hidden"
-            style={{ animation: chatManageClosing ? 'modal-pop-out 0.18s ease-in forwards' : 'modal-pop 0.25s ease-out' }}
-            onClick={(e) => e.stopPropagation()}>
+      <Modal open={chatManageOpen} onClose={closeChatManage} containerClassName="items-end sm:items-center" className="w-full max-w-md rounded-2xl shadow-xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
               <h3 className="text-sm font-semibold text-gray-800 dark:text-white">对话管理</h3>
               <button onClick={closeChatManage} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400">
@@ -801,20 +811,10 @@ const KnowledgeBase: React.FC = () => {
                 新建对话
               </button>
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
 
       {/* 知识总结弹窗 */}
-      {(summaryOpen || summaryClosing) && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          style={{ paddingTop: safeArea.top + 44, animation: summaryClosing ? 'modal-fade-out 0.18s ease-in forwards' : 'modal-fade 0.2s ease-out' }}
-          onClick={closeSummary}>
-          <div
-            className="w-full max-w-lg max-h-[75vh] flex flex-col bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-xl"
-            style={{ animation: summaryClosing ? 'modal-pop-out 0.18s ease-in forwards' : 'modal-pop 0.25s ease-out' }}
-            onClick={(e) => e.stopPropagation()}>
+      <Modal open={summaryOpen} onClose={closeSummary} className="mt-12 w-full max-w-lg max-h-[75vh] flex flex-col rounded-2xl p-4">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold text-gray-800 dark:text-white">
                 知识总结
@@ -822,11 +822,11 @@ const KnowledgeBase: React.FC = () => {
               <div className="flex items-center gap-1">
                 <button
                   onClick={handleRegenerateSummary}
-                  disabled={!!summaryProgress || summaryLoading}
+                  disabled={summaryLoading && !summaryProgress}
                   className="flex flex-shrink-0 items-center gap-1 whitespace-nowrap px-2.5 h-8 text-xs text-gray-600 dark:text-gray-300 rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40"
-                  title="强制忽略缓存，重新生成总结">
-                  <svg className={`w-4 h-4 ${summaryProgress ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                  重新生成
+                  title={summaryProgress ? (summaryViewMode === 'content' ? '查看当前生成进度' : '返回查看文档') : '强制忽略缓存，重新生成总结'}>
+                  <svg className={`w-4 h-4 -scale-x-100 ${summaryProgress ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                  {summaryProgress ? (summaryViewMode === 'content' ? '查看进度' : '查看文档') : '重新生成'}
                 </button>
                 <button
                   onClick={closeSummary}
@@ -835,8 +835,11 @@ const KnowledgeBase: React.FC = () => {
                 </button>
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto">
-              {summaryProgress ? (
+            <div
+              ref={summaryScrollRef}
+              onScroll={(e) => setSummaryScrollTop(e.currentTarget.scrollTop)}
+              className="summary-scroll-area flex-1 overflow-y-auto">
+              {summaryProgress && summaryViewMode === 'progress' ? (
                 <div className="py-6 px-2">
                   {/* 阶段标识 */}
                   <div className="flex items-center justify-center gap-1.5 mb-4 text-[11px]">
@@ -859,9 +862,11 @@ const KnowledgeBase: React.FC = () => {
                       <span className="w-3.5 h-3.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
                       {summaryProgress.phase === 'merge'
                         ? `${summaryProgress.total} 份总结已生成，正在合并...`
-                        : summaryProgress.done === 0
-                          ? `内容已分为 ${summaryProgress.total} 份，即将开始总结...`
-                          : `正在总结第 ${summaryProgress.done} 份内容（共 ${summaryProgress.total} 份）`}
+                        : summaryProgress.total === 0
+                          ? '正在分析内容...'
+                          : summaryProgress.done === 0
+                            ? `内容已分为 ${summaryProgress.total} 份，即将开始总结...`
+                            : `正在总结第 ${summaryProgress.done} 份内容（共 ${summaryProgress.total} 份）`}
                     </span>
                   </div>
                 </div>
@@ -871,22 +876,10 @@ const KnowledgeBase: React.FC = () => {
                 <div className="text-center py-8 text-sm text-gray-500 dark:text-gray-400">准备中...</div>
               )}
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
 
       {/* 导入分类选择弹窗 */}
-      {(importCategoryModalOpen || importCategoryClosing) && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          style={{ animation: importCategoryClosing ? 'modal-fade-out 0.18s ease-in forwards' : 'modal-fade 0.2s ease-out' }}
-          onClick={() => closeImportCategoryModal()}
-        >
-          <div
-            className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-xl"
-            style={{ animation: importCategoryClosing ? 'modal-pop-out 0.18s ease-in forwards' : 'modal-pop 0.25s ease-out' }}
-            onClick={(e) => e.stopPropagation()}
-          >
+      <Modal open={importCategoryModalOpen} onClose={() => closeImportCategoryModal()} className="w-full max-w-sm rounded-2xl p-4">
             <h2 className="text-base font-semibold text-gray-800 dark:text-white mb-3">选择导入分类</h2>
 
             {allCategories.length > 0 ? (
@@ -948,9 +941,7 @@ const KnowledgeBase: React.FC = () => {
             >
               取消
             </button>
-          </div>
-        </div>
-      )}
+      </Modal>
 
       {/* "帮我记"右侧边栏：全屏遮罩 + 右侧面板 */}
       {noteOpen && (
@@ -1051,15 +1042,7 @@ const KnowledgeBase: React.FC = () => {
       )}
 
       {/* "帮我记"转换设置弹窗 */}
-      {(noteSettingsOpen || noteSettingsClosing) && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
-          style={{ animation: noteSettingsClosing ? 'modal-fade-out 0.18s ease-in forwards' : 'modal-fade 0.2s ease-out' }}
-          onClick={closeNoteSettings}>
-          <div
-            className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-xl"
-            style={{ animation: noteSettingsClosing ? 'modal-pop-out 0.18s ease-in forwards' : 'modal-pop 0.25s ease-out' }}
-            onClick={(e) => e.stopPropagation()}>
+      <Modal open={noteSettingsOpen} onClose={closeNoteSettings} zIndex={60} className="w-full max-w-sm rounded-2xl p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-base font-semibold text-gray-800 dark:text-white">转换设置</h3>
               <button onClick={closeNoteSettings} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400">
@@ -1090,9 +1073,7 @@ const KnowledgeBase: React.FC = () => {
               className="w-full mt-4 py-2.5 bg-blue-500 text-white rounded-xl text-sm font-medium hover:bg-blue-600 transition-colors">
               完成
             </button>
-          </div>
-        </div>
-      )}
+      </Modal>
 
       {/* 底部导航 */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg dark:bg-gray-800 dark:border-gray-700" style={{ paddingBottom: safeArea.bottom }}>

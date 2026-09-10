@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
+import Modal from './Modal';
 
 interface ConfirmModalProps {
   message: string;
@@ -17,23 +18,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
   cancelText = '取消',
   type = 'info'
 }) => {
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    // 触发动画
-    const timer = setTimeout(() => setVisible(true), 10);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const handleConfirm = () => {
-    setVisible(false);
-    setTimeout(onConfirm, 300); // 等待动画结束
-  };
-
-  const handleCancel = () => {
-    setVisible(false);
-    setTimeout(onCancel, 300); // 等待动画结束
-  };
+  const [open, setOpen] = useState(true);
 
   const typeColors = {
     info: {
@@ -62,39 +47,43 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
     }
   };
 
+  const handleConfirm = () => {
+    setOpen(false);
+    setTimeout(onConfirm, 240);
+  };
+
+  const handleCancel = () => {
+    setOpen(false);
+    setTimeout(onCancel, 240);
+  };
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fade-in">
-      <div 
-        className={`bg-white dark:bg-gray-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl transform transition-all duration-300 ease-out ${
-          visible ? 'scale-100 opacity-100' : 'scale-0 opacity-0'
-        }`}
-      >
-        <div className="flex flex-col items-center text-center">
-          <div className={`w-14 h-14 ${typeColors[type].bg} text-white rounded-full flex items-center justify-center mb-4 shadow-lg`}>
-            {typeColors[type].icon}
-          </div>
-          
-          <p className="text-gray-800 dark:text-gray-200 text-base font-medium mb-6 leading-relaxed">
-            {message}
-          </p>
-          
-          <div className="flex gap-3 w-full">
-            <button
-              onClick={handleCancel}
-              className="flex-1 py-2.5 px-4 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-all duration-200 active:scale-95"
-            >
-              {cancelText}
-            </button>
-            <button
-              onClick={handleConfirm}
-              className={`flex-1 py-2.5 px-4 ${typeColors[type].bg} text-white rounded-xl font-medium hover:opacity-90 transition-all duration-200 active:scale-95 shadow-md`}
-            >
-              {confirmText}
-            </button>
-          </div>
+    <Modal open={open} onClose={() => {}} overlayClose={false} className="rounded-3xl p-6 w-full max-w-sm">
+      <div className="flex flex-col items-center text-center">
+        <div className={`w-14 h-14 ${typeColors[type].bg} text-white rounded-full flex items-center justify-center mb-4 shadow-lg`}>
+          {typeColors[type].icon}
+        </div>
+
+        <p className="text-gray-800 dark:text-gray-200 text-base font-medium mb-6 leading-relaxed">
+          {message}
+        </p>
+
+        <div className="flex gap-3 w-full">
+          <button
+            onClick={handleCancel}
+            className="flex-1 py-2.5 px-4 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-all duration-200 active:scale-95"
+          >
+            {cancelText}
+          </button>
+          <button
+            onClick={handleConfirm}
+            className={`flex-1 py-2.5 px-4 ${typeColors[type].bg} text-white rounded-xl font-medium hover:opacity-90 transition-all duration-200 active:scale-95 shadow-md`}
+          >
+            {confirmText}
+          </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 };
 

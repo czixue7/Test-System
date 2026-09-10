@@ -61,13 +61,13 @@ export function calculateVersionHash(version: string, buildInfo?: string): strin
   return Math.abs(hash).toString(16).substring(0, 8);
 }
 
-const currentVersion = '0.3.9';
+const currentVersion = '0.4.0';
 
 /**
  * 当前版本哈希（每次构建时更新）
  * 用于区分同一版本的不同构建
  */
-export const CURRENT_VERSION_HASH = '20260908'; // 每次发布时更新此值
+export const CURRENT_VERSION_HASH = '20260910'; // 每次发布时更新此值
 
 /**
  * 检查当前系统架构
@@ -76,20 +76,20 @@ export const CURRENT_VERSION_HASH = '20260908'; // 每次发布时更新此值
 export function getSystemArchitecture(): string {
   const userAgent = navigator.userAgent.toLowerCase();
   const platform = navigator.platform.toLowerCase();
-  
+
   console.log(`[Updater] 检测系统架构`);
   console.log(`[Updater] UserAgent: ${userAgent}`);
   console.log(`[Updater] Platform: ${platform}`);
-  
+
   // 检测 ARM64 (检查 userAgent 和 platform)
-  if (userAgent.includes('aarch64') || 
-      userAgent.includes('arm64') || 
-      platform.includes('aarch64') || 
+  if (userAgent.includes('aarch64') ||
+      userAgent.includes('arm64') ||
+      platform.includes('aarch64') ||
       platform.includes('arm64')) {
     console.log('[Updater] 检测到 ARM64 架构');
     return 'arm64';
   }
-  
+
   // 检测 ARM (检查 userAgent 和 platform)
   if (userAgent.includes('arm') || platform.includes('arm')) {
     // 确保不是 arm64
@@ -98,25 +98,25 @@ export function getSystemArchitecture(): string {
       return 'arm';
     }
   }
-  
+
   // 检测 x86_64 (检查 userAgent 和 platform)
-  if (userAgent.includes('x86_64') || 
-      userAgent.includes('x64') || 
-      platform.includes('x86_64') || 
+  if (userAgent.includes('x86_64') ||
+      userAgent.includes('x64') ||
+      platform.includes('x86_64') ||
       platform.includes('x64')) {
     console.log('[Updater] 检测到 x86_64 架构');
     return 'x86_64';
   }
-  
+
   // 检测 x86 (检查 userAgent 和 platform)
-  if (userAgent.includes('x86') || 
-      userAgent.includes('i686') || 
-      platform.includes('x86') || 
+  if (userAgent.includes('x86') ||
+      userAgent.includes('i686') ||
+      platform.includes('x86') ||
       platform.includes('i686')) {
     console.log('[Updater] 检测到 x86 架构');
     return 'x86';
   }
-  
+
   console.log('[Updater] 无法确定架构，返回 unknown');
   return 'unknown';
 }
@@ -276,7 +276,7 @@ function getPlatformAsset(assets: { name: string; browser_download_url: string }
     console.log('[Updater] 没有可用的资产');
     return null;
   }
-  
+
   const platform = navigator.platform.toLowerCase();
   const userAgent = navigator.userAgent.toLowerCase();
   const arch = getSystemArchitecture();
@@ -290,7 +290,7 @@ function getPlatformAsset(assets: { name: string; browser_download_url: string }
     // 如果系统支持 ARM64，优先找 ARM64 APK
     if (arch === 'arm64') {
       console.log('[Updater] 系统支持 ARM64，开始查找 ARM64 APK...');
-      
+
       // 查找包含 arm64 的 APK（不区分大小写）
       const arm64Apk = assets.find(a => {
         const nameLower = a.name.toLowerCase();
@@ -298,7 +298,7 @@ function getPlatformAsset(assets: { name: string; browser_download_url: string }
         console.log(`[Updater] 检查资产: ${a.name}, 匹配: ${isMatch}`);
         return isMatch;
       });
-      
+
       if (arm64Apk) {
         console.log(`[Updater] ✅ 找到 ARM64 APK: ${arm64Apk.name}`);
         return arm64Apk;
@@ -311,7 +311,7 @@ function getPlatformAsset(assets: { name: string; browser_download_url: string }
       console.log('[Updater] 系统是 ARM，开始查找 ARM APK...');
       const armApk = assets.find(a => {
         const nameLower = a.name.toLowerCase();
-        return (nameLower.includes('armeabi') || nameLower.includes('arm-v7a') || nameLower.includes('armeabi-v7a')) && 
+        return (nameLower.includes('armeabi') || nameLower.includes('arm-v7a') || nameLower.includes('armeabi-v7a')) &&
                nameLower.endsWith('.apk') &&
                !nameLower.includes('arm64');
       });
@@ -384,7 +384,7 @@ export async function downloadApk(
   try {
     // 创建 Channel 接收进度回调
     const progressChannel = new Channel<DownloadProgress>();
-    
+
     // 设置进度回调处理
     if (onProgress) {
       progressChannel.onmessage = (progress) => {

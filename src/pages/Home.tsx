@@ -5,6 +5,7 @@ import { useThemeStore } from '../store/themeStore';
 import { isBuiltInBank } from '../utils/builtInBanks';
 import { Question } from '../types';
 import { useSafeArea } from '../hooks/useSafeArea';
+import Modal from '../components/Modal';
 
 const STORAGE_KEY_CURRENT_BANK = 'current-bank-id';
 
@@ -24,27 +25,14 @@ const Home: React.FC = () => {
   const safeArea = useSafeArea();
 
   const [showAddModal, setShowAddModal] = useState(false);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [isClosing, setIsClosing] = useState(false);
   const [currentBankId, setCurrentBankId] = useState<string | null>(null);
   const [isBankListExpanded, setIsBankListExpanded] = useState(false);
+  const [bankListClosing, setBankListClosing] = useState(false);
   const [wrongQuestions, setWrongQuestions] = useState<Question[]>([]);
   const [favoriteQuestions, setFavoriteQuestions] = useState<Question[]>([]);
   const [commonQuestions, setCommonQuestions] = useState<Question[]>([]);
 
-  useEffect(() => {
-    if (showAddModal) {
-      setIsClosing(false);
-      const timer = setTimeout(() => setModalVisible(true), 10);
-      return () => clearTimeout(timer);
-    } else {
-      setIsClosing(true);
-      const timer = setTimeout(() => setModalVisible(false), 300);
-      return () => clearTimeout(timer);
-    }
-  }, [showAddModal]);
-
-  useEffect(() => {
+    useEffect(() => {
     initTheme();
   }, [initTheme]);
 
@@ -81,10 +69,26 @@ const Home: React.FC = () => {
   const currentBank = banks.find(b => b.id === currentBankId);
   const totalQuestions = banks.reduce((sum, bank) => sum + bank.questions.length, 0);
 
+  const closeBankList = () => {
+    setBankListClosing(true);
+    setTimeout(() => {
+      setIsBankListExpanded(false);
+      setBankListClosing(false);
+    }, 180);
+  };
+
+  const toggleBankList = () => {
+    if (isBankListExpanded) {
+      closeBankList();
+    } else {
+      setIsBankListExpanded(true);
+    }
+  };
+
   const handleSelectBank = (bankId: string) => {
     setCurrentBankId(bankId);
     localStorage.setItem(STORAGE_KEY_CURRENT_BANK, bankId);
-    setIsBankListExpanded(false);
+    closeBankList();
   };
 
 
@@ -120,13 +124,51 @@ const Home: React.FC = () => {
             </button>
           </div>
           {currentBank && (
-            <div className="im-hero-chip">
-              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
-              <span className="truncate max-w-[150px]">{currentBank.name}</span>
-              <span className="opacity-75 flex-shrink-0">{totalQuestions} 题</span>
+            <div>
+              <button
+                onClick={() => banks.length > 1 && toggleBankList()}
+                className={`im-hero-chip relative z-20 text-left cursor-pointer transition-colors ${banks.length > 1 ? 'hover:bg-white/30' : 'cursor-default'}`}
+              >
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+                <span className="min-w-0 break-words leading-snug">{currentBank.name}</span>
+                <span className="opacity-75 flex-shrink-0">{totalQuestions} 题</span>
+                {banks.length > 1 && (
+                  <svg className={`w-4 h-4 flex-shrink-0 transition-transform duration-200 ${isBankListExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                )}
+              </button>
+              {(isBankListExpanded || bankListClosing) && banks.length > 1 && (
+                <div className={`im-bank-panel absolute left-0 right-0 top-full z-20 mt-2 rounded-2xl overflow-hidden shadow-2xl ${bankListClosing ? 'kb-panel-out' : 'kb-panel-in'}`}>
+                  {currentBank.description && (
+                    <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-700/40">
+                      <p className="text-xs text-gray-500 dark:text-gray-300 break-words leading-relaxed">{currentBank.description}</p>
+                    </div>
+                  )}
+                  <div className="flex-1 min-h-0 overflow-y-auto">
+                    {banks.map((bank) => (
+                      <button key={bank.id} onClick={() => handleSelectBank(bank.id)} className={`w-full px-4 py-3 text-left flex items-center gap-3 transition-colors ${currentBankId === bank.id ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300' : 'hover:bg-gray-50 text-gray-700 dark:hover:bg-gray-700 dark:text-gray-300'}`}>
+                        {currentBankId === bank.id && <svg className="w-5 h-5 text-blue-500 dark:text-blue-300 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>}
+                        <span className="font-medium flex-1 break-words leading-snug">{bank.name}</span>
+                        <span className="text-sm text-gray-400 flex-shrink-0">{bank.questions.length} 题</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {!currentBank && (
+            <div className="mt-3">
+              <button onClick={() => setShowAddModal(true)} className="im-hero-chip cursor-pointer hover:bg-white/30 transition-colors">
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                <span>添加题库</span>
+              </button>
             </div>
           )}
         </div>
+
+        {isBankListExpanded && (
+          <div className="fixed inset-0 z-10" onClick={closeBankList} />
+        )}
 
         {/* 统计横幅 */}
         <div className="grid grid-cols-3 gap-3 mt-4">
@@ -143,43 +185,6 @@ const Home: React.FC = () => {
             <div className="text-xs text-gray-500 mt-1 dark:text-gray-400">收藏数</div>
           </div>
         </div>
-
-        {/* 当前题库大卡 */}
-        {currentBank ? (
-          <div className="im-bank-card mt-4">
-            <div className="im-bank-cover flex items-center justify-between cursor-pointer" onClick={() => banks.length > 1 && setIsBankListExpanded(!isBankListExpanded)}>
-              <div className="flex items-center gap-2 min-w-0">
-                <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
-                <span className="truncate">{currentBank.name}</span>
-                {isBuiltInBank(currentBank.id) && <span className="px-1.5 py-0.5 text-xs rounded-full bg-white/25 flex-shrink-0">内置</span>}
-              </div>
-              {banks.length > 1 && (
-                <svg className={`w-5 h-5 flex-shrink-0 transition-transform duration-200 ${isBankListExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-              )}
-            </div>
-            {currentBank.description && (
-              <div className="px-4 py-3">
-                <p className="text-xs text-gray-500 dark:text-gray-400 break-words leading-relaxed">{currentBank.description}</p>
-              </div>
-            )}
-            {isBankListExpanded && banks.length > 1 && (
-              <div className="border-t border-gray-100 dark:border-gray-700 max-h-52 overflow-y-auto">
-                {banks.map((bank) => (
-                  <button key={bank.id} onClick={() => handleSelectBank(bank.id)} className={`w-full px-4 py-3 text-left flex items-center gap-3 transition-colors ${currentBankId === bank.id ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300' : 'hover:bg-gray-50 text-gray-700 dark:hover:bg-gray-700 dark:text-gray-300'}`}>
-                    {currentBankId === bank.id && <svg className="w-5 h-5 text-blue-500 dark:text-blue-300 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>}
-                    <span className="font-medium flex-1 truncate">{bank.name}</span>
-                    <span className="text-sm text-gray-400">{bank.questions.length} 题</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="im-bank-card mt-4 p-6 text-center">
-            <p className="text-gray-500 mb-3 dark:text-gray-400">暂无题库</p>
-            <button onClick={() => setShowAddModal(true)} className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors dark:bg-blue-600 dark:hover:bg-blue-700">添加题库</button>
-          </div>
-        )}
 
         {/* 模式网格 */}
         {currentBank && (
@@ -262,7 +267,7 @@ const Home: React.FC = () => {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 safe-header">
       {isImmersive ? immersiveView : (
         <>
-      <header 
+      <header
         className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg dark:from-blue-700 dark:to-blue-800 transition-colors"
         style={{ paddingTop: safeArea.top }}
       >
@@ -275,7 +280,7 @@ const Home: React.FC = () => {
         </div>
       </header>
 
-      <div 
+      <div
         className="max-w-lg mx-auto px-4 py-4 pb-24"
         style={{ paddingTop: safeArea.top + 48 }}
       >
@@ -402,19 +407,7 @@ const Home: React.FC = () => {
         </>
       )}
 
-      {(showAddModal || modalVisible) && (
-        <div 
-          className={`fixed inset-0 bg-black flex items-center justify-center z-50 p-4 transition-all duration-300 ease-in-out ${isClosing ? 'bg-opacity-0' : 'bg-opacity-50'}`}
-          onClick={() => setShowAddModal(false)}
-        >
-          <div 
-            className="bg-white rounded-2xl p-5 w-full max-w-sm dark:bg-gray-800 shadow-2xl transform transition-all duration-300 ease-in-out"
-            style={{
-              transform: isClosing || !modalVisible ? 'scale(0)' : 'scale(1)',
-              opacity: isClosing || !modalVisible ? 0 : 1
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
+      <Modal open={showAddModal} onClose={() => setShowAddModal(false)} className="rounded-2xl p-5 w-full max-w-sm">
             <h2 className="text-lg font-semibold mb-4 dark:text-white">添加题库</h2>
             <div className="space-y-3">
               <button onClick={() => { setShowAddModal(false); navigate('/import'); }} className="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-all dark:border-gray-700 dark:hover:border-blue-400 dark:hover:bg-blue-900/30">
@@ -439,9 +432,7 @@ const Home: React.FC = () => {
             <div className="flex justify-end mt-5">
               <button onClick={() => setShowAddModal(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors dark:text-gray-400 dark:hover:bg-gray-700">取消</button>
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
 
 
     </div>

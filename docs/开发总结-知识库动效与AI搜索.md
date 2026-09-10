@@ -176,6 +176,101 @@
 
 ---
 
+### 2.9 首页胶囊 + 全局毛玻璃（仅保留沉浸式）
+
+- 首页题库选择移入 Hero 问候语"夜深了，今天想学点什么？"下方的椭圆胶囊（`im-hero-chip`）：胶囊内显示题库图标、名称（超长截断）、总题数，多题库时显示下拉箭头（展开后 rotate-180）
+- 点击胶囊展开题库列表面板（`bg-white/95 dark:bg-gray-800/95 + backdrop-blur rounded-2xl`），面板顶部保留当前题库描述（`currentBank.description`，浅色 `bg-gray-50/80` / 深色 `dark:bg-gray-700/40`），下方题库列表 max-h-52 可滚动；无题库时胶囊显示"添加题库"
+- **删除经典版布局，仅保留沉浸式**：
+  - `themeStore.ts`：删除 `getStoredThemeStyle`；`initTheme` 强制 `'immersive'`，忽略旧 localStorage 中的 `theme-style: 'classic'`（老用户自动归一沉浸式）
+  - `Profile.tsx`：删除"布局风格"选择区块与 `setThemeStyle` 解构（主题弹窗仅保留深浅色/跟随系统）
+- 全局毛玻璃统一（`index.css` 7 处替换，选择器 `[data-theme="immersive"]` 全局生效）：
+  - `.bg-white` → `rgba(255,255,255,0.72) + backdrop-filter blur(18px) saturate(160%)`
+  - `.dark\:bg-gray-800` → `rgba(23,33,60,0.66)`（blur18）、`.dark\:bg-gray-700` → `rgba(30,41,59,0.7)`（blur16）
+  - `.im-mode-card`/`.im-bank-card` 及 dark 版 → 半透明毛玻璃（浅色 0.75 + blur18 / 深色 0.66）
+  - header 蓝渐变、底部浮动胶囊导航（blur22）、统计卡（blur14）、弹窗遮罩/本体、关于卡、日志面板原本已有毛玻璃，保持一致
+- 深浅色适配：胶囊与展开面板均提供 `dark:` 变体，深色模式背景为半透明深蓝灰
+
+### 2.10 双端打包与 .so 验证（本轮）
+
+- 前端构建新 chunk：`index-c5Qy8OCF.js` / `Profile-D7AUWoJ8.js` / `Settings-D9vD85PK.js` / `index-CvoM7VXf.css`
+- Windows：`npm run tauri:build`（先 taskkill Answer_Test.exe）→ `Answer_Test.exe`（12.4MB）+ `答题测试库_0.3.9_x64-setup.exe`（6.2MB）
+- Android：timestamp 触发重编 .so（`cargo build --release --target aarch64-linux-android`）→ 覆盖 `jniLibs/arm64-v8a/` → 重建 assets（index.html + assets/ + banks/ 三部分分别拷贝）→ `gradlew clean assembleArm64Release`
+- 验证：.so 内可搜到 `index-c5Qy8OCF.js`，APK 内解出 `lib/arm64-v8a/libanswer_test_lib.so` 同样命中新 chunk；APK 16.4MB
+
+### 2.11 首页题库选择折叠面板重做（渐变突变/动画/毛玻璃/文字显示）
+
+- **渐变背景突然变化的根因**：展开面板原来放在 Hero（`.im-hero`，CSS `overflow: hidden`）内部文档流中，点击胶囊后面板撑高 Hero，而 Hero 的 `linear-gradient` 是按容器尺寸计算的 → 高度变化导致渐变重绘，视觉上"背景突然变化"；同时面板被 `overflow: hidden` 裁剪，列表后半部分显示不全（看起来像被滚动截断）
+- **修复方案**：面板改为 `absolute left-0 right-0 top-full mt-2`（相对 Hero 定位的浮层），Hero 移除 `overflow: hidden` → Hero 高度恒定、渐变不再重绘、面板不被裁剪、下方内容不再被挤压
+- **进出动画**：新增 `bankListClosing` 状态，关闭时先播 `kb-panel-out 0.18s ease-in`（opacity + translateY + scale）再 180ms 延迟卸载；打开时 `kb-panel-in 0.22s cubic-bezier(0.22,1,0.36,1)`；点击胶囊或面板外透明遮罩（`fixed inset-0 z-10`，胶囊 `z-20`）触发关闭
+- **面板毛玻璃（去"死气"）**：新增 `.im-bank-panel` 类，浅色 `rgba(255,255,255,0.72)+blur(24px) saturate(170%)`，深色 `rgba(23,33,60,0.66)`，替代原来 95% 不透明的 `bg-white/95 dark:bg-gray-800/95`（后者还因类名带 /95 不命中全局毛玻璃选择器，深色下尤其死板）；描述区背景同步半透明化
+- **文字显示不全（不用滚动）**：胶囊名称去掉 `truncate max-w-[150px]` 截断，改 `min-w-0 break-words leading-snug` 完整换行显示；列表项名称同样 `break-words`；题库列表移除 `max-h-52 overflow-y-auto` 滚动，全部显示
+- 统计卡 `im-stat-card` 0.92 → 0.78 更通透；胶囊背景 `blur(8px)` → `blur(12px) saturate(150%)`
+- **踩坑**：手写 CSS 选择器引用 Tailwind 类名时斜杠/冒号必须转义（`.bg-gray-50\/80`、`.dark\:bg-gray-700\/40`），未转义会导致 PostCSS "Unexpected '/'" 构建失败；JS 字符串里写转义要用 `\\/` 才能落盘为 `\/`
+
+- **修复（层级）**：面板浮层最初未设 z-index（z-auto），被"点击面板外关闭"用的透明遮罩 `fixed inset-0 z-10` 盖住 → 点面板 = 点到遮罩 = 关闭，选不中题库；面板补 `z-20`（与胶囊同层，高于遮罩）后点击正常
+
+- **修复（滚动条占位挤压）**：此前为消除切换 tab 抖动给 `html` 加 `scrollbar-gutter: stable`，副作用是内容不足一屏的页面也常年被滚动条占位挤压；现移除该规则，滚动条改为 6px 细样式按需出现（内容短无占位，内容长仅 6px 宽度变化，抖动可忽略）
+- **修复（题库选择框过高）**：上一轮按"不滚动、全部显示"去掉列表限高后，题库多时面板过高；现改为 `max-h-[60vh] + overflow-y-auto` 限高（描述区保留、列表内部滚动），面板内滚动条 4px 半透明细样式
+
+- **微调**：面板限高再收紧一个条目高度（104px → 152px，少显示一行列表项）
+- **修复（面板遮挡底部导航）**：60vh 限高在 Hero 位于屏幕上中部时仍会覆盖到底部导航；改为精确公式 `max-height: calc(100vh - 100% - 104px)`（100% = Hero 高度，104px = 底部导航 + 安全区 + 间距），面板改为纵向 flex，描述区固定、列表区 `flex-1 min-h-0 overflow-y-auto` 占剩余高度滚动，面板底部永远停在导航上方
+
+### 2.12 双端打包与 .so 验证（本轮）
+
+- 前端构建新 chunk：`index-DEPaXtNs.js` / `Profile-Bd3wnI34.js` / `Settings-fudS1xnS.js` / `index-BeeD-KXu.css`
+- Windows：`npm run tauri:build`（先 taskkill）→ `Answer_Test.exe`（12.4MB）+ NSIS 安装包（6.2MB）
+- Android：重编 .so → 覆盖 jniLibs → 重建 assets → `gradlew clean assembleArm64Release`；.so 与 APK 内 `lib/arm64-v8a/libanswer_test_lib.so` 均验证命中 `index-DEPaXtNs.js`；APK 16.4MB
+
+### 2.13 全站弹窗统一 Modal 封装（毛玻璃 + 进出渐变）
+
+- **需求**：所有弹窗统一为"关于"页面同款效果——背景虚化有渐变（淡入/淡出），本体毛玻璃，用封装方式供全站统一调用。
+- **新增统一组件** `src/components/Modal.tsx`：内部管理 visible/closing，遮罩动画 `modal-fade/modal-fade-out`，卡片动画 `modal-pop/modal-pop-out`；props：`open / onClose / children / className / containerClassName / zIndex(默认50) / overlayClose(默认true) / duration(默认220ms)`。
+- **CSS** `src/index.css` 新增 `.app-modal-overlay`（rgba(0,0,0,.45) + blur(14px) saturate(130%)）与 `.app-modal-card`（浅色 rgba(255,255,255,.74) blur(26px) saturate(170%)，深色 `.dark .app-modal-card` rgba(23,33,60,.66)），插入到"关于弹窗信息卡片 毛玻璃"注释前。
+- **替换范围（共 22 处旧弹窗）**：
+  - `Home.tsx`：添加题库弹窗（5 处，删除 modalVisible/isClosing 状态与 useEffect）
+  - `Profile.tsx`：关于/主题弹窗（7 处，删除 aboutClosing/themeClosing，closeModal 简化）
+  - `ManageBanks.tsx`：删除确认/导出总结弹窗（删除 deleteModalClosing/exportModalClosing + 180ms setTimeout）
+  - `Settings.tsx`：模型选择弹窗（删除 modelModalVisible 动画 effect + handleCloseModelModal/handleSelectModelWithClose 简化）
+  - `KnowledgeBase.tsx`：对话管理（items-end 底部弹层用 containerClassName="items-end sm:items-center" 覆盖）、知识总结（原 safeArea.top+44 偏移改 className mt-12）、导入分类、帮我记转换设置（zIndex=60）
+  - `DutySchedule.tsx`：添加/导入（原 isClosing transition 方式）、推算排班、演练名称（zIndex=60）、删除确认；并删除页面内联 `<style>` 里与全局同名的 modal-fade/modal-pop keyframes
+  - `ConfirmModal.tsx` / `ExitConfirmModal.tsx` / `ResumePromptModal.tsx`：重写为内部 `open` state + Modal（挂载即显示，按钮触发关闭动画后 240ms 回调，overlayClose=false）
+  - `ConfirmDialog.tsx`：重写为 open prop 直接驱动 Modal（zIndex=70），删除 closing state
+- **保留不接 Modal**：KnowledgeBase 两个抽屉侧边栏遮罩（558/903，transition-opacity 抽屉遮罩，非弹窗）、Home 下拉关闭遮罩（170）、ImageViewer 全屏图片查看器（z-[100]，带手势缩放/拖拽/滑动与独立背景渐变，套 Modal 会破坏手势）。
+- **踩坑**：
+  1. **CRLF + 尾随空格**：Home 的 `bg-white `（`<div `）行带尾随空格，node 脚本第一次替换 MISS——必须在脚本里先 `file.replace(/\r\n/g,'\n').replace(/[ \t]+$/gm,'')` 规范化，写回时再 `.replace(/\n/g,'\r\n')`。
+  2. **JS 模板字符串内嵌反引号**：Settings/DutySchedule 弹窗 open 的 className 是模板字符串（`${...}`），直接写进 JS 模板字符串导致 SyntaxError missing ) after argument list——改为普通字符串拼接 + 反引号转义。
+  3. **替换后多出卡片闭合标签**：开头把卡片 `<div>` 换成 `<Modal>` 后，结尾原有的卡片 `</div>` 变多余（TS 报 'Modal' has no corresponding closing tag / ')' expected）——需同步删除卡片 close，仅保留内容区 close + `</Modal>`。
+  4. **残留 state 引用**：DutySchedule DrillMarquee onClick 里残留 `setDrillClosing(false);`（TS2304）——替换弹窗后需全文件搜索删除所有 closing 相关 setter 引用。
+  5. **ManageBanks 弹窗 `<div ` 尾随空格**：删除确认弹窗的开头两个 `<div` 带尾随空格，norm 后必须用无空格版本匹配。
+### 2.14 UI 修复（侧边栏按钮溢出 + 浅色模式 header 文字）
+
+- **知识库内容分类侧边栏"添加"按钮溢出被截断**：侧边栏 `w-64 + overflow-hidden`，底部 `flex gap-2` 中 `<input>` 有默认 `min-width:auto`（基于 size=20 约 160-180px），`flex-1` 无法收缩，把"添加"按钮挤出右边界被裁剪。修复：input className 加 `min-w-0`（`KnowledgeBase.tsx` 658 行）。
+- **浅色模式沉浸式 header 蓝色背景上黑色字体看不清**：`index.css` 中 `[data-theme="immersive"] header` 用 `!important` 把所有页面 header 背景统一为蓝色渐变+毛玻璃，但未设置文字颜色。知识库/值班表 header 的 `<h1>` 用了 `text-gray-800 dark:text-white`（浅色模式黑色），子元素自身 color 覆盖了父元素继承的白色。修复：
+  1. `[data-theme="immersive"] header` 加 `color: #fff !important;`
+  2. 新增 `[data-theme="immersive"] header * { color: inherit !important; }`，强制所有子元素（h1/按钮/svg）继承白色
+- **踩坑**：color 是继承属性，但子元素直接设置 color（如 `.text-gray-800`）会覆盖父元素继承——仅给 header 设 color 不够，必须用 `header * { color: inherit !important }` 穿透子元素。
+
+### 2.15 知识总结进度全面优化（全局 store + 后台不中断 + 旧文档可查看 + 滚动位置记忆）
+
+- **需求**：①关闭弹窗/切换 tab 不中断生成，重新打开恢复进度/文档；②重新生成期间可查看旧文档，按钮在"查看进度"/"查看文档"间切换；③切份完成后立即显示进度，不等第一块 AI 总结；④点击重新生成立即显示进度动画；⑤文档滚动位置全局记录。
+- **新增全局 store** `src/store/knowledgeSummaryStore.ts`（zustand，不 persist）：`summaryContent / summaryProgress / summaryViewMode('content'|'progress') / summaryRunning / summaryScrollTop` 及对应 setter + `resetSummary`。目的：切换 tab 卸载 KnowledgeBase 组件时，async 生成任务通过闭包引用 store setState 继续执行，状态不丢失。
+- **`KnowledgeBase.tsx` 重构**：
+  - 移除本地 `summaryContent/summaryProgress/summaryRunningRef` state，改为从全局 store 读取；`summaryOpen`（弹窗显示）保留本地。
+  - `handleViewSummary`：打开弹窗不清空状态，已有文档/进度直接显示；都没有且未运行才开始生成；立即设置初始进度 `{done:0,total:0,phase:'summarize'}` 并切换 `viewMode='progress'`，避免"准备中"过久。
+  - `handleRegenerateSummary`：保留旧文档（不清空 summaryContent），立即设置初始进度 + 切换进度视图；生成中按钮点击切换 `viewMode`（content↔progress），不再禁用。
+  - 新增 `summaryScrollRef` + `useEffect([summaryOpen])`：弹窗打开时恢复 `summaryScrollTop`；滚动区域 `onScroll` 实时写入全局 store；重新生成时重置 `scrollTop=0`。
+- **`knowledgeSummary.ts` 进度回调提前**：`aiSummarize` 中 `chunkRawText(rawText)` 切分完成后**立即调用** `onProgress(0, chunks.length, 'summarize')`，显示"内容已分为 N 份，即将开始总结..."。之前要等第一块 AI 总结完成（数秒到数十秒）才回调，用户长时间看到"准备中..."。
+- **进度文案新增 `total===0` 分支**："正在分析内容..."（切分前的初始状态）。
+- **重新生成图标方向**：刷新图标从逆时针（↺）改为顺时针（↻），SVG 加 `-scale-x-100` 水平翻转；生成中 `animate-spin` 与顺时针箭头方向一致。
+- **版本号 0.3.9 → 0.4.0，构建号 20260908 → 20260910**（全文件更新，见 2.16）。
+
+### 2.16 版本号与构建号全文件更新（v0.4.0 / 20260910）
+
+- **版本号 0.4.0（共 9 处）**：`package.json`、`package-lock.json`（根版本第3行 + packages[""]第9行，第三方包如 traverse 0.3.9 不改）、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock`（Answer_Test 包版本，第三方依赖不改）、`src-tauri/tauri.conf.json`、`src/utils/updater.ts`（`currentVersion`）、`src/pages/Profile.tsx`（`currentVersion`，关于弹窗显示）、`src-tauri/gen/android/app/tauri.properties`（versionName）。
+- **构建号 20260910（共 2 处）**：`src/utils/updater.ts`（`CURRENT_VERSION_HASH`，关于弹窗构建号 + 更新检查）、`src-tauri/gen/android/app/tauri.properties`（versionCode）。
+- **关于弹窗显示**：Profile.tsx 导入 `CURRENT_VERSION_HASH`，显示"版本 0.4.0 / 构建 20260910"。
+- **踩坑**：批量替换脚本中 package-lock.json 的 name 是大写 `Answer_Test`（不是小写 answer_test），匹配失败导致脚本提前 exit，后续文件未修改——需分两批执行，或用按行号精确替换根版本。
+
 ## 三、修改文件清单
 
 | 文件 | 改动类型 | 说明 |
@@ -199,17 +294,3 @@
 | `src-tauri/vendor/indexmap-1.9.3/` | 新增（v0.3.9） | indexmap 本地 vendor 副本（build.rs 静态 has_std，去 autocfg） |
 | `src-tauri/tauri.conf.json` | 修改（v0.3.9） | 版本 0.3.9 |
 | `src-tauri/gen/android/app/tauri.properties` | 修改（v0.3.9） | versionName 0.3.9、versionCode 20260908 |
-
----
-
-## 四、后续待办
-
-- [ ] 真正的 AI 自动分类：导入后 AI 自动建议分类标签（当前需手动选）
-- [ ] 知识总结增量更新：修改题库后只总结变更部分（当前全量重生成）
-- [ ] 导入进度提示：大文件导入时无进度反馈，可添加解析进度条
-- [ ] 知识库分类拖拽排序：当前按字母排序，可支持手动拖拽调整
-- [ ] 总结缓存失效策略优化：新增题库后自动触发重生成
-- [ ] APK 签名 keystore 规范化（消除签名验证警告）
-- [ ] 搜索框键盘快捷键
-- [ ] 持久化 Android 构建环境变量：把 NDK 工具链环境写成脚本，避免每次构建手动注入
-- [ ] 评估升级 ring 版本或配置，彻底消除 armv7 汇编对 CC 环境变量的依赖

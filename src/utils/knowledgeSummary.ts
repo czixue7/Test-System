@@ -194,6 +194,8 @@ async function aiSummarize(type: SummaryType, rawText: string, onProgress?: Summ
   if (chunks.length === 0) {
     return `# ${label}总结\n\n> 生成时间：${new Date().toLocaleString()}\n\n（当前无内容）`;
   }
+  // 切分完成后立即回调总份数进度，避免用户在"准备中"停留过久
+  onProgress?.(0, chunks.length, 'summarize');
 
   const results: (string | undefined)[] = new Array(chunks.length);
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useThemeStore, Theme, ThemeStyle } from '../store/themeStore';
 import { useSafeArea } from '../hooks/useSafeArea';
+import Modal from '../components/Modal';
 import { checkUpdate, downloadApk, installApk, isTauri, isAndroid, UpdateInfo, DownloadProgress, CURRENT_VERSION_HASH } from '../utils/updater';
 
 type DownloadStatus = 'idle' | 'downloading' | 'downloaded' | 'installing';
@@ -10,10 +11,7 @@ const Profile: React.FC = () => {
   const navigate = useNavigate();
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [showThemeModal, setShowThemeModal] = useState(false);
-  // 各弹窗独立的关闭动效状态（避免跨弹窗共享状态导致的时序闪烁）
-  const [aboutClosing, setAboutClosing] = useState(false);
-  const [themeClosing, setThemeClosing] = useState(false);
-  const { theme, setTheme, themeStyle, setThemeStyle } = useThemeStore();
+  const { theme, setTheme, themeStyle } = useThemeStore();
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [downloadStatus, setDownloadStatus] = useState<DownloadStatus>('idle');
@@ -44,35 +42,25 @@ const Profile: React.FC = () => {
     }
   }, [logs]);
 
-  // 弹窗开关：打开时同步复位 closing，确保新开弹窗播放进入动画
   const openAboutModal = () => {
-    setAboutClosing(false);
     setShowAboutModal(true);
   };
   const openThemeModal = () => {
-    setThemeClosing(false);
     setShowThemeModal(true);
   };
 
-  // 显式关闭弹窗：同步标记 closing，立即播放关闭动画（背景由暗变亮），动画结束后卸载
   const closeModal = (modal: 'about' | 'theme') => {
     if (modal === 'about') {
-      if (aboutClosing) return;
-      setAboutClosing(true);
       setShowAboutModal(false);
       setUpdateInfo(null);
       setDownloadStatus('idle');
       setLogs([]);
-      setTimeout(() => setAboutClosing(false), 260);
     } else {
-      if (themeClosing) return;
-      setThemeClosing(true);
       setShowThemeModal(false);
-      setTimeout(() => setThemeClosing(false), 260);
     }
   };
 
-  const currentVersion = '0.3.9';
+  const currentVersion = '0.4.0';
 
   const handleCheckUpdate = async () => {
     setCheckingUpdate(true);
@@ -346,17 +334,7 @@ const Profile: React.FC = () => {
         </div>
       </nav>
 
-      {(showAboutModal || aboutClosing) && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          style={{ animation: aboutClosing ? 'modal-fade-out 0.25s ease-in forwards' : 'modal-fade 0.25s ease-out' }}
-          onClick={() => closeModal('about')}
-        >
-          <div
-            className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto"
-            style={{ animation: aboutClosing ? 'modal-pop-out 0.25s ease-in forwards' : 'modal-pop 0.25s ease-out' }}
-            onClick={(e) => e.stopPropagation()}
-          >
+      <Modal open={showAboutModal} onClose={() => closeModal('about')} className="rounded-2xl p-5 w-full max-w-sm max-h-[90vh] overflow-y-auto">
             <div className="text-center">
               <div className="im-about-card rounded-2xl p-4 mb-4 bg-white/70 dark:bg-gray-800/70 border border-gray-200/60 dark:border-gray-700/60">
                 <div className="w-16 h-16 mx-auto mb-3 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg">
@@ -481,55 +459,11 @@ const Profile: React.FC = () => {
             >
               确定
             </button>
-          </div>
-        </div>
-      )}
+      </Modal>
 
-      {(showThemeModal || themeClosing) && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          style={{ animation: themeClosing ? 'modal-fade-out 0.25s ease-in forwards' : 'modal-fade 0.25s ease-out' }}
-          onClick={() => closeModal('theme')}
-        >
-          <div
-            className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl"
-            style={{ animation: themeClosing ? 'modal-pop-out 0.25s ease-in forwards' : 'modal-pop 0.25s ease-out' }}
-            onClick={(e) => e.stopPropagation()}
-          >
+      <Modal open={showThemeModal} onClose={() => closeModal('theme')} className="rounded-2xl p-5 w-full max-w-sm">
             <div className="text-center mb-4">
               <h2 className="text-lg font-bold text-gray-800 dark:text-white">选择主题</h2>
-            </div>
-
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 text-left">布局风格</p>
-            <div className="space-y-2 mb-4">
-              {[
-                { value: 'immersive' as ThemeStyle, label: '沉浸式', desc: 'Hero 大卡 · 模式网格 · 浮动导航' },
-                { value: 'classic' as ThemeStyle, label: '经典', desc: '原有布局 · 简洁蓝白' },
-              ].map((option) => (
-                <div
-                  key={option.value}
-                  onClick={() => setThemeStyle(option.value)}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-all ${
-                    themeStyle === option.value
-                      ? 'bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-500 dark:border-blue-400'
-                      : 'bg-gray-50 dark:bg-gray-700 border-2 border-transparent hover:bg-gray-100 dark:hover:bg-gray-600'
-                  }`}
-                >
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                    themeStyle === option.value ? 'border-blue-500' : 'border-gray-300 dark:border-gray-600'
-                  }`}>
-                    {themeStyle === option.value && (
-                      <div className="w-3 h-3 rounded-full bg-blue-500" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <span className={`text-sm font-medium ${themeStyle === option.value ? 'text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-200'}`}>
-                      {option.label}
-                    </span>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{option.desc}</p>
-                  </div>
-                </div>
-              ))}
             </div>
 
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 text-left">深浅色</p>
@@ -571,9 +505,7 @@ const Profile: React.FC = () => {
             >
               完成
             </button>
-          </div>
-        </div>
-      )}
+      </Modal>
     </div>
   );
 };

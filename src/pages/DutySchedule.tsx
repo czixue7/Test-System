@@ -7,6 +7,7 @@ import { useToast } from '../hooks/useToast';
 import { fetchDutyIndex, checkDutyStatus } from '../utils/dutyScheduleIndex';
 import { parseDutyExcelFile, parseJsonDutyText, isRestShiftText, ExcelParseResult } from '../utils/xlsxDutyParser';
 import { generateDutyForecast } from '../utils/dutyForecast';
+import Modal from '../components/Modal';
 
 const STORAGE_KEY_CURRENT_DUTY = 'current-duty-id';
 
@@ -85,47 +86,28 @@ const DutySchedule: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string | null>(() => formatDate(now));
 
   const [showAddModal, setShowAddModal] = useState(false);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [isClosing, setIsClosing] = useState(false);
 
   const [showForecastModal, setShowForecastModal] = useState(false);
-  const [forecastClosing, setForecastClosing] = useState(false);
   const [forecastEndDate, setForecastEndDate] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-12-31`;
   });
 
-  // 演练名称弹窗（带关闭动效）
+  // 演练名称弹窗
   const [drillModalText, setDrillModalText] = useState<string | null>(null);
-  const [drillClosing, setDrillClosing] = useState(false);
   const closeDrillModal = () => {
-    if (drillClosing) return;
-    setDrillClosing(true);
-    setTimeout(() => {
-      setDrillModalText(null);
-      setDrillClosing(false);
-    }, 180);
+    setDrillModalText(null);
   };
 
-  // 推算未来排班弹窗（带关闭动效）
+  // 推算未来排班弹窗
   const closeForecastModal = () => {
-    if (forecastClosing) return;
-    setForecastClosing(true);
-    setTimeout(() => {
-      setShowForecastModal(false);
-      setForecastClosing(false);
-    }, 180);
+    setShowForecastModal(false);
   };
 
-  // 删除确认弹窗（带关闭动效）
+  // 删除确认弹窗
   const closeDeleteModal = () => {
-    if (deleteClosing) return;
-    setDeleteClosing(true);
-    setTimeout(() => {
-      setShowDeleteModal(false);
-      setDutyToDelete(null);
-      setDeleteClosing(false);
-    }, 180);
+    setShowDeleteModal(false);
+    setDutyToDelete(null);
   };
 
   const importFileRef = useRef<HTMLInputElement>(null);
@@ -140,7 +122,6 @@ const DutySchedule: React.FC = () => {
   const [remoteError, setRemoteError] = useState<string | null>(null);
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteClosing, setDeleteClosing] = useState(false);
   const [dutyToDelete, setDutyToDelete] = useState<string | null>(null);
 
   useEffect(() => { loadDuties(); }, [loadDuties]);
@@ -156,10 +137,6 @@ const DutySchedule: React.FC = () => {
     }
   }, [duties]);
 
-  useEffect(() => {
-    if (showAddModal) { setIsClosing(false); setTimeout(() => setModalVisible(true), 10); }
-    else { setIsClosing(true); setTimeout(() => setModalVisible(false), 300); }
-  }, [showAddModal]);
 
   const currentDuty = duties.find((d) => d.id === currentDutyId);
   const todayStr = formatDate(now);
@@ -463,14 +440,6 @@ const DutySchedule: React.FC = () => {
           0% { transform: translateX(0); }
           100% { transform: translateX(-50%); }
         }
-        @keyframes modal-fade {
-          0% { opacity: 0; }
-          100% { opacity: 1; }
-        }
-        @keyframes modal-pop {
-          0% { opacity: 0; transform: scale(0.9) translateY(8px); }
-          100% { opacity: 1; transform: scale(1) translateY(0); }
-        }
       `}</style>
       <header className="fixed top-0 left-0 right-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800" style={{ paddingTop: safeArea.top }}>
         <div className="relative max-w-lg mx-auto px-4 h-12 flex items-center justify-between">
@@ -768,7 +737,7 @@ const DutySchedule: React.FC = () => {
                           {!isNight && drillNames.length > 0 && (
                             <div className="mb-2 space-y-1">
                               {drillNames.map((name, i) => (
-                                <DrillMarquee key={i} text={name} onClick={() => { setDrillClosing(false); setDrillModalText(drillNames.join('\n')); }} />
+                                <DrillMarquee key={i} text={name} onClick={() => { setDrillModalText(drillNames.join('\n')); }} />
                               ))}
                             </div>
                           )}
@@ -831,12 +800,7 @@ const DutySchedule: React.FC = () => {
       </nav>
 
       {/* 添加/导入弹窗 */}
-      {(showAddModal || modalVisible) && (
-        <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-opacity duration-300 ${isClosing ? 'opacity-0' : 'opacity-100'} bg-black/60`}
-          onClick={closeAddModal}>
-          <div
-            className={`bg-white dark:bg-gray-800 w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden transition-transform duration-300 ease-out max-h-[85vh] flex flex-col ${isClosing ? 'scale-95 opacity-0' : 'scale-100 opacity-100'}`}
-            onClick={e => e.stopPropagation()}>
+      <Modal open={showAddModal} onClose={closeAddModal} className="w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col">
             <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 dark:border-gray-700">
               <h2 className="text-lg font-semibold dark:text-white">导入值班表</h2>
               <button onClick={closeAddModal} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-400">
@@ -934,14 +898,10 @@ const DutySchedule: React.FC = () => {
                 </button>
               </div>
             )}
-          </div>
-        </div>
-      )}
+      </Modal>
 
       {/* 推算未来排班 */}
-      {showForecastModal && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" style={{ animation: forecastClosing ? 'modal-fade-out 0.18s ease-in forwards' : 'modal-fade 0.2s ease-out' }} onClick={closeForecastModal}>
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl" style={{ animation: forecastClosing ? 'modal-pop-out 0.18s ease-in forwards' : 'modal-pop 0.25s ease-out' }} onClick={e => e.stopPropagation()}>
+      <Modal open={showForecastModal} onClose={closeForecastModal} className="rounded-2xl p-5 w-full max-w-sm shadow-2xl">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-lg font-semibold dark:text-white">推算未来排班</h3>
               <button onClick={closeForecastModal} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-400">
@@ -963,20 +923,10 @@ const DutySchedule: React.FC = () => {
               <button onClick={closeForecastModal} className="flex-1 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg font-medium">取消</button>
               <button onClick={handleForecast} className="flex-1 py-2.5 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors">开始推算</button>
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
 
-      {/* 演练名称弹窗（关闭带淡出/缩放动效） */}
-      {drillModalText !== null && (
-        <div
-          className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4"
-          style={{ animation: drillClosing ? 'modal-fade-out 0.18s ease-in forwards' : 'modal-fade 0.2s ease-out' }}
-          onClick={closeDrillModal}>
-          <div
-            className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl"
-            style={{ animation: drillClosing ? 'modal-pop-out 0.18s ease-in forwards' : 'modal-pop 0.25s ease-out' }}
-            onClick={e => e.stopPropagation()}>
+      {/* 演练名称弹窗 */}
+      <Modal open={drillModalText !== null} onClose={closeDrillModal} zIndex={60} className="rounded-2xl p-5 w-full max-w-sm shadow-2xl">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-lg font-semibold dark:text-white">演练名称</h3>
               <button onClick={closeDrillModal} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-400">
@@ -986,23 +936,17 @@ const DutySchedule: React.FC = () => {
             <div className="text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap leading-relaxed break-words">
               {drillModalText}
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
 
       {/* 删除确认 */}
-      {showDeleteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" style={{ animation: deleteClosing ? 'modal-fade-out 0.18s ease-in forwards' : 'modal-fade 0.2s ease-out' }} onClick={closeDeleteModal}>
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl" style={{ animation: deleteClosing ? 'modal-pop-out 0.18s ease-in forwards' : 'modal-pop 0.25s ease-out' }} onClick={e => e.stopPropagation()}>
+      <Modal open={showDeleteModal} onClose={closeDeleteModal} className="rounded-2xl p-5 w-full max-w-sm shadow-2xl">
             <h3 className="text-lg font-semibold mb-2 dark:text-white">删除值班表</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">确定删除？此操作不可撤销。</p>
             <div className="flex gap-2">
               <button onClick={closeDeleteModal} className="flex-1 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg font-medium">取消</button>
               <button onClick={handleDeleteConfirm} className="flex-1 py-2.5 bg-red-500 text-white rounded-lg font-medium">删除</button>
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
     </div>
   );
 };

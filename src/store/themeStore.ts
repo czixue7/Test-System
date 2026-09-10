@@ -28,15 +28,6 @@ const getStoredTheme = (): Theme | null => {
   return null;
 };
 
-const getStoredThemeStyle = (): ThemeStyle | null => {
-  if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem('theme-style');
-    if (stored === 'classic' || stored === 'immersive') {
-      return stored;
-    }
-  }
-  return null;
-};
 
 const applyTheme = (style: ThemeStyle, theme: Theme) => {
   if (typeof document !== 'undefined') {
@@ -68,7 +59,8 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
   },
 
   initTheme: () => {
-    const style = getStoredThemeStyle() || 'immersive';
+    // 经典布局已移除，仅保留沉浸式（忽略旧版 localStorage 中的 'classic'）
+    const style: ThemeStyle = 'immersive';
     const storedTheme = getStoredTheme();
     const theme: Theme = storedTheme || 'system';
     applyTheme(style, theme);

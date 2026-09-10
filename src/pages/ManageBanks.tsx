@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import Modal from '../components/Modal';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuestionBankStore } from '../store/questionBankStore';
 import { isBuiltInBank } from '../utils/builtInBanks';
@@ -20,7 +21,6 @@ const ManageBanks: React.FC = () => {
   banksRef.current = banks;
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteModalClosing, setDeleteModalClosing] = useState(false);
   const [bankToDelete, setBankToDelete] = useState<string | null>(null);
   const [bankIndex, setBankIndex] = useState<BankIndex | null>(null);
   const [loadingRemote, setLoadingRemote] = useState(false);
@@ -30,28 +30,17 @@ const ManageBanks: React.FC = () => {
     builtIn: true
   });
   const [showExportModal, setShowExportModal] = useState(false);
-  const [exportModalClosing, setExportModalClosing] = useState(false);
   const [exporting, setExporting] = useState(false);
 
-  // 删除确认弹窗（带关闭动效）
+  // 删除确认弹窗
   const closeDeleteModal = () => {
-    if (deleteModalClosing) return;
-    setDeleteModalClosing(true);
-    setTimeout(() => {
-      setShowDeleteModal(false);
-      setBankToDelete(null);
-      setDeleteModalClosing(false);
-    }, 180);
+    setShowDeleteModal(false);
+    setBankToDelete(null);
   };
 
-  // 导出总结弹窗（带关闭动效）
+  // 导出总结弹窗
   const closeExportModal = () => {
-    if (exportModalClosing) return;
-    setExportModalClosing(true);
-    setTimeout(() => {
-      setShowExportModal(false);
-      setExportModalClosing(false);
-    }, 180);
+    setShowExportModal(false);
   };
 
   // 导出总结文件
@@ -282,7 +271,7 @@ const ManageBanks: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 safe-header">
-      <header 
+      <header
         className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg dark:from-blue-700 dark:to-blue-800 transition-colors"
         style={{ paddingTop: safeArea.top }}
       >
@@ -318,7 +307,7 @@ const ManageBanks: React.FC = () => {
         </div>
       </header>
 
-      <div 
+      <div
         className="max-w-lg mx-auto px-4 py-4 pb-24"
         style={{ paddingTop: safeArea.top + 48 }}
       >
@@ -384,17 +373,7 @@ const ManageBanks: React.FC = () => {
         )}
       </div>
 
-      {(showDeleteModal || deleteModalClosing) && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          style={{ animation: deleteModalClosing ? 'modal-fade-out 0.18s ease-in forwards' : 'modal-fade 0.2s ease-out' }}
-          onClick={closeDeleteModal}
-        >
-          <div 
-            className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl"
-            style={{ animation: deleteModalClosing ? 'modal-pop-out 0.18s ease-in forwards' : 'modal-pop 0.25s ease-out' }}
-            onClick={(e) => e.stopPropagation()}
-          >
+      <Modal open={showDeleteModal} onClose={closeDeleteModal} className="rounded-2xl p-5 w-full max-w-sm">
             <div className="text-center mb-4">
               <div className="w-12 h-12 mx-auto mb-3 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center">
                 <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -420,21 +399,9 @@ const ManageBanks: React.FC = () => {
                 删除
               </button>
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
 
-      {(showExportModal || exportModalClosing) && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          style={{ animation: exportModalClosing ? 'modal-fade-out 0.18s ease-in forwards' : 'modal-fade 0.2s ease-out' }}
-          onClick={closeExportModal}
-        >
-          <div
-            className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl"
-            style={{ animation: exportModalClosing ? 'modal-pop-out 0.18s ease-in forwards' : 'modal-pop 0.25s ease-out' }}
-            onClick={(e) => e.stopPropagation()}
-          >
+      <Modal open={showExportModal} onClose={closeExportModal} className="rounded-2xl p-5 w-full max-w-sm">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-bold text-gray-800 dark:text-white">导出总结</h2>
               <button
@@ -468,9 +435,7 @@ const ManageBanks: React.FC = () => {
                 🔗 综合总结（知识库 + 题库）
               </button>
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
     </div>
   );
 };

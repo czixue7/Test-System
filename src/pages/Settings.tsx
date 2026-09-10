@@ -7,6 +7,7 @@ import { GradingProvider } from '../types';
 import { initVConsole, destroyVConsole } from '../utils/vconsoleManager';
 import { useSafeArea } from '../hooks/useSafeArea';
 import { modelConfigLoader, ProviderConfig, ProviderModel } from '../utils/modelConfigLoader';
+import Modal from '../components/Modal';
 
 const isTauri = (): boolean => {
   return typeof window !== 'undefined' && '__TAURI__' in window;
@@ -79,25 +80,14 @@ const Settings: React.FC = () => {
     }
   }, [apiKey, apiModel]);
 
-  // 模型弹窗动画控制
-  useEffect(() => {
-    if (modelModalOpen) {
-      const timer = setTimeout(() => setModelModalVisible(true), 10);
-      return () => clearTimeout(timer);
-    } else {
-      setModelModalVisible(false);
-    }
-  }, [modelModalOpen]);
 
   const handleCloseModelModal = () => {
-    setModelModalVisible(false);
-    setTimeout(() => setModelModalOpen(false), 300);
+    setModelModalOpen(false);
   };
 
   const handleSelectModelWithClose = (providerId: string, modelId: string) => {
     handleSelectModel(providerId, modelId);
-    setModelModalVisible(false);
-    setTimeout(() => setModelModalOpen(false), 300);
+    setModelModalOpen(false);
   };
 
   const getGradingModeLabel = () => {
@@ -320,7 +310,7 @@ const Settings: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 safe-header">
-      <header 
+      <header
         className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg dark:from-blue-700 dark:to-blue-800 transition-colors"
         style={{ paddingTop: safeArea.top }}
       >
@@ -338,7 +328,7 @@ const Settings: React.FC = () => {
         </div>
       </header>
 
-      <div 
+      <div
         className="max-w-lg mx-auto px-4 py-4 space-y-3"
         style={{ paddingTop: safeArea.top + 48 }}
       >
@@ -659,13 +649,7 @@ const Settings: React.FC = () => {
       </div>
 
       {/* 模型选择弹窗 */}
-      {modelModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 animate-fade-in">
-          <div
-            className={`bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-sm w-full mx-4 overflow-hidden transform transition-all duration-300 ease-out ${
-              modelModalVisible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
-            }`}
-          >
+      <Modal open={modelModalOpen} onClose={handleCloseModelModal} className="rounded-2xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-600 flex items-center justify-between">
               <h3 className="text-base font-medium text-gray-800 dark:text-gray-200">选择模型</h3>
               <button
@@ -708,9 +692,7 @@ const Settings: React.FC = () => {
                 </button>
               ))}
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
     </div>
   );
 };
