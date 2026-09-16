@@ -1,0 +1,917 @@
+{
+  "name": "DCO-OPS-STD-001-V9.1-CN 基础设施运维管理流程SOP 题库",
+  "description": "依据《DCO-OPS-STD-001-V9.1-CN-基础设施运维管理流程SOP（外部）》整理，覆盖文档说明、规范概述、沟通服务、运维服务、安全服务、数据服务、运维质量评估共7章内容，题型包含单选、多选与填空。",
+  "questions": [
+    {
+      "type": "single-choice",
+      "content": "本SOP（DCO-OPS-STD-001）的制定目的是？",
+      "options": [
+        { "id": "A", "content": "规范字节跳动数据中心基础设施运维管理，确保数据中心供应商提供的服务满足字节跳动需求，保障数据中心可靠稳定" },
+        { "id": "B", "content": "规范字节跳动数据中心的土建施工与设备安装标准" },
+        { "id": "C", "content": "规范数据中心供应商的商务合同与结算管理" },
+        { "id": "D", "content": "规范字节跳动IT设备的采购与库存流程" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见1.1制定目的：规范字节跳动数据中心基础设施运维管理，确保数据中心供应商提供的服务满足字节跳动需求，保障数据中心可靠稳定。"
+    },
+    {
+      "type": "single-choice",
+      "content": "本SOP的适用人员和范围是？",
+      "options": [
+        { "id": "A", "content": "仅适用于字节跳动的核心机房" },
+        { "id": "B", "content": "适用于所有字节跳动的数据中心，重点应用范围为核心机房、汇聚机房、火山机房等具有高业务可靠性需求的数据中心" },
+        { "id": "C", "content": "仅适用于第三方托管机房，不含自建机房" },
+        { "id": "D", "content": "仅适用于已投运三年以上的老旧机房" }
+      ],
+      "correctAnswer": "B",
+      "score": 10,
+      "explanation": "见1.2适用人员和范围。"
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "名词解释：数据中心指为字节跳动服务器及网络设备等IT设备提供 ______、______ 的物理空间、建筑物以及相应的环境因素。",
+      "correctAnswer": ["运行", "存放"],
+      "score": 10,
+      "allowDisorder": false,
+      "explanation": "见1.3名词解释中“数据中心”的定义。"
+    },
+    {
+      "type": "multiple-choice",
+      "content": "“基础设施”是指为保障服务器及网络设备等IT设备安全、可靠、连续运行提供基本支持的设施，下列属于其范畴的有？",
+      "options": [
+        { "id": "A", "content": "空调与新风、电力与照明配置" },
+        { "id": "B", "content": "防雷保护、系统接地、消防与安全保障" },
+        { "id": "C", "content": "网络与布线、系统监控、给排水" },
+        { "id": "D", "content": "员工餐厅与园区绿化景观" }
+      ],
+      "correctAnswer": ["A", "B", "C"],
+      "score": 10,
+      "explanation": "见1.3名词解释中“基础设施”的定义，D项不属于其范畴。"
+    },
+    {
+      "type": "single-choice",
+      "content": "普通机房冷通道的温度与湿度控制要求是？",
+      "options": [
+        { "id": "A", "content": "温度[18~27℃]、湿度[20~80%]" },
+        { "id": "B", "content": "温度[18~30℃]、湿度[20%~80%]" },
+        { "id": "C", "content": "温度[18~25℃]、湿度[20%~80%]" },
+        { "id": "D", "content": "温度[20~30℃]、湿度[40%~60%]" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见第2章环境控制要求：普通机房冷通道温度[18~27℃]、湿度[20~80%]。"
+    },
+    {
+      "type": "single-choice",
+      "content": "板式液冷的冷通道温度与供液温度范围是？",
+      "options": [
+        { "id": "A", "content": "冷通道温度[18~27℃]、供液温度[18℃~41℃]" },
+        { "id": "B", "content": "冷通道温度[18~30℃]、供液温度[18℃~41℃]" },
+        { "id": "C", "content": "冷通道温度[18~25℃]、供液温度[18℃~41℃]" },
+        { "id": "D", "content": "冷通道温度[18~30℃]、供液温度[20℃~45℃]" }
+      ],
+      "correctAnswer": "B",
+      "score": 10,
+      "explanation": "见第2章环境控制要求：板式液冷冷通道温度[18~30℃]、供液温度[18℃~41℃]。"
+    },
+    {
+      "type": "single-choice",
+      "content": "S3及DCI等网络核心设备所在的冷通道，温度范围要求是？",
+      "options": [
+        { "id": "A", "content": "[18~27]℃" },
+        { "id": "B", "content": "[18~25]℃" },
+        { "id": "C", "content": "[18~30]℃" },
+        { "id": "D", "content": "[20~30]℃" }
+      ],
+      "correctAnswer": "B",
+      "score": 10,
+      "explanation": "见第2章环境控制要求第3条：S3及DCI等网络核心设备所在的冷通道温度范围为[18~25]℃。"
+    },
+    {
+      "type": "single-choice",
+      "content": "不间断电源系统电池室的温度要求范围是？",
+      "options": [
+        { "id": "A", "content": "18℃~27℃" },
+        { "id": "B", "content": "18℃~25℃" },
+        { "id": "C", "content": "20℃~30℃" },
+        { "id": "D", "content": "20℃~25℃" }
+      ],
+      "correctAnswer": "C",
+      "score": 10,
+      "explanation": "见第2章环境控制要求第4条：不间断电源系统电池室温度20℃~30℃。"
+    },
+    {
+      "type": "single-choice",
+      "content": "机房空气洁净度应符合的标准及等级要求是？",
+      "options": [
+        { "id": "A", "content": "符合ANSI/ISA-71.04-2013标准的G1等级要求" },
+        { "id": "B", "content": "符合GB50174-2017标准的G1等级要求" },
+        { "id": "C", "content": "符合ANSI/ISA-71.04-2017标准的G2等级要求" },
+        { "id": "D", "content": "符合ISO14644-1标准的G2等级要求" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见第2章环境控制要求第5条：机房空气洁净度符合ANSI/ISA-71.04-2013标准的G1等级要求，空气颗粒物应符合GB50174-2017及最新标准且不含金属颗粒物。"
+    },
+    {
+      "type": "multiple-choice",
+      "content": "数据中心基本基础设施环境要求中，“电气”方面的要求包括？",
+      "options": [
+        { "id": "A", "content": "具备冗余的外市电、不间断电源UPS和柴油发电机组" },
+        { "id": "B", "content": "机柜使用双路独立不间断电源系统供电" },
+        { "id": "C", "content": "具备自动灭火系统" },
+        { "id": "D", "content": "具备安全稳定的基础设施监控系统" }
+      ],
+      "correctAnswer": ["A", "B"],
+      "score": 10,
+      "explanation": "见第2章基本环境要求表“电气”行，C项属消防与防灾，D项属监控。"
+    },
+    {
+      "type": "multiple-choice",
+      "content": "数据中心基本基础设施环境要求中，“监控”方面的要求包括？",
+      "options": [
+        { "id": "A", "content": "具备安全稳定的基础设施监控系统，包括环境和设备监控系统、电气监控、暖通监控、安防系统" },
+        { "id": "B", "content": "为字节跳动提供安全稳定、符合要求的环境及设备监控数据传递服务" },
+        { "id": "C", "content": "具备自动灭火系统" },
+        { "id": "D", "content": "满足抗震、防雷、防水、防虫害、防疫要求" }
+      ],
+      "correctAnswer": ["A", "B"],
+      "score": 10,
+      "explanation": "见第2章基本环境要求表“监控”行，C、D两项属于“消防与防灾”要求。"
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "数据中心初验结束后，应根据“______”的要求完成机房信息、设计信息、设施信息、北向数据的提供。",
+      "correctAnswer": ["一站式接维时间节点"],
+      "score": 10,
+      "allowDisorder": true,
+      "explanation": "见第2章第4条。"
+    },
+    {
+      "type": "multiple-choice",
+      "content": "数据中心供应商应在机房项目启动时提供的服务接口人，至少包括以下哪些方向？",
+      "options": [
+        { "id": "A", "content": "机房收货、服务器运维" },
+        { "id": "B", "content": "网络运维、基础设施运维" },
+        { "id": "C", "content": "物理安全、商务人员" },
+        { "id": "D", "content": "法务与财务人员" }
+      ],
+      "correctAnswer": ["A", "B", "C"],
+      "score": 10,
+      "explanation": "见3.1接口人第1条：至少包括机房收货、服务器运维、网络运维、基础设施运维、物理安全、商务人员，并提供电话、邮箱作为联络方式。"
+    },
+    {
+      "type": "single-choice",
+      "content": "关于接口人主、备联系人的要求，下列说法正确的是？",
+      "options": [
+        { "id": "A", "content": "各类接口人应有主、备联系人，备用联系人在主联系人失联或在发生紧急情况下使用" },
+        { "id": "B", "content": "只需设置主联系人即可，无需备份" },
+        { "id": "C", "content": "备用联系人仅在法定节假日期间启用" },
+        { "id": "D", "content": "主、备联系人必须为同一人兼任" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见3.1接口人第2条。"
+    },
+    {
+      "type": "single-choice",
+      "content": "关于基础设施运维人员的特种作业持证要求，正确的是？",
+      "options": [
+        { "id": "A", "content": "每班组至少1人持有高压电工证件，班组特种作业持证率不得低于30%" },
+        { "id": "B", "content": "每班组至少2人持有高压电工证件，班组特种作业持证率不得低于50%" },
+        { "id": "C", "content": "每班组至少2人持有高压电工证件，班组特种作业持证率不得低于80%" },
+        { "id": "D", "content": "每班组至少3人持有高压电工证件，班组特种作业持证率不得低于50%" }
+      ],
+      "correctAnswer": "B",
+      "score": 10,
+      "explanation": "见3.2人员组织第2条a项：每班组至少2人持有高压电工证件，班组特种作业持证率不得低于50%；未持证人员严禁从事作业操作。"
+    },
+    {
+      "type": "single-choice",
+      "content": "关于专职工程师、班长、值班员的数据中心工作经验要求，正确的是？",
+      "options": [
+        { "id": "A", "content": "专职工程师3年以上，班长2年以上，值班员中50%具备1年以上" },
+        { "id": "B", "content": "专职工程师2年以上，班长3年以上，值班员中50%具备1年以上" },
+        { "id": "C", "content": "专职工程师3年以上，班长2年以上，值班员需全部具备1年以上" },
+        { "id": "D", "content": "专职工程师5年以上，班长3年以上，值班员中30%具备1年以上" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见3.2人员组织第3条：专职工程师应具备3年以上数据中心工作经验，班长具备2年以上，值班员中50%具备1年以上，能力突出者可适当放宽。"
+    },
+    {
+      "type": "single-choice",
+      "content": "对于能力评估不合格的员工，数据中心供应商应在多少个自然日内完成换岗或开展培训使其满足能力要求？",
+      "options": [
+        { "id": "A", "content": "7个自然日" },
+        { "id": "B", "content": "15个自然日" },
+        { "id": "C", "content": "30个自然日" },
+        { "id": "D", "content": "60个自然日" }
+      ],
+      "correctAnswer": "C",
+      "score": 10,
+      "explanation": "见3.2人员组织第3条：数据中心供应商应在30个自然日内完成换岗或开展培训使其满足能力要求。"
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "原则上以楼宇为单位，核心人员年度离职率应≤______%。",
+      "correctAnswer": ["20"],
+      "score": 10,
+      "allowDisorder": true,
+      "explanation": "见3.2人员组织第4条：核心人员年度离职率≤20%。"
+    },
+    {
+      "type": "multiple-choice",
+      "content": "按照3.2人员组织要求，核心人员包含以下哪些岗位？",
+      "options": [
+        { "id": "A", "content": "运维经理、专职工程师" },
+        { "id": "B", "content": "值长" },
+        { "id": "C", "content": "物理安全接口人、EHS对接人" },
+        { "id": "D", "content": "园区食堂管理员" }
+      ],
+      "correctAnswer": ["A", "B", "C"],
+      "score": 10,
+      "explanation": "见3.2人员组织第4条：核心人员包含运维经理、专职工程师、值长、物理安全接口人、EHS对接人，专职工程师包含电气、暖通、弱电（消防）专业。"
+    },
+    {
+      "type": "single-choice",
+      "content": "园区建筑面积小于4万㎡时，人员配置要求是？",
+      "options": [
+        { "id": "A", "content": "需要配置至少一名消防工程师，超过后依据建筑面积增加人员配置数量，满足每4万平一名消防工程师" },
+        { "id": "B", "content": "无需配置消防工程师" },
+        { "id": "C", "content": "需要配置至少两名消防工程师，每8万平一名" },
+        { "id": "D", "content": "由供应商自行决定是否配置" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见3.2人员组织第6条a项。"
+    },
+    {
+      "type": "single-choice",
+      "content": "园区ECC应具备集中监控大屏并接入全园区动环告警及运行数据，其人员配置需满足？",
+      "options": [
+        { "id": "A", "content": "不低于1名值班主管，不低于2名值班人员*4班组" },
+        { "id": "B", "content": "不低于2名值班主管，不低于1名值班人员*4班组" },
+        { "id": "C", "content": "不低于1名值班主管，不低于1名值班人员*4班组" },
+        { "id": "D", "content": "不低于2名值班主管，不低于2名值班人员*4班组" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见3.2人员组织第6条b项：ECC人员配置需满足不低于1名值班主管、不低于2名值班人员*4班组。"
+    },
+    {
+      "type": "single-choice",
+      "content": "园区内字节规划交付楼宇超过几栋时，在第三栋楼验收时宜具备园区ECC？",
+      "options": [
+        { "id": "A", "content": "超过2栋" },
+        { "id": "B", "content": "超过3栋" },
+        { "id": "C", "content": "超过4栋" },
+        { "id": "D", "content": "超过5栋" }
+      ],
+      "correctAnswer": "B",
+      "score": 10,
+      "explanation": "见3.2人员组织第6条b项：园区内字节规划交付楼宇超过三栋，在第三栋楼验收时，宜具备园区ECC。"
+    },
+    {
+      "type": "single-choice",
+      "content": "新交付IDC运维团队中，楼长的到位时间要求是？",
+      "options": [
+        { "id": "A", "content": "综合测试启动前2月" },
+        { "id": "B", "content": "综合测试启动前1月" },
+        { "id": "C", "content": "综合测试启动时" },
+        { "id": "D", "content": "终验后1个月内" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见3.2“新交付IDC运维团队人员数量参考（每栋楼）”表中人员到位时间行：楼长为综合测试启动前2月，其余岗位为综合测试启动前1月或综合测试启动。"
+    },
+    {
+      "type": "single-choice",
+      "content": "新交付IDC运维团队中，IT容量≤20MW的楼栋，班组人数（含值班长）及总人数要求分别是？",
+      "options": [
+        { "id": "A", "content": "≥5人、≥24人" },
+        { "id": "B", "content": "≥6人、≥28人" },
+        { "id": "C", "content": "≥7人、≥32人" },
+        { "id": "D", "content": "≥8人、≥38人" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见3.2人员数量参考表：IT容量≤20MW时楼长1人、电气/暖通/弱电各≥1人、班组≥5人、总人数≥24人。"
+    },
+    {
+      "type": "single-choice",
+      "content": "对于100MW以上的园区，人员配置要求是？",
+      "options": [
+        { "id": "A", "content": "应单独配置1名园区经理和若干名专业主管工程师，具体需与字节商定后执行" },
+        { "id": "B", "content": "按≤20MW标准配置即可，无需额外人员" },
+        { "id": "C", "content": "仅需增加值班人员数量" },
+        { "id": "D", "content": "由供应商自行决定，无需与字节沟通" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见3.2人员配置备注第5条。"
+    },
+    {
+      "type": "single-choice",
+      "content": "关于物理安全/EHS对接人的配置要求，正确的是？",
+      "options": [
+        { "id": "A", "content": "应配备1名及以上5*8小时的专职安全主管，专职负责园区物理安全、EHS和安全团队管理工作，无兼职负责环境/工程/服务等其他模块工作" },
+        { "id": "B", "content": "可由工程主管兼职担任" },
+        { "id": "C", "content": "只需配备兼职人员即可，无工时要求" },
+        { "id": "D", "content": "每班次需配备1名，合计7*24小时" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见3.2物理安全人员配置表中“物理安全/EHS对接人”行。"
+    },
+    {
+      "type": "multiple-choice",
+      "content": "关于通知服务中各群组的时效性特征，下列说法正确的有？",
+      "options": [
+        { "id": "A", "content": "事件：高效时" },
+        { "id": "B", "content": "工单：中时效" },
+        { "id": "C", "content": "监控：高时效" },
+        { "id": "D", "content": "演练：低时效" }
+      ],
+      "correctAnswer": ["A", "B", "C", "D"],
+      "score": 10,
+      "explanation": "见3.3通知服务群组表：设施运维方向下事件为高效时、工单为中时效、沟通为中时效、演练为低时效、监控为高时效。"
+    },
+    {
+      "type": "single-choice",
+      "content": "机房事件通报的时效要求是？",
+      "options": [
+        { "id": "A", "content": "故障发生需2min内在飞书内速报，5min内确认真实告警并通报关键信息，10min内IDC门户上报" },
+        { "id": "B", "content": "故障发生需5min内速报，10min内确认，30min内上报" },
+        { "id": "C", "content": "故障发生需10min内速报，30min内确认，1h内上报" },
+        { "id": "D", "content": "只需电话通知接口人，无平台时限要求" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见3.3通知服务通报模版“机房事件通报”行，体现2-5-10min平台提速时效要求。"
+    },
+    {
+      "type": "single-choice",
+      "content": "针对机房运维服务，字节侧与数据中心供应商应进行什么形式的服务例会？",
+      "options": [
+        { "id": "A", "content": "周度服务例会" },
+        { "id": "B", "content": "月度服务例会" },
+        { "id": "C", "content": "季度服务例会" },
+        { "id": "D", "content": "年度服务例会" }
+      ],
+      "correctAnswer": "B",
+      "score": 10,
+      "explanation": "见3.4服务例会：应进行月度形式的服务例会，数据中心供应商由服务经理作为组织接口，宜每月15日左右协商组织线上月例会。"
+    },
+    {
+      "type": "single-choice",
+      "content": "数据中心供应商应于每月几日前将运营月报（含PPT及其他报表）发送至机房基础设施运维接口人，并上传至飞书共享文件夹？",
+      "options": [
+        { "id": "A", "content": "5日前" },
+        { "id": "B", "content": "10日前" },
+        { "id": "C", "content": "15日前" },
+        { "id": "D", "content": "20日前" }
+      ],
+      "correctAnswer": "C",
+      "score": 10,
+      "explanation": "见3.5文档服务第1条：每月15日前发送运营月报并上传至飞书共享文件夹。"
+    },
+    {
+      "type": "single-choice",
+      "content": "《电力月报》《容量月报》《碳盘查》、维护报告及其他不定期报表数据，应在每月几日前反馈上月数据？",
+      "options": [
+        { "id": "A", "content": "5日前" },
+        { "id": "B", "content": "10日前" },
+        { "id": "C", "content": "15日前" },
+        { "id": "D", "content": "当月月底前" }
+      ],
+      "correctAnswer": "B",
+      "score": 10,
+      "explanation": "见3.5文档服务第2条：应在每月10日前反馈上月数据。"
+    },
+    {
+      "type": "single-choice",
+      "content": "对于字节数据中心运营数据、文档等需求，数据中心供应商应第一时间响应，根据需求程度最晚不超过几个工作日反馈？",
+      "options": [
+        { "id": "A", "content": "1个工作日" },
+        { "id": "B", "content": "2个工作日" },
+        { "id": "C", "content": "3个工作日" },
+        { "id": "D", "content": "5个工作日" }
+      ],
+      "correctAnswer": "C",
+      "score": 10,
+      "explanation": "见3.5文档服务第4条：根据需求程度最晚不超过3个工作日反馈。"
+    },
+    {
+      "type": "multiple-choice",
+      "content": "数据中心供应商需配合开展的安全与合规检查包括？",
+      "options": [
+        { "id": "A", "content": "安全检查：每季度对动力环境/关键设备等进行安全检查并提供相关资料" },
+        { "id": "B", "content": "等保测评检查：配合第三方测评公司完成现场检查并提供相关资料" },
+        { "id": "C", "content": "字节内外部审计检查" },
+        { "id": "D", "content": "供应商内部团建与员工满意度调查" }
+      ],
+      "correctAnswer": ["A", "B", "C"],
+      "score": 10,
+      "explanation": "见3.5文档服务第5条。"
+    },
+    {
+      "type": "single-choice",
+      "content": "机房发现中高风险问题未与字节同步，刻意隐瞒及私自处理，发现一次即记为？",
+      "options": [
+        { "id": "A", "content": "一次不诚信事件" },
+        { "id": "B", "content": "一次重大故障事件" },
+        { "id": "C", "content": "一次合同违约" },
+        { "id": "D", "content": "一次口头警告" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见3.6不诚信事件第1条：杜绝刻意隐瞒及私自处理，发现一次即记为一次不诚信事件。"
+    },
+    {
+      "type": "single-choice",
+      "content": "巡检记录表的保存时间要求是？",
+      "options": [
+        { "id": "A", "content": "不低于6个月" },
+        { "id": "B", "content": "不低于12个月" },
+        { "id": "C", "content": "不低于24个月" },
+        { "id": "D", "content": "不低于36个月" }
+      ],
+      "correctAnswer": "B",
+      "score": 10,
+      "explanation": "见4.1巡检与记录第2条：巡检记录表保存时间不低于12个月，以备审查。"
+    },
+    {
+      "type": "single-choice",
+      "content": "每24小时内基础设施巡检与机房人员巡检的次数要求分别是？",
+      "options": [
+        { "id": "A", "content": "基础设施巡检不少于2次，机房人员不少于1次" },
+        { "id": "B", "content": "基础设施巡检不少于1次，机房人员不少于2次" },
+        { "id": "C", "content": "两者均不少于2次" },
+        { "id": "D", "content": "两者均不少于1次" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见4.1巡检与记录第3条：每24小时内基础设施巡检不少于2次，巡检能力及机房人员不少于1次。"
+    },
+    {
+      "type": "single-choice",
+      "content": "针对涉及字节侧业务设施的变更，按时间要求的分类正确的是？",
+      "options": [
+        { "id": "A", "content": "计划性变更（≥5天）、非计划变更（2天-5天）、紧急变更（≤48小时）" },
+        { "id": "B", "content": "计划性变更（≥7天）、非计划变更（3天-7天）、紧急变更（≤24小时）" },
+        { "id": "C", "content": "计划性变更（≥3天）、非计划变更（1天-3天）、紧急变更（≤12小时）" },
+        { "id": "D", "content": "无明确时间要求，由供应商自行安排" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见4.2变更管理第2条：应按照计划性变更（≥5天）、非计划变更（2天-5天）、紧急变更（≤48小时）的时间要求在平台提交变更申请。"
+    },
+    {
+      "type": "single-choice",
+      "content": "因非可控因素、紧急业务、外部需求或紧急故障恢复导致先应急处理后补提工单的，工单应在变更结束后多久内在平台补提？",
+      "options": [
+        { "id": "A", "content": "12h内" },
+        { "id": "B", "content": "24h内" },
+        { "id": "C", "content": "48h内" },
+        { "id": "D", "content": "3天内" }
+      ],
+      "correctAnswer": "B",
+      "score": 10,
+      "explanation": "见4.2变更管理第2条：可以先变更后补提工单，工单应在变更结束后24h内在平台补提。"
+    },
+    {
+      "type": "multiple-choice",
+      "content": "F1及以上等级的高风险变更，供应商需提前完成现场模拟变更演习，其内容包括？",
+      "options": [
+        { "id": "A", "content": "变更操作遥拟模拟" },
+        { "id": "B", "content": "变更操作步骤讲解" },
+        { "id": "C", "content": "变更应急场景模拟" },
+        { "id": "D", "content": "变更财务预算评审" }
+      ],
+      "correctAnswer": ["A", "B", "C"],
+      "score": 10,
+      "explanation": "见4.2变更管理第4条。"
+    },
+    {
+      "type": "single-choice",
+      "content": "变更结束后应进行不低于多长时间的观察，确认达到变更预期且未引发故障，方可视为变更成功？",
+      "options": [
+        { "id": "A", "content": "15分钟" },
+        { "id": "B", "content": "30分钟" },
+        { "id": "C", "content": "60分钟" },
+        { "id": "D", "content": "2小时" }
+      ],
+      "correctAnswer": "B",
+      "score": 10,
+      "explanation": "见4.2变更管理第9条：变更结束后应进行不低于30分钟观察。"
+    },
+    {
+      "type": "single-choice",
+      "content": "关于事件等级与通报时效，下列描述正确的是？",
+      "options": [
+        { "id": "A", "content": "F3低风险事件应在10分钟内上报IDC门户；F2中风险及以上事件按2-5-10流程通报；F1级及以上事件应10分钟内电话通知指定设施接口人；F0级事件应5分钟内电话通知指定设施接口人" },
+        { "id": "B", "content": "所有等级事件均按2-5-10流程通报" },
+        { "id": "C", "content": "F0级事件应在30分钟内电话通知指定设施接口人" },
+        { "id": "D", "content": "F1级事件应在1小时内电话通知指定设施接口人" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见4.3事件管理第2条a项。"
+    },
+    {
+      "type": "single-choice",
+      "content": "发生基础设施故障后，数据中心供应商应在几分钟内到达故障现场确认真实故障；F3及以上等级事件应在几分钟内完成故障隔离？",
+      "options": [
+        { "id": "A", "content": "5分钟、15分钟" },
+        { "id": "B", "content": "10分钟、30分钟" },
+        { "id": "C", "content": "15分钟、30分钟" },
+        { "id": "D", "content": "5分钟、30分钟" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见4.3事件管理第2条c项：应在5分钟内到达故障现场确认真实故障；F3及以上等级事件应15分钟完成故障隔离。"
+    },
+    {
+      "type": "single-choice",
+      "content": "对于更严重的事件，应在故障修复后的几个工作日内提供初级复盘报告？",
+      "options": [
+        { "id": "A", "content": "1个工作日" },
+        { "id": "B", "content": "2个工作日" },
+        { "id": "C", "content": "3个工作日" },
+        { "id": "D", "content": "5个工作日" }
+      ],
+      "correctAnswer": "B",
+      "score": 10,
+      "explanation": "见4.3事件管理第2条d项：应在故障修复后的2个工作日内提供初级复盘报告。"
+    },
+    {
+      "type": "single-choice",
+      "content": "字节跳动会定期或不定期对数据中心进行巡检或飞检，对识别的问题供应商应在多久内落实应急措施？",
+      "options": [
+        { "id": "A", "content": "1天" },
+        { "id": "B", "content": "3天" },
+        { "id": "C", "content": "7天" },
+        { "id": "D", "content": "15天" }
+      ],
+      "correctAnswer": "B",
+      "score": 10,
+      "explanation": "见4.4风险管理第1条：识别的问题供应商应在3天落实应急措施。"
+    },
+    {
+      "type": "single-choice",
+      "content": "数据中心供应商应于每年几月几日前推送下一年的年度预防性维护计划？",
+      "options": [
+        { "id": "A", "content": "11月30日前" },
+        { "id": "B", "content": "12月15日前" },
+        { "id": "C", "content": "12月30日前" },
+        { "id": "D", "content": "次年1月31日前" }
+      ],
+      "correctAnswer": "C",
+      "score": 10,
+      "explanation": "见4.5预防性维护第1条：每年12月30日前推送下一年的年度维护计划（新交付机房应于终验后次月度提前提交维护计划）。"
+    },
+    {
+      "type": "single-choice",
+      "content": "维护计划月度、年度完成率应达到多少？每月几号前应在平台上传上个月维护保养记录？",
+      "options": [
+        { "id": "A", "content": "100%；每月10号前" },
+        { "id": "B", "content": "95%；每月15号前" },
+        { "id": "C", "content": "100%；每月15号前" },
+        { "id": "D", "content": "90%；每月10号前" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见4.5预防性维护第4条：维护计划月度、年度完成率应达到100%，每月10号前应在平台上传上个月维护保养记录。"
+    },
+    {
+      "type": "single-choice",
+      "content": "柴油发电机和高压屏柜的蓄电池更换周期不超过几年？",
+      "options": [
+        { "id": "A", "content": "3年" },
+        { "id": "B", "content": "5年" },
+        { "id": "C", "content": "8年" },
+        { "id": "D", "content": "10年" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见4.5预防性维护第10条a项：柴油发电机和高压屏柜的蓄电池更换周期不超过3年。"
+    },
+    {
+      "type": "single-choice",
+      "content": "按照维护要求，不间断电源铅酸蓄电池与锂电池的更换周期分别不超过？",
+      "options": [
+        { "id": "A", "content": "5年、10年" },
+        { "id": "B", "content": "3年、5年" },
+        { "id": "C", "content": "5年、8年" },
+        { "id": "D", "content": "10年、15年" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见4.5预防性维护第10条a项：铅酸蓄电池更换周期不超过5年，锂电池更换周期不超过10年。"
+    },
+    {
+      "type": "single-choice",
+      "content": "数据中心供应商应在几月几日前完成下一年度应急演练规划并提交字节FM审核？",
+      "options": [
+        { "id": "A", "content": "11月30日前" },
+        { "id": "B", "content": "12月15日前" },
+        { "id": "C", "content": "12月30日前" },
+        { "id": "D", "content": "次年1月31日前" }
+      ],
+      "correctAnswer": "C",
+      "score": 10,
+      "explanation": "见4.6应急演练第2条：在12月30日前完成下一年度应急演练规划，提交字节FM进行审核。"
+    },
+    {
+      "type": "single-choice",
+      "content": "防汛演练的频率要求是？",
+      "options": [
+        { "id": "A", "content": "每季度一次" },
+        { "id": "B", "content": "每半年一次" },
+        { "id": "C", "content": "每年一次" },
+        { "id": "D", "content": "每两年一次" }
+      ],
+      "correctAnswer": "B",
+      "score": 10,
+      "explanation": "见4.6应急演练第4条：每半年应进行防汛演练。"
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "机房日常应满足日均 ______ 柜的加电需求。",
+      "correctAnswer": ["200"],
+      "score": 10,
+      "allowDisorder": true,
+      "explanation": "见4.8机柜上下电第3条。"
+    },
+    {
+      "type": "multiple-choice",
+      "content": "按照4.7应急措施要求，下列属于必须落实的应急保障措施的有？",
+      "options": [
+        { "id": "A", "content": "数据中心需和油料油公司签署应急供油协议，保证油料供应的持续性" },
+        { "id": "B", "content": "采用市政水/备用水的水源中心，均需签订应急供水协议（不低于2家），或具备合规自备井" },
+        { "id": "C", "content": "根据数据中心规模配置一定数量的风机，风量满足单体最大数据中心模块制冷故障时的通风需求" },
+        { "id": "D", "content": "做好关键基础设施、易损设备的备品备件准备，定期更新储备情况" }
+      ],
+      "correctAnswer": ["A", "B", "C", "D"],
+      "score": 10,
+      "explanation": "见4.7应急措施第2、3、4、6条。"
+    },
+    {
+      "type": "single-choice",
+      "content": "长期入室人员名单权限最长有效期为多久？",
+      "options": [
+        { "id": "A", "content": "1年" },
+        { "id": "B", "content": "2年" },
+        { "id": "C", "content": "3年" },
+        { "id": "D", "content": "5年" }
+      ],
+      "correctAnswer": "B",
+      "score": 10,
+      "explanation": "见5.1出入管理“长期入室”第5条：长期入室人员名单权限最长有效期为两年。"
+    },
+    {
+      "type": "single-choice",
+      "content": "短期入室人员最长权限有效期为多久？",
+      "options": [
+        { "id": "A", "content": "3天" },
+        { "id": "B", "content": "7天" },
+        { "id": "C", "content": "15天" },
+        { "id": "D", "content": "30天" }
+      ],
+      "correctAnswer": "B",
+      "score": 10,
+      "explanation": "见5.1出入管理“短期入室”第10条：短期入室人员最长权限有效期为7天，过期后需要重新提交线上工单申请。"
+    },
+    {
+      "type": "single-choice",
+      "content": "根据字节物理安全要求，每个楼宇可保留最多几张紧急使用通卡？",
+      "options": [
+        { "id": "A", "content": "1张" },
+        { "id": "B", "content": "2张" },
+        { "id": "C", "content": "3张" },
+        { "id": "D", "content": "5张" }
+      ],
+      "correctAnswer": "B",
+      "score": 10,
+      "explanation": "见5.1出入管理“长期入室”第10条：每个楼宇可保留最多2张紧急使用通卡。"
+    },
+    {
+      "type": "single-choice",
+      "content": "字节租赁区域门禁权限卡记录的保存时间要求是？",
+      "options": [
+        { "id": "A", "content": "不低于6个月" },
+        { "id": "B", "content": "连续12个月以上" },
+        { "id": "C", "content": "不低于24个月" },
+        { "id": "D", "content": "不低于36个月" }
+      ],
+      "correctAnswer": "B",
+      "score": 10,
+      "explanation": "见5.1出入管理“长期入室”第9条：门禁权限卡记录需要保存连续12个月以上，以备字节核查和调用。"
+    },
+    {
+      "type": "multiple-choice",
+      "content": "按照EHS管理要求，企业内部涉及的高危作业包括？",
+      "options": [
+        { "id": "A", "content": "登高、动火" },
+        { "id": "B", "content": "受限空间、吊装作业" },
+        { "id": "C", "content": "高压电作业" },
+        { "id": "D", "content": "办公室长时间伏案作业" }
+      ],
+      "correctAnswer": ["A", "B", "C"],
+      "score": 10,
+      "explanation": "见5.2 EHS管理第4条：高危作业包括登高、动火、受限空间、吊装作业、高压电作业。"
+    },
+    {
+      "type": "fill-in-blank",
+      "content": "视频监控信息至少留存 ______ 天以上，以备审查；如按字节要求提供金融/证券类服务的机房，需满足证券 ______ 天以上的视频存储能力。",
+      "correctAnswer": ["90", "180"],
+      "score": 10,
+      "allowDisorder": false,
+      "explanation": "见5.3物理安全第9条：视频监控信息至少留存90天以上，金融需90天以上、证券需180天以上。"
+    },
+    {
+      "type": "single-choice",
+      "content": "字节跳动物理安全组会不定期对数据中心进行日常自测试，机房季度自测试失败次数不得超过几次？",
+      "options": [
+        { "id": "A", "content": "1次" },
+        { "id": "B", "content": "2次" },
+        { "id": "C", "content": "3次" },
+        { "id": "D", "content": "5次" }
+      ],
+      "correctAnswer": "B",
+      "score": 10,
+      "explanation": "见5.3物理安全第7条：机房季度自测试失败次数不得超过2次。"
+    },
+    {
+      "type": "single-choice",
+      "content": "为保证视频监控系统监控的可靠性，每天检查视频监控信息并制作检查记录单，该记录单的留存时间要求是？",
+      "options": [
+        { "id": "A", "content": "不低于3个月" },
+        { "id": "B", "content": "不低于6个月" },
+        { "id": "C", "content": "不低于12个月" },
+        { "id": "D", "content": "不低于24个月" }
+      ],
+      "correctAnswer": "C",
+      "score": 10,
+      "explanation": "见5.3物理安全第8条：制作检查记录单，留存时间不低于12个月，以备审查。"
+    },
+    {
+      "type": "multiple-choice",
+      "content": "机房运维后应提供的消防安全保障，包括但不限于？",
+      "options": [
+        { "id": "A", "content": "监控系统：火灾监控、预警系统" },
+        { "id": "B", "content": "设备、器材：防火门、灭火系统、消防器材" },
+        { "id": "C", "content": "流程规范：巡检制度、日志分析" },
+        { "id": "D", "content": "培训体系：消防安全宣讲，人员考核" }
+      ],
+      "correctAnswer": ["A", "B", "C", "D"],
+      "score": 10,
+      "explanation": "见5.6消防安全第1条，另还包括“预案演练：应急预案、消防演练”。"
+    },
+    {
+      "type": "single-choice",
+      "content": "机房监控系统中，动环和自控等监控系统的数据与告警信息的留存要求是？",
+      "options": [
+        { "id": "A", "content": "留存不低于6个月" },
+        { "id": "B", "content": "留存不低于12个月" },
+        { "id": "C", "content": "留存不低于24个月" },
+        { "id": "D", "content": "无需留存，实时查看即可" }
+      ],
+      "correctAnswer": "B",
+      "score": 10,
+      "explanation": "见6.1机房监控系统第5条：需要全量留存，留存不低于12个月，以备审查。"
+    },
+    {
+      "type": "single-choice",
+      "content": "关于监控系统的报警功能验证与值班要求，正确的是？",
+      "options": [
+        { "id": "A", "content": "每月应对监控系统涉及到的报警功能进行功能性验证，运维值班室内需要24小时有人在岗" },
+        { "id": "B", "content": "每季度进行功能性验证，值班室白天有人即可" },
+        { "id": "C", "content": "每年进行功能性验证，值班室需24小时有人在岗" },
+        { "id": "D", "content": "无需进行功能性验证" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见6.1机房监控系统第3条、第4条。"
+    },
+    {
+      "type": "single-choice",
+      "content": "对字节跳动包间内的温湿度传感器，除按周期校准外，还要求？",
+      "options": [
+        { "id": "A", "content": "不定期使用手持仪表进行抽检，确保机房温湿度准确" },
+        { "id": "B", "content": "每年整体更换一次" },
+        { "id": "C", "content": "无需额外措施" },
+        { "id": "D", "content": "每月拆卸送第三方检测机构检定" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见6.1机房监控系统第6条。"
+    },
+    {
+      "type": "single-choice",
+      "content": "北向数据接入要求中，“新建园区”（DCIM/物理安全系统为首次对接）的接入时间要求为？",
+      "options": [
+        { "id": "A", "content": "初验+30天" },
+        { "id": "B", "content": "初验+45天" },
+        { "id": "C", "content": "初验+60天" },
+        { "id": "D", "content": "初验+90天" }
+      ],
+      "correctAnswer": "C",
+      "score": 10,
+      "explanation": "见6.2北向数据表格中“新建园区”行：DCIM接入时间与物理安全系统接入时间均为初验+60天。"
+    },
+    {
+      "type": "single-choice",
+      "content": "北向数据接入要求中，“新建楼栋”与“包间扩容”的DCIM/物理安全系统接入时间要求分别是？",
+      "options": [
+        { "id": "A", "content": "初验+45天、初验+30天" },
+        { "id": "B", "content": "初验+60天、初验+45天" },
+        { "id": "C", "content": "初验+30天、初验+15天" },
+        { "id": "D", "content": "初验+90天、初验+60天" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见6.2北向数据表格：新建楼栋为初验+45天，包间扩容为初验+30天。"
+    },
+    {
+      "type": "single-choice",
+      "content": "如因字节侧网络联通未及时完成，机房侧应提前做好割点收集及本地配置，北向数据接入最晚不能超过？",
+      "options": [
+        { "id": "A", "content": "网通+15天或接入SLA两者中的较大值" },
+        { "id": "B", "content": "网通+30天" },
+        { "id": "C", "content": "初验+90天" },
+        { "id": "D", "content": "无时间要求，可与字节另行协商" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见6.2北向数据表格“新建园区”行备注。"
+    },
+    {
+      "type": "single-choice",
+      "content": "运维质量评估中，机房评估指标采用的计分方式是？",
+      "options": [
+        { "id": "A", "content": "扣分制，总分100分，扣至0分为止" },
+        { "id": "B", "content": "加分制，总分100分" },
+        { "id": "C", "content": "百分制加权平均" },
+        { "id": "D", "content": "五级评分制" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见7.1评估方法：采用扣分制总分100分，扣至0分为止。"
+    },
+    {
+      "type": "single-choice",
+      "content": "运维质量评估等级A与B对应的整改时限分别是？",
+      "options": [
+        { "id": "A", "content": "7天内、3天内提交完整的整改方案" },
+        { "id": "B", "content": "3天内、7天内提交完整的整改方案" },
+        { "id": "C", "content": "15天内、7天内提交完整的整改方案" },
+        { "id": "D", "content": "30天内、15天内提交完整的整改方案" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见7.2评估等级说明表：A级90-100分需7天内提交完整整改方案，B级80-89分需3天内提交完整整改方案。"
+    },
+    {
+      "type": "single-choice",
+      "content": "当供应商评估结果为C（70-79分）时，字节将采取的措施是？",
+      "options": [
+        { "id": "A", "content": "字节将启动对该供应商运维能力评估，评估结果将影响到该机房的续约或提前退租" },
+        { "id": "B", "content": "直接终止合同并不再合作" },
+        { "id": "C", "content": "不做任何处理，仅记录在案" },
+        { "id": "D", "content": "仅进行口头提醒" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见7.2评估等级说明表C级说明。"
+    },
+    {
+      "type": "single-choice",
+      "content": "每季度进行by机房、by供应商的整体评估，评估结果将在何时向机房现场反馈？",
+      "options": [
+        { "id": "A", "content": "最后一个月例会" },
+        { "id": "B", "content": "每季度首月例会" },
+        { "id": "C", "content": "次年1月统一反馈" },
+        { "id": "D", "content": "评估完成后立即邮件通知" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见7.3评估结果第1条：评估结果将呈在最后一个月例会向给机房现场。"
+    },
+    {
+      "type": "single-choice",
+      "content": "对于评估分数低于60分的供应商，除由商务发起相关流程与评估外，还将？",
+      "options": [
+        { "id": "A", "content": "组织现场约谈" },
+        { "id": "B", "content": "直接解除合同" },
+        { "id": "C", "content": "在行业内进行通报" },
+        { "id": "D", "content": "无额外措施" }
+      ],
+      "correctAnswer": "A",
+      "score": 10,
+      "explanation": "见7.3评估结果第4条：同时将组织现场约谈。"
+    }
+  ]
+}
