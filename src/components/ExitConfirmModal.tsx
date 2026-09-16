@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import Modal from './Modal';
 
 interface ExitConfirmModalProps {
@@ -24,20 +24,23 @@ const ExitConfirmModal: React.FC<ExitConfirmModalProps> = ({
 }) => {
   const [open, setOpen] = useState(true);
 
-  const handleSave = () => {
+  // 关闭动画期间按钮仍可点击（Modal 要等 duration 后才 visible=false）。
+  // 不加锁的话：连点「不保存退出」会执行两次 goBack()（navigate(-1) 连退两层）；
+  // 先点「保存并退出」再点「不保存退出」会先保存后删除。
+  const firedRef = useRef(false);
+
+  const fire = (callback: () => void) => {
+    if (firedRef.current) return;
+    firedRef.current = true;
     setOpen(false);
-    setTimeout(onSave, 240);
+    setTimeout(callback, 240);
   };
 
-  const handleExit = () => {
-    setOpen(false);
-    setTimeout(onExitWithoutSave, 240);
-  };
+  const handleSave = () => fire(onSave);
 
-  const handleCancel = () => {
-    setOpen(false);
-    setTimeout(onCancel, 240);
-  };
+  const handleExit = () => fire(onExitWithoutSave);
+
+  const handleCancel = () => fire(onCancel);
 
   return (
     <Modal open={open} onClose={() => {}} overlayClose={false} className="rounded-3xl p-6 w-full max-w-sm">
@@ -58,18 +61,21 @@ const ExitConfirmModal: React.FC<ExitConfirmModalProps> = ({
         <div className="flex flex-col gap-2 w-full">
           <button
             onClick={handleSave}
+            disabled={!open}
             className="w-full py-2.5 px-4 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 transition-all duration-200 active:scale-95 shadow-md"
           >
             {saveText}
           </button>
           <button
             onClick={handleExit}
+            disabled={!open}
             className="w-full py-2.5 px-4 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-all duration-200 active:scale-95"
           >
             {exitText}
           </button>
           <button
             onClick={handleCancel}
+            disabled={!open}
             className="w-full py-2.5 px-4 text-gray-500 dark:text-gray-400 rounded-xl font-medium hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all duration-200 active:scale-95"
           >
             {cancelText}

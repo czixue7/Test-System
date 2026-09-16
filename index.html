@@ -11,8 +11,10 @@
         try {
           const storedTheme = localStorage.getItem('theme-preference');
           const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-          const theme = storedTheme || (systemDark ? 'dark' : 'light');
-          if (theme === 'dark') {
+          // 'system' 是持久化值之一（主题设置里的「跟随系统」），
+          // 必须按与 applyTheme 相同的语义解析，否则深色系统下会先闪一帧浅色。
+          const isDark = storedTheme === 'dark' || (storedTheme !== 'light' && systemDark);
+          if (isDark) {
             document.documentElement.classList.add('dark');
           }
         } catch (e) {

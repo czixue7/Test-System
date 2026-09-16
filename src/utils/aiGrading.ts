@@ -1,4 +1,4 @@
-import { calculateSimilarity, normalizeText } from './similarity';
+import { calculateSimilarity, normalizeText, classifySubjective } from './similarity';
 import { apiGradingService } from './apiGradingService';
 import { useSettingsStore } from '../store/settingsStore';
 import { GradingProvider, BlankResult } from '../types';
@@ -125,15 +125,6 @@ function fallbackSubjective(
 ): AIGradingResult {
   const similarity = calculateSimilarity(userAnswer, correctAnswer);
 
-  let isCorrect: 0 | 1 | 2;
-  if (similarity >= 0.9) {
-    isCorrect = 2;
-  } else if (similarity >= 0.6) {
-    isCorrect = 1;
-  } else {
-    isCorrect = 0;
-  }
-
   let score: number;
   if (similarity >= 1) {
     score = maxScore;
@@ -142,6 +133,10 @@ function fallbackSubjective(
   } else {
     score = 0;
   }
+
+  // isCorrect 与得分绑定：只有真正拿到满分才算「正确」，
+  // 避免出现「标记为全对但得分不满」的矛盾记录（污染正确率统计）。
+  const isCorrect: 0 | 1 | 2 = classifySubjective(score, maxScore);
 
   let feedback: string;
   if (similarity >= 1) {
@@ -166,6 +161,28 @@ function fallbackSubjective(
       ? `【固定判题模式】\n题目：${question}\n\n${explanation}`
       : `【固定判题模式】\n${explanation}`,
   };
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * 从批量判题响应中截取某一题的作答块。
+ *
+ * 历史缺陷：匹配失败时用 `response` 整段兜底，于是「得分 / 判断 / 评价」
+ * 全部取到响应里第一条（第 1 题）的值 —— 第 2..N 题会被静默套上第 1 题的分数，
+ * 既不报错也不降级。这里改为：定位不到就抛错，由调用方走降级逻辑。
+ */
+export function extractBatchBlock(response: string, questionId: string): string {
+  const idPattern = new RegExp(`题目ID\\s*[:：]\\s*${escapeRegExp(questionId)}(?![0-9A-Za-z_-])`, 'i');
+  const idMatch = idPattern.exec(response);
+  if (!idMatch) {
+    throw new Error(`响应中未找到题目 ${questionId} 的判题结果`);
+  }
+  const rest = response.slice(idMatch.index + idMatch[0].length);
+  const nextBlock = rest.search(/【题目\s*\d+\s*结果】/);
+  return nextBlock >= 0 ? rest.slice(0, nextBlock) : rest;
 }
 
 async function generateWithProvider(prompt: string, maxTokens: number): Promise<string> {
@@ -225,9 +242,6 @@ export function fastPreCheck(
   const userAnswerText = userAnswersArray.join('');
   const correctAnswerText = correctAnswersArray.join('');
 
-  const normalizedUser = normalizeText(userAnswerText);
-  const normalizedCorrect = normalizeText(correctAnswerText);
-
   const trimmedUser = userAnswerText.trim();
 
   if (INVALID_ANSWER_KEYWORDS.some(keyword => trimmedUser === keyword)) {
@@ -244,7 +258,46 @@ export function fastPreCheck(
     };
   }
 
-  if (normalizedUser === normalizedCorrect && normalizedUser !== '') {
+  // 填空题：必须**逐空**比较，不能把多个空拼成一个字符串。
+  // 旧实现用 `join('')` 后比较，丢失了「第几空」的边界，
+  // 于是「两个答案全塞进第 1 空、第 2 空留空」这类错误切分
+  // 会因拼接结果相同而被判满分（实测 4/4）。
+  if (questionType === 'fill-in-blank') {
+    const sameBlankCount =
+      correctAnswersArray.length > 0 && userAnswersArray.length === correctAnswersArray.length;
+
+    const allBlanksMatch =
+      sameBlankCount &&
+      correctAnswersArray.every((correct, index) => {
+        const normalizedCorrect = normalizeAnswer(String(correct ?? ''));
+        const normalizedUser = normalizeAnswer(String(userAnswersArray[index] ?? ''));
+        return normalizedUser !== '' && normalizedUser === normalizedCorrect;
+      });
+
+    if (allBlanksMatch) {
+      console.log('[AI判题] 快速预检：逐空完全匹配，返回满分');
+      return {
+        shouldSkipAI: true,
+        result: {
+          score: maxScore,
+          isCorrect: 2,
+          similarity: 1,
+          gradingMode: 'fixed',
+          feedback: '答案完全正确（快速预检）',
+          explanation: `你的答案「${userAnswersArray.join('、')}」与标准答案完全一致。`,
+        },
+      };
+    }
+
+    console.log('[AI判题] 快速预检：填空题未逐空匹配，交给后续判题');
+    return { shouldSkipAI: false };
+  }
+
+  // 主观题
+  const normalizedUser = normalizeText(userAnswerText);
+  const normalizedCorrect = normalizeText(correctAnswerText);
+
+  if (normalizedUser !== '' && normalizedUser === normalizedCorrect) {
     console.log('[AI判题] 快速预检：完全匹配，返回满分');
     return {
       shouldSkipAI: true,
@@ -254,9 +307,7 @@ export function fastPreCheck(
         similarity: 1,
         gradingMode: 'fixed',
         feedback: '答案完全正确（快速预检）',
-        explanation: questionType === 'fill-in-blank'
-          ? `你的答案「${userAnswersArray.join('、')}」与标准答案完全一致。`
-          : '你的答案与标准答案完全一致，获得了满分。',
+        explanation: '你的答案与标准答案完全一致，获得了满分。',
       },
     };
   }
@@ -272,9 +323,7 @@ export function fastPreCheck(
         similarity,
         gradingMode: 'fixed',
         feedback: '答案完全正确（快速预检）',
-        explanation: questionType === 'fill-in-blank'
-          ? `你的答案「${userAnswersArray.join('、')}」与标准答案高度相似（${Math.round(similarity * 100)}%）。`
-          : `你的答案与标准答案高度相似（${Math.round(similarity * 100)}%），获得了满分。`,
+        explanation: `你的答案与标准答案高度相似（${Math.round(similarity * 100)}%），获得了满分。`,
       },
     };
   }
@@ -519,7 +568,7 @@ function parseFillBlankResponse(
     score,
     isCorrect,
     gradingMode: 'ai',
-    feedback: isCorrect === 2 ? `API判题：${score}分` : `API判题：${score}分（部分正确）`,
+    feedback: isCorrect === 2 ? `API判题：${score}分` : `API判题：${score}分${isCorrect === 1 ? '（部分正确）' : '（错误）'}`,
     explanation: `【综合解析】\n${explanation}`,
     blankResults
   };
@@ -946,12 +995,7 @@ ${correctAnswersArray.map((_, i) => `- 第${i + 1}空：正确/错误`).join('\n
       const correctAnswersArray = Array.isArray(item.correctAnswer) ? item.correctAnswer : [item.correctAnswer];
 
       try {
-        const resultPattern = new RegExp(
-          `【题目${idx + 1}结果】[\\s\\S]*?题目ID:\\s*${item.questionId}[\\s\\S]*?(?=(【题目${idx + 2}结果】|$))`,
-          'i'
-        );
-        const resultMatch = response.match(resultPattern);
-        const resultText = resultMatch ? resultMatch[0] : response;
+        const resultText = extractBatchBlock(response, item.questionId);
 
         const scoreMatch = resultText.match(/得分[：:]\s*(\d+)/);
         const judgmentMatch = resultText.match(/判断[：:]\s*(正确|部分正确|错误)/);
@@ -1028,7 +1072,7 @@ ${correctAnswersArray.map((_, i) => `- 第${i + 1}空：正确/错误`).join('\n
             score,
             isCorrect,
             gradingMode: 'ai',
-            feedback: isCorrect === 2 ? `API判题：${score}分` : `API判题：${score}分（部分正确）`,
+            feedback: isCorrect === 2 ? `API判题：${score}分` : `API判题：${score}分${isCorrect === 1 ? '（部分正确）' : '（错误）'}`,
             explanation: `【综合解析】\n${explanation}`,
             blankResults
           },
@@ -1125,12 +1169,7 @@ ${items.map(({ item }, idx) => `
       const correctAnswerText = Array.isArray(item.correctAnswer) ? item.correctAnswer.join('') : item.correctAnswer;
 
       try {
-        const resultPattern = new RegExp(
-          `【题目${idx + 1}结果】[\\s\\S]*?题目ID:\\s*${item.questionId}[\\s\\S]*?(?=(【题目${idx + 2}结果】|$))`,
-          'i'
-        );
-        const resultMatch = response.match(resultPattern);
-        const resultText = resultMatch ? resultMatch[0] : response;
+        const resultText = extractBatchBlock(response, item.questionId);
 
         const scoreMatch = resultText.match(/得分[：:]\s*(\d+)/);
         const correctMatch = resultText.match(/是否正确[：:]\s*(是|否|yes|no)/i);

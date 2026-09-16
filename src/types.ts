@@ -105,6 +105,15 @@ export interface BlankResult {
   isCorrect: boolean;
 }
 
+/** 统一的对/错/部分正确/未答统计（Result、Records、recordStore 共用） */
+export interface AutomationStats {
+  correct: number;
+  partial: number;
+  wrong: number;
+  unanswered: number;
+  total: number;
+}
+
 export interface QuestionBank {
   id: string;
   name: string;

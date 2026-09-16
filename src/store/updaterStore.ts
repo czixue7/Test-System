@@ -11,6 +11,12 @@ import {
 
 export type DownloadStatus = 'idle' | 'downloading' | 'downloaded' | 'installing';
 
+/**
+ * 下载代次。native 侧 download_apk 无法被中止，用代次号让「取消」之后
+ * 迟到的进度/完成回调全部失效，避免界面被复活、以及被标记成「已下载」。
+ */
+let downloadGeneration = 0;
+
 interface UpdaterState {
   checkingUpdate: boolean;
   updateInfo: UpdateInfo | null;
@@ -98,7 +104,12 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
       return;
     }
 
+    // 防止并发重复下载：native 侧下载无法真正中止，
+    // 若在「取消」后允许再次启动，两次下载会写入同一个
+    // Download/app-update-<ver>.apk（Rust 用 File::create 截断打开），
+    // 交错写入会产出损坏的 APK。
     set({ downloadStatus: 'downloading' });
+    const generation = ++downloadGeneration;
     addLog('开始下载 APK...');
 
     try {
@@ -109,21 +120,34 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
         updateInfo.downloadUrl,
         filename,
         (progress) => {
+          // 已取消（generation 过期）后忽略迟到的进度回调，
+          // 否则界面会被「复活」成下载中
+          if (generation !== downloadGeneration) return;
           set({ downloadProgress: progress });
         }
       );
+
+      if (generation !== downloadGeneration) {
+        addLog('该次下载已被取消，忽略其结果');
+        return;
+      }
 
       addLog(`下载完成: ${filePath}`);
       set({ downloadedFilePath: filePath, downloadStatus: 'downloaded' });
     } catch (error) {
       addLog(`下载失败: ${error instanceof Error ? error.message : '未知错误'}`);
-      set({ downloadStatus: 'idle' });
+      if (generation === downloadGeneration) {
+        set({ downloadStatus: 'idle' });
+      }
     }
   },
 
   cancelDownload: () => {
     const { addLog } = get();
-    addLog('用户取消下载');
+    addLog('用户取消下载（native 下载仍在后台完成，但其进度与结果将被忽略）');
+    // 让在途下载的回调全部失效：native 侧无法真正 abort，
+    // 至少要保证它不会再覆盖界面状态、也不会把结果标记成「已下载」
+    downloadGeneration++;
     set({
       downloadStatus: 'idle',
       downloadProgress: { downloaded: 0, total: 0, percentage: 0 },

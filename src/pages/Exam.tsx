@@ -12,6 +12,8 @@ import ResumePromptModal from '../components/ResumePromptModal';
 import { useSwipeElement } from '../hooks/useSwipe';
 import { useSafeArea } from '../hooks/useSafeArea';
 import { useKeyboard } from '../hooks/useKeyboard';
+import { useToast } from '../hooks/useToast';
+import { getBlankAnswers, isEmptyAnswer } from '../utils/answerUtils';
 
 const shuffleArray = <T,>(array: T[]): T[] => {
   const shuffled = [...array];
@@ -20,6 +22,17 @@ const shuffleArray = <T,>(array: T[]): T[] => {
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
   return shuffled;
+};
+
+/**
+ * 把「当前答案」统一成数组再按下标读写。
+ * 历史缺陷：直接写 `(currentAnswer as string[])?.[idx]`，
+ * 当 currentAnswer 实际是字符串时会取到**单个字符**。
+ */
+const toAnswerArray = (value: string | string[] | undefined): string[] => {
+  if (Array.isArray(value)) return value;
+  if (value === undefined || value === null) return [];
+  return [String(value)];
 };
 
 const GradingText: React.FC<{ 
@@ -72,6 +85,7 @@ const Exam: React.FC = () => {
   const { getBank } = useQuestionBankStore();
   const { startExam, examState, setAnswer, getAnswer, nextQuestion, prevQuestion, goToQuestion, getCurrentQuestion, resetExam, finishExam, setResult, loadExamProgress, saveExamProgress, restoreExamProgress, clearExamProgress } = useExamStore();
   const { addRecord } = useRecordStore();
+  const { showError } = useToast();
 
   const [isInitialized, setIsInitialized] = useState(false);
   const [examStartTime, setExamStartTime] = useState<number>(0);
@@ -85,6 +99,9 @@ const Exam: React.FC = () => {
   const [gradingPhase, setGradingPhase] = useState<'connecting' | 'processing' | 'generating'>('connecting');
   const [progressText, setProgressText] = useState<string>('');
   const progressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 判题期间用户选择「不保存退出」时置位，避免判题结束后仍写入记录并强行跳转
+  const cancelledRef = useRef(false);
   const navRef = useRef<HTMLDivElement>(null);
   const swipeRef = useRef<HTMLDivElement>(null);
   const safeArea = useSafeArea();
@@ -128,6 +145,14 @@ const Exam: React.FC = () => {
     return () => clearInterval(interval);
   }, [examState?.isFinished, examStartTime, showResumePrompt]);
 
+  // 卸载时清理判题相关的定时器（避免对已卸载组件 setState）
+  useEffect(() => {
+    return () => {
+      if (progressTimerRef.current) clearTimeout(progressTimerRef.current);
+      if (phaseTimerRef.current) clearTimeout(phaseTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     if (navRef.current && examState) {
       const currentBtn = navRef.current.children[examState.currentIndex] as HTMLElement;
@@ -169,6 +194,7 @@ const Exam: React.FC = () => {
   };
 
   const handleExitWithoutSave = async () => {
+    cancelledRef.current = true;
     await clearExamProgress();
     resetExam();
     goBack();
@@ -187,7 +213,11 @@ const Exam: React.FC = () => {
   };
 
   const handleFinishExam = () => {
-    const answeredCount = examState?.answers.size || 0;
+    // 只有「真的填了内容」才算已作答：多选题取消全部选项会写入 []，
+    // 主观题/填空题输入后再删空会写入 ''，这些都不该算作答。
+    const answeredCount = examState
+      ? examState.questions.filter((q) => !isEmptyAnswer(examState.answers.get(q.id))).length
+      : 0;
     const totalCount = examState?.questions.length || 0;
     const unansweredCount = totalCount - answeredCount;
 
@@ -200,6 +230,9 @@ const Exam: React.FC = () => {
   };
 
   const handleSubmitConfirm = async () => {
+    // 重入保护：弹窗关闭动画期间按钮仍可能被点到，
+    // 双击会造成重复判题 + 生成两条记录（头部的 disabled 管不到弹窗按钮）
+    if (isGrading) return;
     setShowSubmitConfirm(false);
     setIsGrading(true);
     setGradingPhase('connecting');
@@ -210,12 +243,16 @@ const Exam: React.FC = () => {
       clearTimeout(progressTimerRef.current);
       progressTimerRef.current = null;
     }
+    if (phaseTimerRef.current) {
+      clearTimeout(phaseTimerRef.current);
+      phaseTimerRef.current = null;
+    }
     
     try {
       const questions = examState?.questions || [];
       
-      // 短暂显示连接状态，然后进入处理状态
-      setTimeout(() => setGradingPhase('processing'), 500);
+      // 短暂显示连接状态，然后进入处理状态（保存句柄以便在 finally 中清理）
+      phaseTimerRef.current = setTimeout(() => setGradingPhase('processing'), 500);
       
       // 使用 finishExam 进行批量判题（包含快速预检和批量AI判题）
       // 传入进度回调函数，实时更新已解析题数
@@ -249,43 +286,67 @@ const Exam: React.FC = () => {
       
       // 判题完成，进入生成结果状态
       setGradingPhase('generating');
+
+      // 用户在判题期间已选择「不保存退出」：不要再写记录、也不要把用户
+      // 从首页强行拉回结果页
+      if (cancelledRef.current) {
+        console.warn('[Exam] 用户已在判题期间退出，跳过成绩写入');
+        return;
+      }
       
       const maxScore = questions.reduce((sum, q) => sum + q.score, 0) || 0;
       
-      const wrongQuestionsInExam: Question[] = [];
-      userAnswers.forEach((answer) => {
-        const hasAnswered = answer.answer !== '' && 
-          (!Array.isArray(answer.answer) || answer.answer.length > 0);
-        if (hasAnswered && answer.isCorrect !== 2) {
-          const question = questions.find(q => q.id === answer.questionId);
-          if (question) {
-            wrongQuestionsInExam.push(question);
-          }
-        }
-      });
-      
-      if (wrongQuestionsInExam.length > 0) {
-        const stored = localStorage.getItem('practice-data-global');
-        let existingWrong: Question[] = [];
-        if (stored) {
-          try {
-            const data = JSON.parse(stored);
-            existingWrong = data.wrongQuestions || [];
-          } catch {}
-        }
-        
-        const mergedWrong = [...existingWrong];
-        wrongQuestionsInExam.forEach(q => {
-          if (!mergedWrong.find(existing => existing.id === q.id)) {
-            mergedWrong.push(q);
+      // 错题本更新属于「次要副作用」：即使 localStorage 里是脏数据或已超配额，
+      // 也绝不能让异常冒泡出去 —— 否则 addRecord 与 navigate 都不会执行，
+      // 用户交卷后看不到成绩、也没有任何提示，整场考试永远提交不了。
+      try {
+        const wrongQuestionsInExam: Question[] = [];
+        userAnswers.forEach((answer) => {
+          if (!isEmptyAnswer(answer.answer) && answer.isCorrect !== 2) {
+            const question = questions.find(q => q.id === answer.questionId);
+            if (question) {
+              wrongQuestionsInExam.push(question);
+            }
           }
         });
-        
-        const storedData = stored ? JSON.parse(stored) : {};
-        localStorage.setItem('practice-data-global', JSON.stringify({
-          ...storedData,
-          wrongQuestions: mergedWrong
-        }));
+
+        if (wrongQuestionsInExam.length > 0) {
+          // 只解析一次，且解析失败时安全降级为空对象
+          let storedData: Record<string, unknown> = {};
+          try {
+            const stored = localStorage.getItem('practice-data-global');
+            if (stored) {
+              const parsed: unknown = JSON.parse(stored);
+              if (parsed && typeof parsed === 'object') {
+                storedData = parsed as Record<string, unknown>;
+              }
+            }
+          } catch (e) {
+            console.warn('[Exam] 错题本数据损坏，已忽略并重建:', e);
+          }
+
+          const existingWrong: Question[] = Array.isArray(storedData.wrongQuestions)
+            ? (storedData.wrongQuestions as Question[])
+            : [];
+
+          const mergedWrong = [...existingWrong];
+          wrongQuestionsInExam.forEach(q => {
+            if (!mergedWrong.find(existing => existing.id === q.id)) {
+              mergedWrong.push(q);
+            }
+          });
+
+          try {
+            localStorage.setItem('practice-data-global', JSON.stringify({
+              ...storedData,
+              wrongQuestions: mergedWrong
+            }));
+          } catch (e) {
+            console.warn('[Exam] 写入错题本失败（可能是存储配额已满），不影响本次成绩保存:', e);
+          }
+        }
+      } catch (e) {
+        console.warn('[Exam] 更新错题本失败，已跳过:', e);
       }
       
       const recordId = await addRecord(
@@ -301,7 +362,26 @@ const Exam: React.FC = () => {
       await clearExamProgress();
       resetExam();
       navigate(`/result/${recordId}`);
+    } catch (error) {
+      // 之前这里只有 try/finally：任何异常都会让交卷静默失败
+      // （无成绩、无跳转、无提示），用户只能「不保存退出」从而丢掉整场答案。
+      console.error('[Exam] 交卷失败:', error);
+      showError(
+        error instanceof Error ? `交卷失败：${error.message}` : '交卷失败，请重试',
+        5000
+      );
     } finally {
+      // 定时器必须在所有路径（含异常）上清理，
+      // 否则 1.5s / 500ms 后仍会对已卸载组件 setState，判题很快时还会把
+      // 已经设好的 'generating' 文案又改回 'processing'
+      if (progressTimerRef.current) {
+        clearTimeout(progressTimerRef.current);
+        progressTimerRef.current = null;
+      }
+      if (phaseTimerRef.current) {
+        clearTimeout(phaseTimerRef.current);
+        phaseTimerRef.current = null;
+      }
       setIsGrading(false);
       setGradingPhase('connecting');
     }
@@ -462,14 +542,17 @@ const Exam: React.FC = () => {
 
         {currentQuestion.type === 'fill-in-blank' && (
           <div className="space-y-2">
-            {Array.isArray(currentQuestion.correctAnswer) && currentQuestion.correctAnswer.map((_, idx) => (
+            {/* 按 getBlankAnswers 归一化后的空数渲染输入框：
+                答案为字符串或 {text,images} 时旧代码一个输入框都不渲染，
+                题目完全无法作答（交卷必得 0 分）。 */}
+            {getBlankAnswers(currentQuestion.correctAnswer).map((_, idx) => (
               <input
                 key={idx}
                 type="text"
-                value={(currentAnswer as string[])?.[idx] || ''}
+                value={toAnswerArray(currentAnswer)[idx] ?? ''}
                 onChange={(e) => {
                   if (isGrading) return;
-                  const answers = (currentAnswer as string[]) || [];
+                  const answers = toAnswerArray(currentAnswer);
                   const newAnswers = [...answers];
                   newAnswers[idx] = e.target.value;
                   setAnswer(currentQuestion.id, newAnswers);

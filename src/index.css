@@ -79,19 +79,33 @@
    配色与动效为次要，服务于布局与信息层次
    ============================================================ */
 
-/* ---- 沉浸式 页面背景：干净蓝灰渐变 + 淡光晕 ---- */
+/* ---- 沉浸式 页面背景：干净蓝灰渐变 + 淡光晕 ----
+   用 position: fixed 的独立合成层实现"背景固定"，视觉与
+   background-attachment: fixed 完全一致，但不会让移动端 WebView
+   关闭文档级加速滚动（后者正是滚动卡顿的主因）。 */
 [data-theme="immersive"] body {
+  background: transparent;
+}
+[data-theme="immersive"] body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: -1;
+  pointer-events: none;
   background:
     radial-gradient(1000px 500px at 90% -5%, rgba(37, 99, 235, 0.08), transparent 60%),
     radial-gradient(800px 400px at -5% 30%, rgba(59, 130, 246, 0.06), transparent 55%),
-    linear-gradient(175deg, #f6f8fb 0%, #eef2f7 100%) fixed;
+    linear-gradient(175deg, #f6f8fb 0%, #eef2f7 100%);
 }
 
-[data-theme="immersive"].dark body {
+[data-theme="immersive"].dark body::before {
   background:
     radial-gradient(1000px 500px at 90% -5%, rgba(37, 99, 235, 0.16), transparent 60%),
     radial-gradient(800px 400px at -5% 30%, rgba(59, 130, 246, 0.12), transparent 55%),
-    linear-gradient(175deg, #0f172a 0%, #16213a 100%) fixed;
+    linear-gradient(175deg, #0f172a 0%, #16213a 100%);
 }
 
 /* ---- 沉浸式 头部：毛玻璃（其他页面保留，Home 由 Hero 替代） ---- */

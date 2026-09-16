@@ -5,6 +5,7 @@ import { useSwipeElement } from '../hooks/useSwipe';
 import { useKeyboard } from '../hooks/useKeyboard';
 import { useSafeArea } from '../hooks/useSafeArea';
 import ImageViewer from '../components/ImageViewer';
+import { countAnswerStats, getMultipleChoiceIds } from '../utils/answerUtils';
 
 const Result: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -42,6 +43,25 @@ const Result: React.FC = () => {
     }
   };
 
+  // ⚠️ 所有 Hook 必须在提前 return 之前调用。
+  // 旧代码把 useSwipeElement 放在 `if (!record) return ...` **之后**：
+  // 记录尚未加载时少调一个 Hook，记录到达后同一次挂载内 Hook 数量发生变化，
+  // React 会抛 "Rendered more hooks than during the previous render" 并整屏白
+  //（而本项目没有 ErrorBoundary）。
+  useSwipeElement(contentRef, {
+    onSwipeLeft: () => {
+      if (showDetail && record) {
+        setCurrentIndex(Math.min(record.questions.length - 1, currentIndex + 1));
+      }
+    },
+    onSwipeRight: () => {
+      if (showDetail && record) {
+        setCurrentIndex(Math.max(0, currentIndex - 1));
+      }
+    },
+    threshold: 50,
+  });
+
   if (!record) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
@@ -58,24 +78,18 @@ const Result: React.FC = () => {
     );
   }
 
-  useSwipeElement(contentRef, {
-    onSwipeLeft: () => {
-      if (showDetail) {
-        setCurrentIndex(Math.min(record.questions.length - 1, currentIndex + 1));
-      }
-    },
-    onSwipeRight: () => {
-      if (showDetail) {
-        setCurrentIndex(Math.max(0, currentIndex - 1));
-      }
-    },
-    threshold: 50,
-  });
+  // 统一的三态统计（与 Records / recordStore 共用同一实现，避免同一份记录
+  // 在两个页面显示不同的数字）
+  const { correct: correctCount, partial: partialCount, wrong: wrongCount, unanswered: unansweredCount } =
+    countAnswerStats(record.answers);
 
-  const correctCount = record.answers.filter(a => a.isCorrect === 2).length;
-  const partialCount = record.answers.filter(a => a.isCorrect === 1).length;
-  const wrongCount = record.answers.filter(a => a.isCorrect === 0 && a.answer !== '' && (!Array.isArray(a.answer) || a.answer.length > 0)).length;
-  const unansweredCount = record.answers.filter(a => a.answer === '' || (Array.isArray(a.answer) && a.answer.length === 0)).length;
+  // 旧记录可能没有 percentage 字段；分母必须用 maxScore（recordStore 里的
+  // score/totalScore 都是「已得总分」，用它们相除恒等于 100%）。
+  const displayPercentage =
+    record.percentage ??
+    (record.maxScore && record.maxScore > 0
+      ? Math.min(100, Math.round((record.totalScore / record.maxScore) * 100))
+      : 0);
 
   if (showDetail) {
     const currentQuestion = record.questions[currentIndex];
@@ -123,7 +137,9 @@ const Result: React.FC = () => {
               {currentQuestion.options.map((option) => {
                 const selected = (userAnswer?.answer as string[]) || [];
                 const isSelected = selected.includes(option.id);
-                const correct = currentQuestion.correctAnswer as string[];
+                // 运行期收窄：答案为 {text,images} 时 `as string[]` 会让
+                // `.includes()` 抛 TypeError 白屏
+                const correct = getMultipleChoiceIds(currentQuestion.correctAnswer);
                 const isCorrect = correct.includes(option.id);
                 
                 let bgClass = 'bg-gray-50 dark:bg-gray-800';
@@ -502,7 +518,7 @@ const Result: React.FC = () => {
       >
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-6 text-center mb-4">
           <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center shadow-lg">
-            <span className="text-2xl font-bold text-white">{record.percentage}%</span>
+            <span className="text-2xl font-bold text-white">{displayPercentage}%</span>
           </div>
           <h2 className="text-lg font-bold text-gray-800 dark:text-gray-200 mb-2">考试完成</h2>
           <div className="grid grid-cols-3 gap-3 mb-4">

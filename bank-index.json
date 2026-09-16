@@ -120,11 +120,10 @@
   ],
   "userBanks": [
     {
-      "name": "测试题库",
-      "filename": "test.json",
-      "downloadUrl": "https://raw.githubusercontent.com/czixue7/Test-System/main/Question_bank/测试题库/test.json",
-      "imagePath": "Question_bank/测试题库/image",
-      "sha": "60c5f78bad6159b99135eea21599131eb1ccbc7afad0101801e649d47861c3fb",
+      "name": "字节考试题",
+      "filename": "字节考试题.json",
+      "downloadUrl": "https://raw.githubusercontent.com/czixue7/Test-System/main/Question_bank/字节考试题/字节考试题.json",
+      "sha": "307742f1bf2f4592e4d32f5f0e2d8efae9e37ba4fc57396f97c406047d76f051",
       "images": []
     },
     {

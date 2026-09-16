@@ -99,3 +99,7 @@ encrypt-tool/
 *.xlsx
 *.xls
 
+# Local review notes and drafts (not version controlled)
+docs/代码缺陷审查报告.md
+draft_836d0cbe_folder/
+

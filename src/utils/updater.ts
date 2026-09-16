@@ -470,18 +470,14 @@ export async function downloadAndInstallApk(
 }
 
 /**
- * 检查是否在 Tauri 环境中
+ * 检查是否在 Tauri 环境中（统一实现见 utils/env.ts）
  */
-export function isTauri(): boolean {
-  return typeof window !== 'undefined' &&
-         typeof (window as any).__TAURI_INTERNALS__ !== 'undefined';
-}
+import { isTauri } from './env';
+export { isTauri };
 
 /**
- * 检查是否在 Android 环境中
+ * 检查是否在 Android 环境中（统一实现见 utils/env.ts）
  */
-export function isAndroid(): boolean {
-  const userAgent = navigator.userAgent.toLowerCase();
-  return userAgent.includes('android');
-}
+import { isAndroid } from './env';
+export { isAndroid };
 

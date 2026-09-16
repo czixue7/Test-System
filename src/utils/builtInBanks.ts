@@ -40,8 +40,9 @@ function convertJsonToBuiltInBank(
     return {
       id: generateQuestionId(bankId, index),
       type: q.type as QuestionType,
-      question: q.question,
-      content: q.content,
+      // Question.question 是必填 string；仓库内的题库 JSON 普遍只有 content 字段
+      question: q.question || q.content || '',
+      content: q.content || q.question || '',
       options: q.options?.map(opt => ({
         id: opt.id,
         content: opt.content

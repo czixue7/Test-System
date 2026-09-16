@@ -18,9 +18,28 @@ const getSystemDark = (): boolean => {
   return false;
 };
 
+// localStorage 在受限 WebView / 无痕模式下可能直接抛异常。
+// initTheme() 由 main.tsx 在 render 之前顶层同步调用，
+// 一旦抛出就会让 ReactDOM.createRoot(...).render 根本不执行 → 应用停在空白页。
+const safeGetItem = (key: string): string | null => {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const safeSetItem = (key: string, value: string): void => {
+  try {
+    localStorage.setItem(key, value);
+  } catch (e) {
+    console.warn(`[theme] 写入 ${key} 失败:`, e);
+  }
+};
+
 const getStoredTheme = (): Theme | null => {
   if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem('theme-preference');
+    const stored = safeGetItem('theme-preference');
     if (stored === 'light' || stored === 'dark' || stored === 'system') {
       return stored;
     }
@@ -47,13 +66,13 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
   theme: 'system',
 
   setThemeStyle: (style) => {
-    localStorage.setItem('theme-style', style);
+    safeSetItem('theme-style', style);
     applyTheme(style, get().theme);
     set({ themeStyle: style });
   },
 
   setTheme: (theme) => {
-    localStorage.setItem('theme-preference', theme);
+    safeSetItem('theme-preference', theme);
     applyTheme(get().themeStyle, theme);
     set({ theme });
   },

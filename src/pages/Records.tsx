@@ -3,12 +3,15 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useRecordStore } from '../store/recordStore';
 import ConfirmModal from '../components/ConfirmModal';
 import { useSafeArea } from '../hooks/useSafeArea';
+import { countAnswerStats } from '../utils/answerUtils';
+import { ExamRecord } from '../types';
 
 const Records: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { records, deleteRecord, clearRecords } = useRecordStore();
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<ExamRecord | null>(null);
   const safeArea = useSafeArea();
 
   const handleGoBack = () => {
@@ -48,8 +51,17 @@ const Records: React.FC = () => {
         ) : (
           <div className="space-y-3">
             {records.map((record) => {
-              const correctCount = record.answers.filter(a => a.isCorrect).length;
-              const wrongCount = record.answers.filter(a => !a.isCorrect && a.answer !== '' && (!Array.isArray(a.answer) || a.answer.length > 0)).length;
+              // 与结果页共用同一套三态统计：旧实现用 `a.isCorrect` 真值判断，
+              // 把 isCorrect === 1（部分正确）算成「对」，又把它排除在「错」之外，
+              // 导致同一份记录在列表页与结果页显示不同数字。
+              const { correct: correctCount, wrong: wrongCount } = countAnswerStats(record.answers);
+              // 分母用 maxScore：recordStore 里 score 与 totalScore 都是「已得总分」，
+              // 相除恒等于 100%（旧记录会出现「100%」或「NaN%」）
+              const percentage =
+                record.percentage ??
+                (record.maxScore && record.maxScore > 0
+                  ? Math.min(100, Math.round((record.totalScore / record.maxScore) * 100))
+                  : 0);
               
               return (
                 <div key={record.id} className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-4">
@@ -60,7 +72,7 @@ const Records: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-3">
                       <div className="text-right">
-                        <div className="font-bold text-blue-600 dark:text-blue-400">{record.percentage ?? Math.round((record.score / record.totalScore) * 100)}%</div>
+                        <div className="font-bold text-blue-600 dark:text-blue-400">{percentage}%</div>
                         <div className="text-sm text-gray-500 dark:text-gray-400">{Math.floor((record.duration ?? record.timeSpent) / 60)}:{((record.duration ?? record.timeSpent) % 60).toString().padStart(2, '0')}</div>
                         <div className="text-xs mt-1">
                           <span className="text-green-600 dark:text-green-400">{correctCount}对</span>
@@ -68,7 +80,8 @@ const Records: React.FC = () => {
                           <span className="text-red-600 dark:text-red-400">{wrongCount}错</span>
                         </div>
                       </div>
-                      <button onClick={async () => { await deleteRecord(record.id); }} className="p-2 text-gray-400 hover:text-red-500 transition-colors">
+                      {/* 删除记录原本没有任何二次确认，一次误触即永久删除 */}
+                      <button onClick={() => setPendingDelete(record)} className="p-2 text-gray-400 hover:text-red-500 transition-colors">
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                       </button>
                     </div>
@@ -97,6 +110,17 @@ const Records: React.FC = () => {
           onConfirm={async () => { await clearRecords(); setShowClearConfirm(false); }}
           onCancel={() => setShowClearConfirm(false)}
           confirmText="清空"
+          cancelText="取消"
+          type="danger"
+        />
+      )}
+
+      {pendingDelete && (
+        <ConfirmModal
+          message={`确定要删除「${pendingDelete.bankName || pendingDelete.examName}」这条记录吗？此操作不可恢复。`}
+          onConfirm={async () => { await deleteRecord(pendingDelete.id); setPendingDelete(null); }}
+          onCancel={() => setPendingDelete(null)}
+          confirmText="删除"
           cancelText="取消"
           type="danger"
         />

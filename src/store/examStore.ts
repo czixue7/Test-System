@@ -1,7 +1,13 @@
 import { create } from 'zustand';
 import { Question, ExamState, UserAnswer, QuestionResult, QuestionStatus, AnswerWithImages, BlankResult } from '../types';
-import { calculateSubjectiveScore } from '../utils/similarity';
-import { normalizeAnswer } from '../utils/answerNormalize';
+import { calculateSubjectiveScore, classifySubjective } from '../utils/similarity';
+import {
+  getBlankAnswers,
+  getMultipleChoiceIds,
+  matchDisorderBlanks,
+  matchOrderedBlanks,
+  gradeFromBlankResults,
+} from '../utils/answerUtils';
 import { useSettingsStore } from './settingsStore';
 import { getStoreValue, setStoreValue, removeStoreValue } from '../utils/tauriStore';
 import {
@@ -62,7 +68,7 @@ interface ExamStore {
   resetExam: () => void;
   getCurrentQuestion: () => Question | undefined;
   getProgress: () => { answered: number; total: number };
-  getStatistics: () => { correct: number; incorrect: number; totalScore: number; maxScore: number };
+  getStatistics: () => { correct: number; partial: number; incorrect: number; totalScore: number; maxScore: number };
   isAllConfirmed: () => boolean;
   loadExamProgress: () => Promise<SavedProgress | null>;
   saveExamProgress: (mode: 'practice' | 'exam', elapsedTime: number, practiceMode?: string) => Promise<void>;
@@ -77,8 +83,8 @@ const checkAnswer = (question: Question, answer: string | string[]): { isCorrect
   }
 
   if (question.type === 'multiple-choice') {
-    const correctAnswers = question.correctAnswer as string[];
-    const userAnswers = answer as string[];
+    const correctAnswers = getMultipleChoiceIds(question.correctAnswer);
+    const userAnswers = Array.isArray(answer) ? answer.map(String) : [];
     const correctSet = new Set(correctAnswers.map(a => a.trim()));
     const userSet = new Set(userAnswers.map(a => a.trim()));
     
@@ -116,13 +122,8 @@ const checkAnswer = (question: Question, answer: string | string[]): { isCorrect
   }
 
   if (question.type === 'fill-in-blank') {
-    const rawCorrectAnswer = question.correctAnswer;
-    const correctAnswers: string[] = Array.isArray(rawCorrectAnswer)
-      ? rawCorrectAnswer.filter((a): a is string => typeof a === 'string')
-      : (typeof rawCorrectAnswer === 'string' ? [rawCorrectAnswer] : []);
-    const userAnswers = Array.isArray(answer)
-      ? answer
-      : [answer];
+    const correctAnswers = getBlankAnswers(question.correctAnswer);
+    const userAnswers = Array.isArray(answer) ? answer.map(String) : [String(answer ?? '')];
 
     if (correctAnswers.length === 0) {
       return { isCorrect: 0, score: 0 };
@@ -130,66 +131,15 @@ const checkAnswer = (question: Question, answer: string | string[]): { isCorrect
 
     const allowDisorder = question.allowDisorder ?? false;
 
-    let correctCount = 0;
-    const blankResults: BlankResult[] = [];
-
-    if (allowDisorder) {
-      // 乱序模式：检查每个用户答案是否存在于正确答案集合中
-      const correctAnswerSet = new Set(correctAnswers.map(a => normalizeAnswer(a)));
-      
-      for (let i = 0; i < correctAnswers.length; i++) {
-        const userAns = userAnswers[i] || '';
-        const normalizedUser = normalizeAnswer(userAns);
-        
-        // 检查用户答案是否在正确答案集合中
-        const isBlankCorrect = correctAnswerSet.has(normalizedUser) && normalizedUser !== '';
-        
-        if (isBlankCorrect) {
-          correctCount++;
-        }
-
-        // 找到对应的正确答案（用于显示）
-        let matchedCorrectAnswer: string;
-        if (isBlankCorrect) {
-          // 答案正确：显示匹配到的正确答案
-          matchedCorrectAnswer = correctAnswers.find(a => normalizeAnswer(a) === normalizedUser) || '';
-        } else {
-          // 答案错误：显示该位置的标准答案（用于提示用户）
-          matchedCorrectAnswer = correctAnswers[i] || '';
-        }
-
-        blankResults.push({
-          userAnswer: userAns,
-          correctAnswer: matchedCorrectAnswer,
-          isCorrect: isBlankCorrect
-        });
-      }
-    } else {
-      // 顺序模式：按位置匹配
-      for (let i = 0; i < correctAnswers.length; i++) {
-        const correctAns = correctAnswers[i];
-        const userAns = userAnswers[i] || '';
-
-        const normalizedCorrect = normalizeAnswer(correctAns);
-        const normalizedUser = normalizeAnswer(userAns);
-        const isBlankCorrect = normalizedCorrect === normalizedUser;
-
-        if (isBlankCorrect) {
-          correctCount++;
-        }
-
-        blankResults.push({
-          userAnswer: userAns,
-          correctAnswer: correctAns,
-          isCorrect: isBlankCorrect
-        });
-      }
-    }
+    // 乱序模式用可消费的多重集（每个标准答案只抵扣一次）；
+    // 顺序模式逐位置比较。两者的实现统一放在 utils/answerUtils.ts。
+    const { blankResults, correctCount } = allowDisorder
+      ? matchDisorderBlanks(userAnswers, correctAnswers)
+      : matchOrderedBlanks(userAnswers, correctAnswers);
 
     const scorePerBlank = question.score / correctAnswers.length;
     const totalScore = Math.round(correctCount * scorePerBlank);
-    
-    // 根据 correctCount 确定 isCorrect: 0=错误, 1=部分正确, 2=正确
+
     let isCorrect: 0 | 1 | 2;
     if (correctCount === correctAnswers.length) {
       isCorrect = 2; // 全部正确
@@ -208,16 +158,9 @@ const checkAnswer = (question: Question, answer: string | string[]): { isCorrect
       getAnswerTextForComparison(question.correctAnswer),
       question.score
     );
-    // 根据相似度确定 isCorrect: 0=错误, 1=部分正确, 2=正确
-    let isCorrect: 0 | 1 | 2;
-    if (result.similarity >= 0.9) {
-      isCorrect = 2; // 正确
-    } else if (result.similarity >= 0.6) {
-      isCorrect = 1; // 部分正确
-    } else {
-      isCorrect = 0; // 错误
-    }
-    return { isCorrect, score: result.score };
+    // isCorrect 与得分绑定：只有拿到满分才算「正确」（见 similarity.classifySubjective），
+    // 避免出现「标记全对但没满分」的矛盾记录污染正确率统计。
+    return { isCorrect: classifySubjective(result.score, question.score), score: result.score };
   }
 
   return { isCorrect: 0, score: 0 };
@@ -234,8 +177,8 @@ export const checkAnswerWithAI = async (
   }
 
   if (question.type === 'multiple-choice') {
-    const correctAnswers = question.correctAnswer as string[];
-    const userAnswers = answer as string[];
+    const correctAnswers = getMultipleChoiceIds(question.correctAnswer);
+    const userAnswers = Array.isArray(answer) ? answer.map(String) : [];
     const correctSet = new Set(correctAnswers.map(a => a.trim()));
     const userSet = new Set(userAnswers.map(a => a.trim()));
     
@@ -286,11 +229,8 @@ export const checkAnswerWithAI = async (
   }
 
   if (question.type === 'fill-in-blank') {
-    const rawCorrectAnswer = question.correctAnswer;
-    const correctAnswers: string[] = Array.isArray(rawCorrectAnswer)
-      ? rawCorrectAnswer.filter((a): a is string => typeof a === 'string')
-      : (typeof rawCorrectAnswer === 'string' ? [rawCorrectAnswer] : []);
-    const userAnswers = Array.isArray(answer) ? answer : [answer];
+    const correctAnswers = getBlankAnswers(question.correctAnswer);
+    const userAnswers = Array.isArray(answer) ? answer.map(String) : [String(answer ?? '')];
 
     if (correctAnswers.length === 0) {
       return { isCorrect: 0, score: 0 };
@@ -316,69 +256,9 @@ export const checkAnswerWithAI = async (
       }
     }
 
-    // AI未启用，使用固定规则并生成blankResults
-    const fixedResult = checkAnswer(question, answer);
-    const blankResults: BlankResult[] = [];
-    
-    if (question.allowDisorder) {
-      // 乱序模式：检查每个用户答案是否存在于正确答案集合中
-      const correctAnswerSet = new Set(correctAnswers.map(a => normalizeAnswer(a)));
-      
-      for (let i = 0; i < correctAnswers.length; i++) {
-        const userAns = userAnswers[i] || '';
-        const normalizedUser = normalizeAnswer(userAns);
-        
-        // 检查用户答案是否在正确答案集合中
-        const isBlankCorrect = correctAnswerSet.has(normalizedUser) && normalizedUser !== '';
-        
-        // 找到对应的正确答案（用于显示）
-        let matchedCorrectAnswer: string;
-        if (isBlankCorrect) {
-          // 答案正确：显示匹配到的正确答案
-          matchedCorrectAnswer = correctAnswers.find(a => normalizeAnswer(a) === normalizedUser) || '';
-        } else {
-          // 答案错误：显示该位置的标准答案（用于提示用户）
-          matchedCorrectAnswer = correctAnswers[i] || '';
-        }
-        
-        blankResults.push({
-          userAnswer: userAns,
-          correctAnswer: matchedCorrectAnswer,
-          isCorrect: isBlankCorrect
-        });
-      }
-    } else {
-      // 顺序模式：按位置匹配
-      for (let i = 0; i < correctAnswers.length; i++) {
-        const correctAns = correctAnswers[i];
-        const userAns = userAnswers[i] || '';
-        const normalizedCorrect = normalizeAnswer(correctAns);
-        const normalizedUser = normalizeAnswer(userAns);
-        const isBlankCorrect = normalizedCorrect === normalizedUser;
-        blankResults.push({
-          userAnswer: userAns,
-          correctAnswer: correctAns,
-          isCorrect: isBlankCorrect
-        });
-      }
-    }
-    
-    // 根据 blankResults 计算 isCorrect
-    const correctCount = blankResults.filter(b => b.isCorrect).length;
-    let isCorrect: 0 | 1 | 2;
-    if (correctCount === blankResults.length) {
-      isCorrect = 2; // 全部正确
-    } else if (correctCount > 0) {
-      isCorrect = 1; // 部分正确
-    } else {
-      isCorrect = 0; // 全部错误
-    }
-    
-    return {
-      ...fixedResult,
-      isCorrect,
-      blankResults
-    };
+    // AI 未启用：checkAnswer 的结果已包含逐空明细与一致的三态判定，直接复用。
+    // （旧实现在这里重新拼了一遍 blankResults，且乱序分支同样不消费命中的标准答案。）
+    return checkAnswer(question, answer);
   }
 
   if (question.type === 'subjective') {
@@ -401,16 +281,9 @@ export const checkAnswerWithAI = async (
       getAnswerTextForComparison(question.correctAnswer),
       question.score
     );
-    // 根据相似度确定 isCorrect: 0=错误, 1=部分正确, 2=正确
-    let isCorrect: 0 | 1 | 2;
-    if (result.similarity >= 0.9) {
-      isCorrect = 2; // 正确
-    } else if (result.similarity >= 0.6) {
-      isCorrect = 1; // 部分正确
-    } else {
-      isCorrect = 0; // 错误
-    }
-    return { isCorrect, score: result.score };
+    // isCorrect 与得分绑定：只有拿到满分才算「正确」（见 similarity.classifySubjective），
+    // 避免出现「标记全对但没满分」的矛盾记录污染正确率统计。
+    return { isCorrect: classifySubjective(result.score, question.score), score: result.score };
   }
 
   return { isCorrect: 0, score: 0 };
@@ -710,11 +583,8 @@ export const useExamStore = create<ExamStore>((set, get) => ({
             })
             .map(q => {
               const answer = state.examState!.answers.get(q.id)!;
-              const rawCorrectAnswer = q.correctAnswer;
-              const correctAnswers: string[] = Array.isArray(rawCorrectAnswer)
-                ? rawCorrectAnswer.filter((a): a is string => typeof a === 'string')
-                : (typeof rawCorrectAnswer === 'string' ? [rawCorrectAnswer] : []);
-              const userAnswers = Array.isArray(answer) ? answer : [answer];
+              const correctAnswers = getBlankAnswers(q.correctAnswer);
+              const userAnswers = Array.isArray(answer) ? answer.map(String) : [String(answer ?? '')];
 
               return {
                 questionId: q.id,
@@ -889,14 +759,7 @@ export const useExamStore = create<ExamStore>((set, get) => ({
           const answer = state.examState!.answers.get(question.id)!;
           const correctAnswerText = getAnswerTextForComparison(question.correctAnswer);
           const result = calculateSubjectiveScore(answer as string, correctAnswerText, question.score);
-          let isCorrect: 0 | 1 | 2;
-          if (result.similarity >= 0.9) {
-            isCorrect = 2;
-          } else if (result.similarity >= 0.6) {
-            isCorrect = 1;
-          } else {
-            isCorrect = 0;
-          }
+          const isCorrect: 0 | 1 | 2 = classifySubjective(result.score, question.score);
           fixedResults.set(question.id, { score: result.score, isCorrect, similarity: result.similarity });
         }
 
@@ -1073,16 +936,21 @@ export const useExamStore = create<ExamStore>((set, get) => ({
 
   getStatistics: () => {
     const state = get();
-    if (!state.examState) return { correct: 0, incorrect: 0, totalScore: 0, maxScore: 0 };
+    if (!state.examState) return { correct: 0, partial: 0, incorrect: 0, totalScore: 0, maxScore: 0 };
 
     let correct = 0;
+    let partial = 0;
     let incorrect = 0;
     let totalScore = 0;
 
     state.examState.results.forEach((result) => {
       if (result.isConfirmed) {
-        if (result.isCorrect) {
+        // 三态判定：曾用真值判断，把 isCorrect === 1（部分正确）也算成「正确」，
+        // 与结果页/记录页的统计口径不一致。
+        if (result.isCorrect === 2) {
           correct++;
+        } else if (result.isCorrect === 1) {
+          partial++;
         } else {
           incorrect++;
         }
@@ -1092,13 +960,15 @@ export const useExamStore = create<ExamStore>((set, get) => ({
 
     const maxScore = state.examState.questions.reduce((sum, q) => sum + q.score, 0);
 
-    return { correct, incorrect, totalScore, maxScore };
+    return { correct, partial, incorrect, totalScore, maxScore };
   },
 
   isAllConfirmed: () => {
     const state = get();
     if (!state.examState) return false;
-    return state.examState.results.size === state.examState.questions.length;
+    const total = state.examState.questions.length;
+    if (total === 0) return false;
+    return state.examState.results.size === total;
   },
 
   // 只读加载保存的进度，不修改任何状态（无副作用）

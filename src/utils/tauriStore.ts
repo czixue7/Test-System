@@ -1,8 +1,5 @@
 import type { Store } from '@tauri-apps/plugin-store';
-
-const isTauri = (): boolean => {
-  return typeof window !== 'undefined' && '__TAURI__' in window;
-};
+import { isTauri } from './env';
 
 let store: Store | null = null;
 let storePromise: Promise<Store | null> | null = null;

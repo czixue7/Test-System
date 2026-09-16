@@ -3,7 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { QuestionBank, Question, BankImageInfo } from '../types';
 import { getStoreValue, setStoreValue } from '../utils/tauriStore';
 import { loadBuiltInBanks, isBuiltInBank } from '../utils/builtInBanks';
-import { fetchBankIndex } from '../utils/bankIndex';
+import { fetchBankIndex, compareSha, shaIndicatesUpdate } from '../utils/bankIndex';
 import { sortByName, sortById } from '../utils/sortUtils';
 
 function generateId(): string {
@@ -31,14 +31,33 @@ const saveUserBanks = async (banks: QuestionBank[]) => {
   await setStoreValue('question-banks', userBanks);
 };
 
-// 保存内置题库的更新信息（如 sourceSha、images 等）
+// 保存内置题库的更新信息（sourceSha、images，以及**题目内容本身**）
 const BANK_UPDATES_KEY = 'built-in-bank-updates';
+
+interface BuiltInBankUpdate {
+  id: string;
+  name?: string;
+  description?: string;
+  questions?: Question[];
+  sourceSha?: string;
+  images?: BankImageInfo[];
+  sourceFilename?: string;
+  sourceType?: 'system' | 'user';
+}
 
 const saveBuiltInBankUpdates = async (banks: QuestionBank[]) => {
   const builtInBanks = banks.filter(bank => isBuiltInBank(bank.id));
-  // 只保存需要持久化的字段
-  const updates = builtInBanks.map(bank => ({
+  // ⚠️ 必须连题目内容一起持久化。
+  // 历史缺陷：这里只存 sourceSha/images，内置题库的 questions 没有任何持久化路径
+  // （partialize 又整体排除内置题库）。于是「更新题库」只在内存里生效，
+  // 重启后 questions 仍来自安装包内冻结的 public/banks/*.json，
+  // 而 sourceSha 已经写成远端的值 → 界面显示「已是最新」，
+  // 数据静默回退且用户再也无法触发更新。
+  const updates: BuiltInBankUpdate[] = builtInBanks.map(bank => ({
     id: bank.id,
+    name: bank.name,
+    description: bank.description,
+    questions: bank.questions,
     sourceSha: bank.sourceSha,
     images: bank.images,
     sourceFilename: bank.sourceFilename,
@@ -48,10 +67,15 @@ const saveBuiltInBankUpdates = async (banks: QuestionBank[]) => {
 };
 
 const loadBuiltInBankUpdates = async (): Promise<Map<string, Partial<QuestionBank>>> => {
-  const updates = await getStoreValue<Array<{id: string; sourceSha?: string; images?: BankImageInfo[]; sourceFilename?: string; sourceType?: 'system' | 'user'}>>(BANK_UPDATES_KEY, []);
+  const updates = await getStoreValue<BuiltInBankUpdate[]>(BANK_UPDATES_KEY, []);
   const map = new Map<string, Partial<QuestionBank>>();
   updates.forEach(update => {
+    const hasQuestions = Array.isArray(update.questions) && update.questions.length > 0;
     map.set(update.id, {
+      // 只有持久化里确实带题目时才覆盖内容，兼容旧存档（旧存档没有 questions 字段）
+      ...(hasQuestions
+        ? { name: update.name, description: update.description, questions: update.questions }
+        : {}),
       sourceSha: update.sourceSha,
       images: update.images,
       sourceFilename: update.sourceFilename,
@@ -134,10 +158,10 @@ export const useQuestionBankStore = create<QuestionBankState>()(
               
               if (!remoteBank) return bank;
               
-              // 检查SHA是否不同（注意：不同长度的SHA无法比较，视为相同）
-              const shaDifferent = bank.sourceSha !== remoteBank.sha && 
-                                   bank.sourceSha && remoteBank.sha &&
-                                   bank.sourceSha.length === remoteBank.sha.length;
+              // 哈希算法不同（长度不同）时按「未知 → 视为有更新」处理，
+              // 让 sourceSha 自愈升级到新算法（旧实现把长度不同当成「没变」，
+              // 使「第一周考题」的更新检测永久失效）
+              const shaDifferent = shaIndicatesUpdate(compareSha(bank.sourceSha, remoteBank.sha));
               
               // 检查图片信息是否需要更新（本地没有但远程有，或者本地有但不同）
               const localImagesJson = bank.images ? JSON.stringify(bank.images) : '';
@@ -159,7 +183,16 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             
             if (hasUpdates) {
               await saveBuiltInBankUpdates(updatedBanks);
-              set({ banks: [...updatedBanks.sort(sortBuiltInById), ...sortedUserBanks] });
+              // ⚠️ 必须用函数式更新基于**最新** state 合并。
+              // 旧实现用 loadBanks 开头算出的 sortedUserBanks 快照整体替换 banks，
+              // 会把后台同步这几秒内用户导入/删除/更新的题库静默回滚
+              // （刚导入的题库从列表里消失，直到下次重启才重新出现）。
+              set((state) => ({
+                banks: [
+                  ...[...updatedBanks].sort(sortBuiltInById),
+                  ...state.banks.filter(bank => !isBuiltInBank(bank.id)).sort(sortUserByName)
+                ]
+              }));
             }
           } catch (error) {
             console.error('后台同步题库 SHA 失败:', error);

@@ -314,10 +314,18 @@ const DownloadBanks: React.FC = () => {
         throw new Error('题库为空，没有题目');
       }
       
-      // 验证题目数据完整性
-      const validQuestions = data.questions.filter((q: any) => q && q.type && q.content);
+      // 验证题目数据完整性。
+      // 注意：判空必须同时接受 question 与 content —— 仓库内置题库普遍只有 content。
+      // 且过滤结果必须真正用于后续构建，否则「校验」只是打日志（旧实现的
+      // validQuestions 从未被使用，题目全量导入，日志却在声称跳过了 N 道）。
+      const validQuestions = data.questions.filter(
+        (q: any) => q && q.type && (q.question || q.content)
+      );
       if (validQuestions.length < data.questions.length) {
         console.warn(`有 ${data.questions.length - validQuestions.length} 道题目数据不完整，已跳过`);
+      }
+      if (validQuestions.length === 0) {
+        throw new Error('题库中没有结构完整的题目');
       }
       
       updateProgress(20);
@@ -336,8 +344,9 @@ const DownloadBanks: React.FC = () => {
           ? `updated-${Date.now()}-${qIndex}` 
           : `downloaded-${Date.now()}-${qIndex}`,
         type: q.type,
-        question: q.question || q.content,
-        content: q.content,
+        // Question.question 是必填 string；缺失时回退到 content
+        question: q.question || q.content || '',
+        content: q.content || q.question || '',
         options: q.options,
         correctAnswer: q.correctAnswer,
         score: q.score ?? 1,
@@ -355,20 +364,20 @@ const DownloadBanks: React.FC = () => {
         const updatedBank: Partial<QuestionBank> = {
           name: data.name || bank.name,
           description: data.description,
-          questions: buildQuestions(data.questions),
+          questions: buildQuestions(validQuestions),
           sourceSha: bank.sha,
           images: bank.images,
           updatedAt: new Date().toISOString()
         };
         
         updateBankWithSha(localBankId, updatedBank, bank.sha, bank.images);
-        showSuccess(`题库「${updatedBank.name}」更新成功！共 ${data.questions.length} 题`);
+        showSuccess(`题库「${updatedBank.name}」更新成功！共 ${validQuestions.length} 题`);
       } else {
         // 新下载题库
         const newBank: Omit<QuestionBank, 'id' | 'createdAt' | 'updatedAt'> = {
           name: data.name || bank.name,
           description: data.description,
-          questions: buildQuestions(data.questions),
+          questions: buildQuestions(validQuestions),
           sourceSha: bank.sha,
           sourceFilename: bank.filename,
           sourceType: bank.source,
@@ -376,7 +385,7 @@ const DownloadBanks: React.FC = () => {
         };
 
         importBankWithSha(newBank as QuestionBank, bank.sha, bank.filename, bank.images);
-        showSuccess(`题库「${newBank.name}」下载并导入成功！共 ${data.questions.length} 题`);
+        showSuccess(`题库「${newBank.name}」下载并导入成功！共 ${validQuestions.length} 题`);
       }
 
       updateProgress(100);

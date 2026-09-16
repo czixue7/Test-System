@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import Modal from './Modal';
 
 interface ConfirmModalProps {
@@ -47,15 +47,20 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
     }
   };
 
-  const handleConfirm = () => {
+  // 关闭动画期间按钮仍在 DOM 中（Modal 要等 duration 后才 visible=false），
+  // 双击/连点会让回调执行两次 —— 交卷场景下会造成重复判题与重复记录。
+  const firedRef = useRef(false);
+
+  const fire = (callback: () => void) => {
+    if (firedRef.current) return;
+    firedRef.current = true;
     setOpen(false);
-    setTimeout(onConfirm, 240);
+    setTimeout(callback, 240);
   };
 
-  const handleCancel = () => {
-    setOpen(false);
-    setTimeout(onCancel, 240);
-  };
+  const handleConfirm = () => fire(onConfirm);
+
+  const handleCancel = () => fire(onCancel);
 
   return (
     <Modal open={open} onClose={() => {}} overlayClose={false} className="rounded-3xl p-6 w-full max-w-sm">
@@ -71,13 +76,15 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
         <div className="flex gap-3 w-full">
           <button
             onClick={handleCancel}
-            className="flex-1 py-2.5 px-4 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-all duration-200 active:scale-95"
+            disabled={!open}
+            className="flex-1 py-2.5 px-4 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-all duration-200 active:scale-95 disabled:opacity-60"
           >
             {cancelText}
           </button>
           <button
             onClick={handleConfirm}
-            className={`flex-1 py-2.5 px-4 ${typeColors[type].bg} text-white rounded-xl font-medium hover:opacity-90 transition-all duration-200 active:scale-95 shadow-md`}
+            disabled={!open}
+            className={`flex-1 py-2.5 px-4 ${typeColors[type].bg} text-white rounded-xl font-medium hover:opacity-90 transition-all duration-200 active:scale-95 shadow-md disabled:opacity-60`}
           >
             {confirmText}
           </button>

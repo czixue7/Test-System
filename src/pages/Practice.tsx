@@ -9,7 +9,19 @@ import { useSafeArea } from '../hooks/useSafeArea';
 import ImageViewer from '../components/ImageViewer';
 import ExitConfirmModal from '../components/ExitConfirmModal';
 import ResumePromptModal from '../components/ResumePromptModal';
-import { normalizeAnswer } from '../utils/answerNormalize';
+import {
+  getBlankAnswers,
+  getMultipleChoiceIds,
+  matchDisorderBlanks,
+  matchOrderedBlanks,
+} from '../utils/answerUtils';
+
+/** 把「当前答案」统一成数组再按下标读写（避免字符串被按下标取成单个字符） */
+const toAnswerArray = (value: string | string[] | undefined): string[] => {
+  if (Array.isArray(value)) return value;
+  if (value === undefined || value === null) return [];
+  return [String(value)];
+};
 
 const shuffleArray = <T,>(array: T[]): T[] => {
   const shuffled = [...array];
@@ -32,6 +44,10 @@ const Practice: React.FC = () => {
   const [practiceQuestions, setPracticeQuestions] = useState<Question[]>([]);
   const [practiceIndex, setPracticeIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
+  // 判题进行中（AI 判题可能数秒）：期间禁止切题，避免答案面板显示到别的题上
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  // 用 ref 读取「最新」的题号，供 await 之后判断用户是否还停在原题
+  const practiceIndexRef = useRef(practiceIndex);
   const [wrongQuestions, setWrongQuestions] = useState<Question[]>([]);
   const [favoriteQuestions, setFavoriteQuestions] = useState<Question[]>([]);
   const [commonQuestions, setCommonQuestions] = useState<Question[]>([]);
@@ -208,35 +224,52 @@ const Practice: React.FC = () => {
     setIsInitialized(false);
   };
 
+  useEffect(() => {
+    practiceIndexRef.current = practiceIndex;
+  }, [practiceIndex]);
+
   const handleConfirmAnswer = async () => {
     const question = practiceQuestions[practiceIndex];
-    if (!question) return;
+    if (!question || isSubmitting) return;
 
-    const useAI = practiceMode !== 'wrong' && practiceMode !== 'sequential';
-    await confirmAnswer(question.id, useAI);
-    setShowAnswer(true);
+    setIsSubmitting(true);
+    try {
+      const useAI = practiceMode !== 'wrong' && practiceMode !== 'sequential';
+      await confirmAnswer(question.id, useAI);
 
-    const result = getResult(question.id);
-
-    if (practiceMode === 'wrong') {
-      if (result && result.isCorrect === 2) {
-        const newWrong = wrongQuestions.filter(q => q.id !== question.id);
-        setWrongQuestions(newWrong);
-        savePracticeData(newWrong, favoriteQuestions, commonQuestions);
+      // ⚠️ 只有用户仍停留在被提交的那道题上时才自动展开答案面板。
+      // 旧实现在 await 之后无条件 setShowAnswer(true)，AI 判题要几秒，
+      // 期间用户切到下一题就会把参考答案/解析显示到那道新题上（提前泄题）。
+      const stillOnSameQuestion = practiceQuestions[practiceIndexRef.current]?.id === question.id;
+      if (stillOnSameQuestion) {
+        setShowAnswer(true);
       }
-    } else {
-      if (result && result.isCorrect !== 2) {
-        const newWrong = [...wrongQuestions];
-        if (!newWrong.find(q => q.id === question.id)) {
-          newWrong.push(question);
+
+      const result = getResult(question.id);
+
+      if (practiceMode === 'wrong') {
+        if (result && result.isCorrect === 2) {
+          const newWrong = wrongQuestions.filter(q => q.id !== question.id);
           setWrongQuestions(newWrong);
           savePracticeData(newWrong, favoriteQuestions, commonQuestions);
         }
+      } else {
+        if (result && result.isCorrect !== 2) {
+          const newWrong = [...wrongQuestions];
+          if (!newWrong.find(q => q.id === question.id)) {
+            newWrong.push(question);
+            setWrongQuestions(newWrong);
+            savePracticeData(newWrong, favoriteQuestions, commonQuestions);
+          }
+        }
       }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleNextQuestion = () => {
+    if (isSubmitting) return;
     if (practiceIndex < practiceQuestions.length - 1) {
       const nextQuestion = practiceQuestions[practiceIndex + 1];
       const nextResult = getResult(nextQuestion.id);
@@ -246,6 +279,7 @@ const Practice: React.FC = () => {
   };
 
   const handlePrevQuestion = () => {
+    if (isSubmitting) return;
     if (practiceIndex > 0) {
       const prevQuestion = practiceQuestions[practiceIndex - 1];
       const prevResult = getResult(prevQuestion.id);
@@ -255,6 +289,7 @@ const Practice: React.FC = () => {
   };
 
   const handleGoToQuestion = (index: number) => {
+    if (isSubmitting) return;
     const question = practiceQuestions[index];
     const result = getResult(question.id);
     setPracticeIndex(index);
@@ -371,7 +406,7 @@ const Practice: React.FC = () => {
             {currentQuestion.options.map((option) => {
               const selected = (currentAnswer as string[]) || [];
               const isSelected = selected.includes(option.id);
-              const correct = currentQuestion.correctAnswer as string[];
+              const correct = getMultipleChoiceIds(currentQuestion.correctAnswer);
               const isCorrect = correct.includes(option.id);
               let bgClass = 'bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700';
               let textClass = 'text-gray-800 dark:text-gray-100';
@@ -445,19 +480,22 @@ const Practice: React.FC = () => {
                 </div>
               </div>
             ) : (
-              Array.isArray(currentQuestion.correctAnswer) && currentQuestion.correctAnswer.map((correctAns, idx) => {
-                const userAnswer = (currentAnswer as string[])?.[idx] || '';
+              (() => {
+                const blanks = getBlankAnswers(currentQuestion.correctAnswer);
+                const userAnswers = toAnswerArray(currentAnswer);
+                const allowDisorder = currentQuestion.allowDisorder ?? false;
+                // 与判题共用同一套匹配结果（乱序会消费命中的标准答案），
+                // 避免界面把「重复填同一个答案」的空也显示成绿色
+                const blankMatches = allowDisorder
+                  ? matchDisorderBlanks(userAnswers, blanks).blankResults
+                  : matchOrderedBlanks(userAnswers, blanks).blankResults;
+
+                return blanks.map((_correctAns, idx) => {
+                const userAnswer = userAnswers[idx] ?? '';
                 const hasInput = userAnswer.trim().length > 0;
                 const allowDisorder = currentQuestion.allowDisorder ?? false;
                 
-                let isMatch = false;
-                if (allowDisorder) {
-                  const correctAnswers = currentQuestion.correctAnswer as string[];
-                  const normalizedUserAnswer = normalizeAnswer(userAnswer);
-                  isMatch = correctAnswers.some(ans => normalizeAnswer(String(ans)) === normalizedUserAnswer);
-                } else {
-                  isMatch = normalizeAnswer(userAnswer) === normalizeAnswer(String(correctAns));
-                }
+                const isMatch = blankMatches[idx]?.isCorrect ?? false;
                 
                 let inputClass = 'w-full p-3 border-2 border-transparent rounded-lg text-gray-800 dark:text-gray-100 dark:placeholder-gray-400 transition-colors duration-300 outline-none focus:border-blue-300 focus:outline-none';
                 
@@ -484,8 +522,7 @@ const Practice: React.FC = () => {
                     type="text"
                     value={userAnswer}
                     onChange={(e) => {
-                      const answers = (currentAnswer as string[]) || [];
-                      const newAnswers = [...answers];
+                      const newAnswers = [...userAnswers];
                       newAnswers[idx] = e.target.value;
                       setAnswer(currentQuestion.id, newAnswers);
                     }}
@@ -494,7 +531,8 @@ const Practice: React.FC = () => {
                     className={`${inputClass} ${isConfirmed ? 'pointer-events-none' : ''}`}
                   />
                 );
-              })
+                });
+              })()
             )}
           </div>
         )}
@@ -751,9 +789,10 @@ const Practice: React.FC = () => {
             {(!isViewMode && !getResult(currentQuestion?.id || '')?.isConfirmed) ? (
               <button
                 onClick={handleConfirmAnswer}
-                className="px-4 py-2 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-colors"
+                disabled={isSubmitting}
+                className="px-4 py-2 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                提交
+                {isSubmitting ? '判题中...' : '提交'}
               </button>
             ) : (
               <button onClick={handleNextQuestion} disabled={practiceIndex === practiceQuestions.length - 1} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg disabled:opacity-50 dark:bg-gray-700 dark:text-gray-200">下一题</button>

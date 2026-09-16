@@ -128,19 +128,22 @@ export const useChatStore = create<ChatState>()(
       },
 
       updateMessage: (id, content) => {
-        const convId = get().activeConversationId;
-        if (!convId) return;
-        set((state) => ({
-          conversations: state.conversations.map((c) =>
-            c.id === convId
-              ? {
-                  ...c,
-                  messages: c.messages.map((m) => (m.id === id ? { ...m, content } : m)),
-                  updatedAt: nowIso(),
-                }
-              : c
-          ),
-        }));
+        // ⚠️ 按消息 id 反查所属会话，而不是把它限定在「当前激活会话」。
+        // 旧实现在流式回答期间切换/删除会话后，每个 chunk 的 updateMessage
+        // 都会静默 no-op，原会话里留下一条永远空白的助手气泡（回答彻底丢失）。
+        set((state) => {
+          let touched = false;
+          const conversations = state.conversations.map((c) => {
+            if (!c.messages.some((m) => m.id === id)) return c;
+            touched = true;
+            return {
+              ...c,
+              messages: c.messages.map((m) => (m.id === id ? { ...m, content } : m)),
+              updatedAt: nowIso(),
+            };
+          });
+          return touched ? { conversations } : {};
+        });
       },
 
       clearMessages: () => {

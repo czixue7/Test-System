@@ -157,16 +157,27 @@ const ManageBanks: React.FC = () => {
 
       const data = await response.json();
 
+      if (!data.questions || !Array.isArray(data.questions) || data.questions.length === 0) {
+        throw new Error('远程题库格式无效或没有题目');
+      }
+
+      // ⚠️ 必须保留 question / category / difficulty：
+      // 旧实现重建题目对象时漏掉了这三个 None 必填字段
+      //（types.ts 的 Question.question / category / difficulty），
+      // 且 updateBankWithSha 会立即持久化 → 更新一次即永久丢失分类与难度。
       const updatedBank: Partial<QuestionBank> = {
         name: data.name || bank.name,
         description: data.description,
         questions: data.questions.map((q: any, qIndex: number) => ({
-          id: `downloaded-${Date.now()}-${qIndex}`,
+          id: `updated-${Date.now()}-${qIndex}`,
           type: q.type,
-          content: q.content,
+          question: q.question || q.content || '',
+          content: q.content || q.question || '',
           options: q.options,
           correctAnswer: q.correctAnswer,
-          score: q.score || 1,
+          score: q.score ?? 1,
+          category: q.category ?? 'default',
+          difficulty: q.difficulty ?? 'medium',
           explanation: q.explanation,
           images: q.images,
           allowDisorder: q.allowDisorder

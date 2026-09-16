@@ -14,10 +14,15 @@ import { useQuestionBankStore } from '../store/questionBankStore';
 import { KnowledgeSearchSource, Question } from '../types';
 
 // 停用词（作为切分边界，不参与匹配）
-const STOP_WORDS = new Set([
+// 注意：必须按整词匹配，长词在前，避免「的是」被「的」抢先切开
+const STOP_WORD_LIST = [
   '请问', '一下', '什么', '怎么', '如何', '哪些', '哪个', '一个', '的是',
   '是否', '可以', '需要', '知道', '告诉', '意思', '吗', '呢', '的', '了', '和', '与',
-]);
+];
+const STOP_WORD_PATTERN = new RegExp(
+  [...STOP_WORD_LIST].sort((a, b) => b.length - a.length).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'),
+  'g'
+);
 
 interface Keyword {
   word: string;
@@ -39,17 +44,15 @@ function extractKeywords(query: string): Keyword[] {
 
   for (const p of parts) {
     // 1. 停用词切段 → 短语（如 "UPS电池后备时间怎么计算" → "UPS电池后备时间"、"计算"）
-    let buf = '';
-    const segs: string[] = [];
-    for (const ch of p) {
-      if (STOP_WORDS.has(ch)) {
-        if (buf.length >= 2) segs.push(buf);
-        buf = '';
-      } else {
-        buf += ch;
-      }
-    }
-    if (buf.length >= 2) segs.push(buf);
+    //
+    // ⚠️ 必须按**整词**切分。旧实现逐单字 `for (const ch of p)` 去查表，
+    // 而表里除「吗/呢/的/了/和/与」外全是双字词（请问/一下/什么/怎么/如何…），
+    // 永远匹配不上 —— 注释声称的短语切分是死逻辑，
+    // 整段（含「怎么」）以权重 4 入库却匹配不到任何文档。
+    const segs = p
+      .split(STOP_WORD_PATTERN)
+      .map((s) => s.trim())
+      .filter((s) => s.length >= 2);
     segs.forEach((s) => add(s, 4));
 
     // 2. 英文/数字整词（如 UPS、PUE、T4、GB50174），不切碎

@@ -197,7 +197,14 @@ const KnowledgeBase: React.FC = () => {
   // 导入分类弹窗（关闭后可选触发文件选择）
   const closeImportCategoryModal = (thenPickFile = false) => {
     setImportCategoryModalOpen(false);
-    if (thenPickFile) fileRef.current?.click();
+    if (thenPickFile) {
+      fileRef.current?.click();
+    } else {
+      // 取消时清空暂存分类。
+      // 旧实现只在 handleImport 的 finally 里清空，因此「选了分类 → 在系统文件
+      // 对话框点取消」之后，引用里会一直留着旧分类，被下一次无关导入悄悄套用。
+      pendingImportCategoryRef.current = '';
+    }
   };
 
   // 侧边栏：开启动效
@@ -289,17 +296,10 @@ const KnowledgeBase: React.FC = () => {
     }
   };
 
-  // 查看/生成知识总结（弹窗展示，供用户参考）
-  // 关闭弹窗/切换 tab 不中断后台生成；重新打开时：有文档显示文档，有进度显示进度，都没有才开始生成
-  const handleViewSummary = async () => {
-    if (summaryOpen) {
-      closeSummary();
-      return;
-    }
-    setSummaryOpen(true);
-    // 保留全局 store 中的 summaryContent / summaryProgress，不清空
-    if (summaryContent || summaryProgress) return; // 已有文档或进度，直接显示
+  // 启动一次总结生成（调用方负责判断「确实需要生成」）
+  const startSummaryGeneration = async () => {
     if (summaryRunning) return; // 后台正在生成，等待进度/结果更新
+    if (summaryProgress) return;
     setSummaryRunning(true);
     // 立即设置初始进度并切换到进度视图，避免"准备中"过久
     setSummaryProgress({ done: 0, total: 0, phase: 'split' });
@@ -321,6 +321,30 @@ const KnowledgeBase: React.FC = () => {
       setSummaryRunning(false);
     }
   };
+
+  // 查看/生成知识总结（弹窗展示，供用户参考）
+  // 关闭弹窗/切换 tab 不中断后台生成；重新打开时：有文档显示文档，有进度显示进度，都没有才开始生成
+  const handleViewSummary = async () => {
+    if (summaryOpen) {
+      closeSummary();
+      return;
+    }
+    setSummaryOpen(true);
+    // 保留全局 store 中的 summaryContent / summaryProgress，不清空
+    if (summaryContent || summaryProgress || summaryRunning) return; // 已有文档 / 有进度 / 正在跑
+    await startSummaryGeneration();
+  };
+
+  // 弹窗已打开、但既没有文档也没有进度、也没有在跑的生成任务时，主动补一次生成。
+  // 旧实现只在 handleViewSummary 里判断一次：如果在「搜索触发的总结」进行中打开弹窗，
+  // 那次判断会因为存在 summaryProgress 直接 return（而该路径并不会设置 summaryRunning），
+  // 等搜索结束在 finally 里把进度清空后，弹窗就永久停在「准备中...」。
+  useEffect(() => {
+    if (!summaryOpen) return;
+    if (summaryContent || summaryProgress || summaryRunning) return;
+    void startSummaryGeneration();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summaryOpen, summaryContent, summaryProgress, summaryRunning]);
 
   // 重新生成知识总结（强制忽略缓存，重新调用 AI）
   // 重新生成期间保留旧文档可查看；按钮在"查看进度"/"查看文档"间切换，点击切换显示模式
@@ -585,7 +609,7 @@ const KnowledgeBase: React.FC = () => {
             <button onClick={openNote} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-300" title="帮我记">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
             </button>
-            <button onClick={() => { setNewImportCategory(''); setImportCategoryModalOpen(true); }} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-300" title="导入知识内容（txt/markdown）">
+            <button onClick={() => { pendingImportCategoryRef.current = ''; setNewImportCategory(''); setImportCategoryModalOpen(true); }} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-300" title="导入知识内容（txt/markdown）">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
             </button>
           </div>

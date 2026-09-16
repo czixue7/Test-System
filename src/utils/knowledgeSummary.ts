@@ -95,10 +95,20 @@ function bankMarkdown(banks: QuestionBank[]): string {
 
 // 计算内容指纹（知识库 + 题库，确保新增/修改后签名变化）
 // 附带格式版本：总结展示格式变化（如题库清单改为折叠块）或生成规则变化（如冲突优先级）时使旧缓存失效
-const SUMMARY_FORMAT_VERSION = 4;
+const SUMMARY_FORMAT_VERSION = 5;
 function computeSignature(type: SummaryType, items: KnowledgeItem[], banks: QuestionBank[]): string {
-  const k = items.map((i) => i.title + '|' + i.content).join('||');
-  const q = banks.map((b) => (b.questions || []).map((x) => questionText(x) + '|' + answerText(x)).join('|')).join('||');
+  // ⚠️ 指纹必须覆盖**所有进入 prompt 的字段**。
+  // 旧实现只取 title+content 与题干+答案，但喂给 AI 的原文还包含知识条目的
+  // category 和题目的 explanation —— 只改分类或只修解析时签名不变，
+  // 于是命中旧缓存，并把过期内容当作「核心参考」注入 AI 问答。
+  const k = items.map((i) => [i.title, i.category, i.content].join('|')).join('||');
+  const q = banks
+    .map((b) =>
+      (b.questions || [])
+        .map((x) => [questionText(x), answerText(x), x.explanation ?? '', x.category ?? '', x.difficulty ?? ''].join('|'))
+        .join('|')
+    )
+    .join('||');
   const base = type === 'knowledge' ? k : type === 'questionBank' ? q : k + '|||' + q;
   return hashCode(SUMMARY_FORMAT_VERSION + '::' + base);
 }
@@ -276,6 +286,12 @@ function attachCoverage(type: SummaryType, content: string, items: KnowledgeItem
   return `${firstLine}\n\n${details}${rest}`;
 }
 
+// 同一签名的生成任务复用在途 Promise。
+// 大题库一次总结要 N 个并发块请求 + 1 次合并、耗时数分钟；期间每次提问都会
+// 调用 getOrCreateSummary。旧实现没有任何互斥，会并发跑多份完整总结
+// （API 费用与 429 限流风险成倍放大，多轮 onProgress 还会互相清掉进度条）。
+const inflightSummaries = new Map<string, Promise<{ content: string; generated: boolean }>>();
+
 // 获取或生成总结（带缓存，内容变化时重新生成；force=true 强制忽略缓存重新生成）
 export async function getOrCreateSummary(
   type: SummaryType,
@@ -301,29 +317,56 @@ export async function getOrCreateSummary(
     console.log(`[总结] 强制重新生成 ${type} 总结`);
   }
 
-  let content: string;
-  try {
-    const rawText =
-      type === 'knowledge'
-        ? knowledgeRawText(items)
-        : type === 'questionBank'
-          ? bankRawText(banks)
-          : knowledgeRawText(items) + '\n' + bankRawText(banks);
-    content = await aiSummarize(type, rawText, onProgress);
-  } catch (err) {
-    console.warn('[总结] AI 总结失败，降级为内容汇总:', err);
-    content =
-      type === 'knowledge'
-        ? knowledgeMarkdown(items)
-        : type === 'questionBank'
-          ? bankMarkdown(banks)
-          : `# 综合总结（知识库 + 题库）\n\n> 生成时间：${new Date().toLocaleString()}\n\n---\n\n${knowledgeMarkdown(items)}\n\n---\n\n${bankMarkdown(banks)}`;
+  const inflightKey = `${key}::${signature}::${force ? 'force' : 'auto'}`;
+  const running = inflightSummaries.get(inflightKey);
+  if (running) {
+    console.log(`[总结] 复用进行中的生成任务: ${inflightKey}`);
+    return running;
   }
 
-  content = attachCoverage(type, content, items, banks);
+  const task = (async (): Promise<{ content: string; generated: boolean }> => {
+    let content: string;
+    let degraded = false;
 
-  await setStoreValue(key, { content, signature });
-  return { content, generated: true };
+    try {
+      const rawText =
+        type === 'knowledge'
+          ? knowledgeRawText(items)
+          : type === 'questionBank'
+            ? bankRawText(banks)
+            : knowledgeRawText(items) + '\n' + bankRawText(banks);
+      content = await aiSummarize(type, rawText, onProgress);
+    } catch (err) {
+      degraded = true;
+      console.warn('[总结] AI 总结失败，降级为内容汇总:', err);
+      content =
+        type === 'knowledge'
+          ? knowledgeMarkdown(items)
+          : type === 'questionBank'
+            ? bankMarkdown(banks)
+            : `# 综合总结（知识库 + 题库）\n\n> 生成时间：${new Date().toLocaleString()}\n\n---\n\n${knowledgeMarkdown(items)}\n\n---\n\n${bankMarkdown(banks)}`;
+    }
+
+    content = attachCoverage(type, content, items, banks);
+
+    if (degraded) {
+      // ⚠️ 降级产物（原文拼接）**不写缓存**。
+      // 旧实现把它当成正常结果缓存：用户之后配好 API Key 再点「查看知识总结」，
+      // 因为签名没变会一直命中这份降级文档，只能靠「重新生成」自救。
+      console.warn('[总结] 本次为降级结果，不写入缓存（下次会自动重试）');
+    } else {
+      await setStoreValue(key, { content, signature });
+    }
+
+    return { content, generated: true };
+  })();
+
+  inflightSummaries.set(inflightKey, task);
+  try {
+    return await task;
+  } finally {
+    inflightSummaries.delete(inflightKey);
+  }
 }
 
 // 导出 markdown 文件（下载）

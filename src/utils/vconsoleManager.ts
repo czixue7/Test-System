@@ -52,16 +52,11 @@ export const isVConsoleReady = (): boolean => {
   return vconsoleInstance !== null;
 };
 
-const isTauri = (): boolean => {
-  return typeof window !== 'undefined' && '__TAURI__' in window;
-};
-
 const getVconsoleEnabled = (): boolean => {
-  // PC 版本(Tauri)不启用 vConsole
-  if (isTauri()) {
-    return false;
-  }
-  
+  // 注意：这里**不再**按环境（Tauri/桌面端）直接返回 false。
+  // 「调试控制台」是设置页里有意常驻的开关，用户在桌面端点开后就应当生效，
+  // 并在重启后保持；旧代码里的 isTauri() 恒为 false 所以这一行从未真正生效，
+  // 修好 isTauri 后如果保留它，就会出现「开关能打开、重启后又没了」的不一致。
   try {
     const stored = localStorage.getItem('settings-storage');
     if (stored) {

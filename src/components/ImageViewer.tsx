@@ -106,27 +106,38 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     return () => clearTimeout(timer);
   }, [sourceRect]);
 
+  // 用 ref 持有最新的状态与关闭逻辑，这样下面的事件监听只需注册一次
+  const handleCloseRef = useRef(handleClose);
+  useEffect(() => { handleCloseRef.current = handleClose; }, [handleClose]);
+  const visibleRef = useRef(isVisible);
+  useEffect(() => { visibleRef.current = isVisible; }, [isVisible]);
+  const closingRef = useRef(isClosing);
+  useEffect(() => { closingRef.current = isClosing; }, [isClosing]);
+
   // 监听返回键（安卓系统导航返回）
+  //
+  // ⚠️ 只在挂载时压入**一条**历史记录。
+  // 旧实现把 pushState 放在依赖 [isVisible, isClosing, handleClose] 的 effect 里，
+  // 而 handleClose 依赖父组件传入的 onClose（每次渲染都是新函数，容器组件又未 memo），
+  // 于是父组件每重渲染一次就压入一条历史 —— 顺序练题计时器每秒重渲染一次，
+  // 在图片上停留 60 秒后按安卓返回键要按 60 多次才能真正返回。
   useEffect(() => {
+    window.history.pushState(null, '', window.location.href);
+
     const handlePopState = (e: PopStateEvent) => {
-      // 如果图片查看器打开，关闭它而不是退出页面
-      if (isVisible && !isClosing) {
+      if (visibleRef.current && !closingRef.current) {
         e.preventDefault();
         log('Back button pressed, closing image viewer');
-        handleClose();
-        // 阻止默认的返回行为
-        window.history.pushState(null, '', window.location.href);
+        handleCloseRef.current();
       }
     };
 
-    // 添加历史记录，使返回键触发 popstate 事件
-    window.history.pushState(null, '', window.location.href);
     window.addEventListener('popstate', handlePopState);
 
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };
-  }, [isVisible, isClosing, handleClose]);
+  }, []);
 
   // 获取图片在容器中的实际位置和尺寸
   const getImageBounds = useCallback(() => {

@@ -259,7 +259,13 @@ export function useSwipeElement(
       if (isInputElement(e.target)) {
         return;
       }
-      if (!isSwiping.current && e.buttons !== 1) return;
+      // 未按下左键时不参与滑动，并复位可能残留的 isSwiping。
+      // 旧实现在元素内按下、拖出元素后松开时收不到 mouseup，
+      // isSwiping 会一直为 true，之后一次普通单击就会误触发翻页。
+      if (e.buttons !== 1) {
+        isSwiping.current = false;
+        return;
+      }
 
       const deltaX = e.clientX - touchStartX.current;
       const deltaY = e.clientY - touchStartY.current;
@@ -273,7 +279,10 @@ export function useSwipeElement(
     };
 
     const handleMouseUp = () => {
-      if (!isSwiping.current) return;
+      if (!isSwiping.current) {
+        isSwiping.current = false;
+        return;
+      }
 
       const deltaX = touchEndX.current - touchStartX.current;
 
@@ -292,16 +301,19 @@ export function useSwipeElement(
     element.addEventListener('touchmove', handleTouchMove, { passive: true });
     element.addEventListener('touchend', handleTouchEnd);
     element.addEventListener('mousedown', handleMouseDown);
-    element.addEventListener('mousemove', handleMouseMove);
-    element.addEventListener('mouseup', handleMouseUp);
+    // mousemove / mouseup 挂在 window 上：鼠标拖出元素后再松开也能结束手势
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('blur', handleMouseUp);
 
     return () => {
       element.removeEventListener('touchstart', handleTouchStart);
       element.removeEventListener('touchmove', handleTouchMove);
       element.removeEventListener('touchend', handleTouchEnd);
       element.removeEventListener('mousedown', handleMouseDown);
-      element.removeEventListener('mousemove', handleMouseMove);
-      element.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('blur', handleMouseUp);
     };
   }, [elementRef, onSwipeLeft, onSwipeRight, threshold, preventDefaultTouch]);
 }

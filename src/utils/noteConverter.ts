@@ -69,13 +69,32 @@ function hasDigitChar(m: string): boolean {
 }
 
 /**
+ * 允许转换的「量词 / 单位」承接字。
+ *
+ * 采用白名单而不是黑名单：只有数字片段后面紧跟这些字（或已到片段边界）时才转换，
+ * 从而避开 一般 / 一起 / 一样 / 一致 / 一切 / 一定 / 十分 / 一带一路 / 十有八九
+ * 这类**词汇内部**的汉字数字。
+ *
+ * 故意不收「分」「时」：`十分`（很）比 `三分`（三分钟）常见得多，
+ * 把「十分重要」改成「10分重要」是不可逆的内容损坏，
+ * 而「三分钟」不转换只是漏转，仍可读。
+ */
+const MEASURE_CHARS = '台个只件条项次遍倍度米吨层号班组人天年月日周秒伏安瓦百十';
+
+/**
  * 文本中汉字数字转阿拉伯数字。
- * 保护规则：只转换含个位数字字符的片段；纯单位串（千万/十万等成语性组合）保留；
- * 单独的"十/拾"按 10 处理。
  */
 export function chineseToNumber(text: string): string {
   const re = /[零〇一二三四五六七八九十百千万亿两壹贰叁肆伍陆柒捌玖拾佰仟]+/g;
-  return text.replace(re, (m) => {
+  return text.replace(re, (m, offset: number, whole: string) => {
+    const prev = offset > 0 ? whole[offset - 1] : '';
+    const next = whole[offset + m.length] ?? '';
+
+    // 片段前一个字符是汉字/字母 → 处于词内部（统一、第十、方案一…），不转换
+    if (prev && /[\u4e00-\u9fa5A-Za-z]/.test(prev)) return m;
+    // 片段后一个字符是汉字时，只有明确的量词/单位才转换
+    if (next && /[\u4e00-\u9fa5]/.test(next) && !MEASURE_CHARS.includes(next)) return m;
+
     if (m === '十' || m === '拾') return '10';
     if (!hasDigitChar(m)) return m; // 千万/十万/百万 等程度词不转
     const v = parseChineseNumber(m);
@@ -86,14 +105,23 @@ export function chineseToNumber(text: string): string {
 
 // ===== 英文小写 → 英文大写 =====
 
-/** 文本中英文小写字母转大写（abc→ABC），不影响数字与中文 */
+/**
+ * 文本中英文小写字母转大写（abc→ABC），不影响数字与中文。
+ * 全角字母（ａ-ｚ，常见于中文输入法）先转半角再大写，
+ * 否则「ＡＢＣ」无法与 ASCII 的「ABC」比对。
+ */
 export function lowerToUpper(text: string): string {
-  return text.replace(/[a-z]+/g, (m) => m.toUpperCase());
+  return text.replace(/[\uff41-\uff5a]|[a-z]+/g, (m) => {
+    const halfWidth = m.replace(/[\uff41-\uff5a]/g, (ch) =>
+      String.fromCharCode(ch.charCodeAt(0) - 0xfee0)
+    );
+    return halfWidth.toUpperCase();
+  });
 }
 
-/** 去除空格（半角 + 全角），保留换行 */
+/** 去除空格（半角 + 全角 + 制表符 + NBSP），保留换行 */
 export function removeSpaces(text: string): string {
-  return text.replace(/[ \u3000]/g, '');
+  return text.replace(/[\t \u3000\u00a0]/g, '');
 }
 
 /** 按设置顺序应用全部转换 */

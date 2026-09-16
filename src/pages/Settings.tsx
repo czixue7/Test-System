@@ -7,10 +7,6 @@ import { GradingProvider } from '../types';
 import { initVConsole, destroyVConsole } from '../utils/vconsoleManager';
 import { useSafeArea } from '../hooks/useSafeArea';
 
-const isTauri = (): boolean => {
-  return typeof window !== 'undefined' && '__TAURI__' in window;
-};
-
 const Settings: React.FC = () => {
   const navigate = useNavigate();
   const { showSuccess, showError, showInfo } = useToast();
@@ -421,40 +417,43 @@ const Settings: React.FC = () => {
         )}
 
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md overflow-hidden">
-          {!isTauri() && (
-            <div className="px-4 py-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                  </svg>
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-200">调试控制台</span>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={vconsoleEnabled}
-                    onChange={(e) => {
-                      const enabled = e.target.checked;
-                      setVconsoleEnabled(enabled);
-                      if (enabled) {
-                        initVConsole();
-                        showSuccess('调试控制台已开启', 3000);
-                      } else {
-                        destroyVConsole();
-                        showSuccess('调试控制台已关闭', 3000);
-                      }
-                    }}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-                </label>
+          {/* 「调试控制台」是**有意在设置里常驻**的开关（含桌面端），
+              不要按环境隐藏它。历史上这里写的是 `{!isTauri() && ...}`，
+              而当时 isTauri 恒为 false（用了 __TAURI__），所以它恰好总是显示；
+              一旦把 isTauri 修成正确的 __TAURI_INTERNALS__，这个开关就会在
+              打包后的桌面应用里消失 —— 那属于回归，不是修复。 */}
+          <div className="px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                </svg>
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-200">调试控制台</span>
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                开启后可以在应用内查看调试日志和错误信息
-              </p>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={vconsoleEnabled}
+                  onChange={(e) => {
+                    const enabled = e.target.checked;
+                    setVconsoleEnabled(enabled);
+                    if (enabled) {
+                      initVConsole();
+                      showSuccess('调试控制台已开启', 3000);
+                    } else {
+                      destroyVConsole();
+                      showSuccess('调试控制台已关闭', 3000);
+                    }
+                  }}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+              </label>
             </div>
-          )}
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              开启后可以在应用内查看调试日志和错误信息
+            </p>
+          </div>
         </div>
       </div>
 

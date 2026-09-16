@@ -211,7 +211,7 @@ export function checkBankStatus(
   });
 
   if (!existingBank) {
-    return { exists: false, hasUpdate: false, hasImageUpdate: false, isBuiltIn: false, missingImages: [], changedImages: [] };
+    return { exists: false, hasUpdate: false, hasImageUpdate: false, isBuiltIn, missingImages: [], changedImages: [] };
   }
 
   // 没有 sourceSha 的旧数据（包括早期版本的内置题库）
@@ -219,9 +219,8 @@ export function checkBankStatus(
     return { exists: true, hasUpdate: false, hasImageUpdate: false, isBuiltIn, missingImages: [], changedImages: [] };
   }
 
-  // 如果SHA长度不同，说明使用了不同的哈希算法，无法比较，视为无更新
-  const hasUpdate = existingBank.sourceSha.length === remoteSha.length && 
-                    existingBank.sourceSha !== remoteSha;
+  // 哈希算法不同的情况按「有更新」处理（与 checkBankUpdate 保持一致）
+  const hasUpdate = shaIndicatesUpdate(compareSha(existingBank.sourceSha, remoteSha));
   
   // 比较图片差异
   const { missingImages, changedImages } = compareImages(existingBank.images, remoteImages);
@@ -235,6 +234,40 @@ export function checkBankStatus(
     missingImages,
     changedImages
   };
+}
+
+/**
+ * 比较两个内容哈希。
+ *
+ * - `missing`      —— 任一侧没有哈希，无法判断
+ * - `same`         —— 完全一致
+ * - `different`    —— 同一算法下的不同哈希
+ * - `incomparable` —— 两侧哈希算法不同（长度不同，例如旧的 40 位 SHA-1
+ *                    与新的 64 位 SHA-256）
+ *
+ * ⚠️ 历史上把「长度不同」直接当成「没变」，导致内置题库「第一周考题」
+ * （`builtInBanks.ts` 里是 40 位、索引里是 64 位）的更新检测**永久失效**。
+ * 现在 `incomparable` 按「有更新」处理：用户更新一次后 sourceSha 会被写成
+ * 新算法的值，之后比较即可正常工作（自愈）。
+ */
+export type ShaComparison = 'missing' | 'same' | 'different' | 'incomparable';
+
+export function compareSha(localSha?: string | null, remoteSha?: string | null): ShaComparison {
+  if (!localSha || !remoteSha) return 'missing';
+  if (localSha === remoteSha) return 'same';
+
+  const isSha1 = (s: string) => /^[0-9a-f]{40}$/i.test(s);
+  const isSha256 = (s: string) => /^[0-9a-f]{64}$/i.test(s);
+
+  if ((isSha1(localSha) && isSha1(remoteSha)) || (isSha256(localSha) && isSha256(remoteSha))) {
+    return 'different';
+  }
+  return 'incomparable';
+}
+
+/** 由哈希比较结果推导「是否有更新」 */
+export function shaIndicatesUpdate(comparison: ShaComparison): boolean {
+  return comparison === 'different' || comparison === 'incomparable';
 }
 
 /**
@@ -267,9 +300,8 @@ export function checkBankUpdate(bank: QuestionBank, index: BankIndex | null): Ba
     };
   }
 
-  // 如果SHA长度不同，说明使用了不同的哈希算法，无法比较，视为无更新
-  const hasUpdate = bank.sourceSha.length === remoteBank.sha.length &&
-                    remoteBank.sha !== bank.sourceSha;
+  // 哈希算法不同的情况按「有更新」处理，让 sourceSha 自愈升级到新算法
+  const hasUpdate = shaIndicatesUpdate(compareSha(bank.sourceSha, remoteBank.sha));
   
   // 比较图片差异
   const { missingImages, changedImages } = compareImages(bank.images, remoteBank.images);

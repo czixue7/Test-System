@@ -1,11 +1,22 @@
 import { Question, QuestionBank, JsonBankData, JsonQuestionData, QuestionType, AnswerWithImages } from '../types';
 
 function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2);
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return Date.now().toString(36) + Math.random().toString(36).substring(2);
 }
 
+/**
+ * 允许的题目类型。
+ * 注意：`types.ts` 里的 QuestionType 还声明了 'true-false'，但判题与渲染
+ * 都没有任何实现（checkAnswer 落到末尾返回 0 分）。这里**故意**不接受它，
+ * 并给出明确报错，避免导入后变成「永远 0 分」的题目。
+ */
+const SUPPORTED_QUESTION_TYPES = ['fill-in-blank', 'single-choice', 'multiple-choice', 'subjective'] as const;
+
 function validateQuestionType(type: string): type is QuestionType {
-  return ['fill-in-blank', 'single-choice', 'multiple-choice', 'subjective'].includes(type);
+  return (SUPPORTED_QUESTION_TYPES as readonly string[]).includes(type);
 }
 
 function isAnswerWithImages(answer: unknown): answer is AnswerWithImages {
@@ -13,7 +24,9 @@ function isAnswerWithImages(answer: unknown): answer is AnswerWithImages {
 }
 
 function validateQuestion(question: JsonQuestionData, index: number): { valid: boolean; error?: string } {
-  if (!question.content || typeof question.content !== 'string') {
+  // 兼容只有 content 或只有 question 的题库（仓库内置题库普遍只有 content）
+  const text = question.content || question.question;
+  if (!text || typeof text !== 'string') {
     return { valid: false, error: `题目 ${index + 1}: 缺少题目内容` };
   }
   
@@ -93,8 +106,10 @@ export function convertJsonToBank(data: JsonBankData): QuestionBank {
   const questions: Question[] = data.questions.map(q => ({
     id: generateId(),
     type: q.type as QuestionType,
-    question: q.question,
-    content: q.content,
+    // 缺失时回退到 content：installer 内的题库 JSON 普遍只有 content 字段，
+    // 直接写 q.question 会让 Question.question（必填 string）实际为 undefined
+    question: q.question || q.content || '',
+    content: q.content || q.question,
     options: q.options?.map(opt => ({
       id: opt.id,
       content: opt.content

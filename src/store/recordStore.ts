@@ -1,9 +1,15 @@
 import { create } from 'zustand';
 import { ExamRecord, UserAnswer, Question, GradingMode } from '../types';
 import { getStoreValue, setStoreValue } from '../utils/tauriStore';
+import { countAnswerStats } from '../utils/answerUtils';
 
 function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2);
+  // 优先用 crypto.randomUUID：不依赖时间戳，
+  // 避免同一毫秒内批量生成时碰撞（旧实现用 substr 且只有随机后缀兜底）
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return Date.now().toString(36) + Math.random().toString(36).substring(2);
 }
 
 interface RecordState {
@@ -42,17 +48,23 @@ export const useRecordStore = create<RecordState>()(
 
       const totalScore = answers.reduce((sum, a) => sum + (a.score ?? 0), 0);
 
+      // 统一口径的三态统计：旧实现里「部分正确」既不算对也不算错，
+      // 且 AI 评价文案把 isCorrect 为真值（含 1）的都算成答对，
+      // 与 record 上的 correctCount（只算 === 2）互相矛盾。
+      const stats = countAnswerStats(answers);
+
       const aiFeedbacks = answers
         .filter(a => a.aiFeedback)
         .map(a => a.aiFeedback);
 
       let aiEvaluation: string | undefined;
-      if (gradingMode === 'ai' && aiFeedbacks.length > 0) {
-        const correctCount = answers.filter(a => a.isCorrect).length;
-        const totalCount = answers.length;
-        const percentage = Math.round((correctCount / totalCount) * 100);
+      if (gradingMode === 'ai' && aiFeedbacks.length > 0 && stats.total > 0) {
+        const percentage = Math.round((stats.correct / stats.total) * 100);
 
-        let evaluation = `本次考试使用 AI 判题，共 ${totalCount} 题，答对 ${correctCount} 题，正确率 ${percentage}%。`;
+        let evaluation = `本次考试使用 AI 判题，共 ${stats.total} 题，答对 ${stats.correct} 题，正确率 ${percentage}%。`;
+        if (stats.partial > 0) {
+          evaluation += ` 另有 ${stats.partial} 题部分正确。`;
+        }
 
         if (percentage >= 90) {
           evaluation += ' 表现优秀，继续保持！';
@@ -78,9 +90,9 @@ export const useRecordStore = create<RecordState>()(
         score: totalScore,
         totalScore,
         maxScore: maxScore,
-        correctCount: answers.filter(a => a.isCorrect === true || a.isCorrect === 2).length,
-        wrongCount: answers.filter(a => a.isCorrect === false || a.isCorrect === 0).length,
-        unansweredCount: answers.filter(a => !a.answer || (Array.isArray(a.answer) && a.answer.length === 0)).length,
+        correctCount: stats.correct,
+        wrongCount: stats.wrong,
+        unansweredCount: stats.unanswered,
         timeSpent: duration,
         percentage: maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0,
         duration,
@@ -91,9 +103,13 @@ export const useRecordStore = create<RecordState>()(
         gradingMode
       };
 
-      const newRecords = [record, ...get().records];
+      // 在 set 回调内基于最新 state 追加，避免并发调用（例如重复交卷）丢更新
+      let newRecords: ExamRecord[] = [];
+      set((state) => {
+        newRecords = [record, ...state.records];
+        return { records: newRecords };
+      });
       await setStoreValue(STORAGE_KEY, newRecords);
-      set({ records: newRecords });
 
       return id;
     },

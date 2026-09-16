@@ -7,6 +7,20 @@ import { KnowledgeItem } from '../types';
 
 type KnowledgeDraft = Omit<KnowledgeItem, 'id' | 'createdAt' | 'updatedAt'>;
 
+/**
+ * 关键词是否命中。
+ * 拉丁/数字关键词必须按**词边界**匹配，否则短词会在英文单词内部误命中：
+ * 'ups' 会命中 backups / groups / startups，'ahu'/'cdu'/'bms'/'pdu' 同理；
+ * 且「配电」规则排在最前，一旦误命中就不会被后面的规则纠正。
+ */
+function matchesKeyword(text: string, keyword: string): boolean {
+  if (/^[a-z0-9]+$/i.test(keyword)) {
+    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(text);
+  }
+  return text.includes(keyword);
+}
+
 // 根据文本关键词自动判断专业领域
 export function autoDetectCategory(title: string, content: string): string {
   const text = (title + ' ' + content).toLowerCase();
@@ -17,7 +31,7 @@ export function autoDetectCategory(title: string, content: string): string {
     { category: '消防', keywords: ['消防', '火灾', '灭火', '喷淋', '烟感', '消防管网', '油罐', '可燃'] },
   ];
   for (const rule of rules) {
-    if (rule.keywords.some((k) => text.includes(k))) return rule.category;
+    if (rule.keywords.some((k) => matchesKeyword(text, k))) return rule.category;
   }
   return '';
 }

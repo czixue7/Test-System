@@ -32,6 +32,14 @@ const SHIFT_COLOR: Record<DutyShiftType, { badge: string; ring: string }> = {
 
 const WEEKDAYS_CN = ['日', '一', '二', '三', '四', '五', '六'];
 
+// 本页「小元素」局部关闭毛玻璃（不改全局样式，不影响其他页面）：
+// 全局 [data-theme="immersive"] .bg-white / .dark:bg-gray-800 等规则会给每个白底元素加一层
+// backdrop-filter，而本页日历格子的数量随日期数增长（最多 30+ 个）、人名标签随当日人数增长，
+// 于是加载表格数据后会同时出现几十个独立模糊图层，每帧都要回读背景并重新模糊，打满移动端 GPU。
+// 这里只去掉 backdrop-filter，半透明白底与细边框仍由全局规则提供，视觉几乎无差别——这些小色块
+// 背后只是一层平滑渐变，18px 模糊本来就看不出差异。header / 底部导航 / 详情卡片等大块面照旧保留毛玻璃。
+const NO_BLUR: React.CSSProperties = { backdropFilter: 'none', WebkitBackdropFilter: 'none' };
+
 const formatDate = (d: Date): string => {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -54,7 +62,10 @@ const DrillMarquee: React.FC<{ text: string; onClick: () => void }> = ({ text, o
       title={text}
     >
       {needScroll ? (
-        <div className="inline-block" style={{ animation: 'duty-marquee 12s linear infinite' }}>
+        <div
+          className="inline-block"
+          style={{ animation: 'duty-marquee 12s linear infinite', willChange: 'transform', transform: 'translateZ(0)' }}
+        >
           <span className="px-4">{text}</span>
           <span className="px-4">{text}</span>
         </div>
@@ -516,7 +527,7 @@ const DutySchedule: React.FC = () => {
 
         {!currentDuty && (
           <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-3 text-xs text-yellow-700 dark:text-yellow-300 mb-2 text-center">
-            请先导入值班表 · 支持 Excel (.xlsx/.xls) 和 JSON 格式
+            请先导入值班表 · 支持 Excel (.xlsx/.xls) 格式
           </div>
         )}
 
@@ -568,6 +579,7 @@ const DutySchedule: React.FC = () => {
 
             return (
               <button key={i} onClick={() => setSelectedDate(cell.date)}
+                style={NO_BLUR}
                 className={`h-11 rounded-lg flex flex-col items-center justify-center relative transition-all
                   ${isSelected ? 'bg-blue-100 dark:bg-blue-900/40 ring-2 ring-blue-400 scale-[1.02]' :
                     cell.isToday ? 'bg-blue-50 dark:bg-blue-900/20' :
@@ -748,7 +760,7 @@ const DutySchedule: React.FC = () => {
                               const name = m.shift.personInCharge || '未命名';
                               const originGroup = m.shift.group;
                               return (
-                                <span key={m.shift.id} className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs border transition-colors
+                                <span key={m.shift.id} style={NO_BLUR} className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs border transition-colors
                                   ${isRest
                                     ? 'bg-gray-100 dark:bg-gray-700/40 text-gray-400 dark:text-gray-500 line-through border-gray-200 dark:border-gray-600'
                                     : isCross
@@ -815,7 +827,7 @@ const DutySchedule: React.FC = () => {
                     id="duty-file-input"
                     ref={importFileRef}
                     type="file"
-                    accept=".xlsx,.xls,.json"
+                    accept=".xlsx,.xls"
                     multiple={false}
                     onChange={(e) => handleFileSelected(e.target.files)}
                     className="hidden" />
@@ -823,7 +835,7 @@ const DutySchedule: React.FC = () => {
                     <svg className="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
                   </div>
                   <p className="text-sm font-medium text-gray-700 dark:text-white">选择文件上传</p>
-                  <p className="text-xs text-gray-400 mt-1">支持 Excel (.xlsx / .xls) · JSON</p>
+                  <p className="text-xs text-gray-400 mt-1">支持 Excel (.xlsx / .xls)</p>
                 </label>
               </div>
 

@@ -1,17 +1,21 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuestionBankStore } from '../store/questionBankStore';
-import { QuestionBank } from '../types';
 import { useSafeArea } from '../hooks/useSafeArea';
+import { useToast } from '../hooks/useToast';
+import { convertJsonToBank, parseJsonFile, validateJsonBank } from '../utils/jsonImporter';
 
 const Import: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { importBank } = useQuestionBankStore();
   const safeArea = useSafeArea();
+  const { showSuccess, showError } = useToast();
 
   const [importFiles, setImportFiles] = useState<File[]>([]);
-  const [importPreviews, setImportPreviews] = useState<{ name: string; questionCount: number }[]>([]);
+  const [importPreviews, setImportPreviews] = useState<
+    { name: string; questionCount: number; error?: string }[]
+  >([]);
   const [isImporting, setIsImporting] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const [isJsonExpanded, setIsJsonExpanded] = useState(false);
@@ -76,17 +80,25 @@ const Import: React.FC = () => {
     if (!files) return;
     const fileArray = Array.from(files);
     setImportFiles(fileArray);
-    const previews: { name: string; questionCount: number }[] = [];
+    const previews: { name: string; questionCount: number; error?: string }[] = [];
     for (const file of fileArray) {
       try {
         const text = await file.text();
-        const data = JSON.parse(text);
+        const parsed = parseJsonFile(text);
+        if (!parsed.success || !parsed.data) {
+          previews.push({ name: file.name, questionCount: 0, error: parsed.error || 'JSON 解析失败' });
+          continue;
+        }
+        // 预览阶段就做校验：之前预览对非法文件只显示「0 题」，
+        // 用户以为可以导入，点下去才在导入阶段抛异常
+        const validation = validateJsonBank(parsed.data);
         previews.push({
-          name: data.name || file.name.replace('.json', ''),
-          questionCount: data.questions?.length || 0
+          name: parsed.data.name || file.name.replace(/\.json$/i, ''),
+          questionCount: parsed.data.questions?.length || 0,
+          error: validation.valid ? undefined : validation.error,
         });
       } catch {
-        previews.push({ name: file.name, questionCount: 0 });
+        previews.push({ name: file.name, questionCount: 0, error: '读取文件失败' });
       }
     }
     setImportPreviews(previews);
@@ -95,31 +107,46 @@ const Import: React.FC = () => {
   const handleImport = async () => {
     setIsImporting(true);
     try {
-      for (let i = 0; i < importFiles.length; i++) {
-        const file = importFiles[i];
-        const text = await file.text();
-        const data = JSON.parse(text);
-        const bank: Omit<QuestionBank, 'id' | 'createdAt' | 'updatedAt'> = {
-          name: data.name || importPreviews[i]?.name || '未命名题库',
-          description: data.description,
-          questions: data.questions.map((q: any) => ({
-            id: Date.now().toString(36) + Math.random().toString(36).substr(2),
-            type: q.type,
-            question: q.question,
-            content: q.content,
-            options: q.options,
-            correctAnswer: q.correctAnswer,
-            score: q.score || 1,
-            category: q.category || 'default',
-            difficulty: q.difficulty || 'medium',
-            explanation: q.explanation,
-            images: q.images,
-            allowDisorder: q.allowDisorder
-          }))
-        };
-        importBank(bank as QuestionBank);
+      const failures: string[] = [];
+      let importedCount = 0;
+
+      for (const file of importFiles) {
+        // 逐文件隔离失败：任何一个文件出错都不应该中断其余文件的导入，
+        // 也不应该静默失败（旧实现没有 try/catch，异常会让整批导入中止且无提示）
+        try {
+          const text = await file.text();
+          const parsed = parseJsonFile(text);
+          if (!parsed.success || !parsed.data) {
+            failures.push(`${file.name}：${parsed.error || 'JSON 解析失败'}`);
+            continue;
+          }
+          const validation = validateJsonBank(parsed.data);
+          if (!validation.valid) {
+            failures.push(`${file.name}：${validation.error || '格式校验失败'}`);
+            continue;
+          }
+          // 统一走 jsonImporter 的转换逻辑，保证 question/category/difficulty
+          // 等字段被正确补齐（旧实现自己手写了一遍 map，漏字段且不校验）
+          importBank(convertJsonToBank(parsed.data));
+          importedCount++;
+        } catch (error) {
+          failures.push(`${file.name}：${error instanceof Error ? error.message : '导入失败'}`);
+        }
       }
-      navigate('/');
+
+      if (importedCount > 0) {
+        showSuccess(`已导入 ${importedCount} 个题库`, 3000);
+      }
+      if (failures.length > 0) {
+        const detail = failures.slice(0, 3).join('；');
+        showError(
+          `${failures.length} 个文件导入失败：${detail}${failures.length > 3 ? ' …' : ''}`,
+          6000
+        );
+      }
+      if (importedCount > 0) {
+        navigate('/');
+      }
     } finally {
       setIsImporting(false);
     }
@@ -167,10 +194,14 @@ const Import: React.FC = () => {
           <div className="mt-6 space-y-3">
             <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">待导入题库</h3>
             {importPreviews.map((preview, idx) => (
-              <div key={idx} className="p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm flex justify-between items-center">
-                <div>
-                  <div className="font-medium text-gray-800 dark:text-gray-200">{preview.name}</div>
-                  <div className="text-sm text-gray-500 dark:text-gray-400">{preview.questionCount} 题</div>
+              <div key={idx} className={`p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm flex justify-between items-center ${preview.error ? 'border border-red-300 dark:border-red-700' : ''}`}>
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium text-gray-800 dark:text-gray-200 truncate">{preview.name}</div>
+                  {preview.error ? (
+                    <div className="text-sm text-red-500 dark:text-red-400">{preview.error}</div>
+                  ) : (
+                    <div className="text-sm text-gray-500 dark:text-gray-400">{preview.questionCount} 题</div>
+                  )}
                 </div>
                 <button onClick={() => {
                   setImportFiles(importFiles.filter((_, i) => i !== idx));

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import Modal from './Modal';
 
 interface ResumePromptModalProps {
@@ -26,15 +26,19 @@ const ResumePromptModal: React.FC<ResumePromptModalProps> = ({
 }) => {
   const [open, setOpen] = useState(true);
 
-  const handleResume = () => {
+  // 关闭动画期间按钮仍可点击，连点会触发两次（恢复/重开各一次）
+  const firedRef = useRef(false);
+
+  const fire = (callback: () => void) => {
+    if (firedRef.current) return;
+    firedRef.current = true;
     setOpen(false);
-    setTimeout(onResume, 240);
+    setTimeout(callback, 240);
   };
 
-  const handleRestart = () => {
-    setOpen(false);
-    setTimeout(onRestart, 240);
-  };
+  const handleResume = () => fire(onResume);
+
+  const handleRestart = () => fire(onRestart);
 
   const modeText = mode === 'practice' ? '练习' : '考试';
 
@@ -57,12 +61,14 @@ const ResumePromptModal: React.FC<ResumePromptModalProps> = ({
         <div className="flex flex-col gap-2 w-full">
           <button
             onClick={handleResume}
+            disabled={!open}
             className="w-full py-2.5 px-4 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 transition-all duration-200 active:scale-95 shadow-md"
           >
             继续{modeText}
           </button>
           <button
             onClick={handleRestart}
+            disabled={!open}
             className="w-full py-2.5 px-4 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-all duration-200 active:scale-95"
           >
             重新开始
