@@ -182,6 +182,8 @@ export async function parseDutyExcelFile(file: File): Promise<ExcelParseResult> 
   const parsedSheets: string[] = [];
   let minDateStr = '';
   let maxDateStr = '';
+  let drillSheetName: string | null = null;
+  let drillSheetRows: any[][] | null = null;
 
   const defaultYear = new Date().getFullYear();
   const defaultMonth = new Date().getMonth() + 1;
@@ -195,14 +197,11 @@ export async function parseDutyExcelFile(file: File): Promise<ExcelParseResult> 
     if (!rows.length) continue;
 
     // 优先判断是否为演练计划 sheet（含"演练场景"表头）
-    // 只解析「工程师抽检2026 (0723)」这一张演练表（其他同名 sheet 是历史版本，不合并）
+    // 演练表:表名含「工程师抽检」即候选;多张时取最后一张(通常为最新版本,避免历史版本重复合并)
     if (isDrillSheet(rows)) {
-      if (sheetName.includes('(0723)')) {
-        const drills = parseDrillSheet(rows, defaultYear);
-        if (drills.length > 0) {
-          allDrills.push(...drills);
-          parsedSheets.push(`${sheetName}(演练)`);
-        }
+      if (sheetName.includes('工程师抽检')) {
+        drillSheetName = sheetName;
+        drillSheetRows = rows;
       }
       continue;
     }
@@ -282,6 +281,15 @@ export async function parseDutyExcelFile(file: File): Promise<ExcelParseResult> 
     }
 
     if (sheetShiftCount > 0) parsedSheets.push(sheetName);
+  }
+
+  // 解析演练计划 sheet(取最后一张表名含「工程师抽检」的演练表)
+  if (drillSheetRows) {
+    const drills = parseDrillSheet(drillSheetRows, defaultYear);
+    if (drills.length > 0) {
+      allDrills.push(...drills);
+      parsedSheets.push(`${drillSheetName}(演练)`);
+    }
   }
 
   if (allShifts.length === 0) throw new Error('未在文件中识别到任何排班数据');

@@ -53,10 +53,23 @@ const LUNAR_NUM = ['初一','初二','初三','初四','初五','初六','初七
 const getLunarLike = (day: number) => LUNAR_NUM[Math.min(day - 1, 30)];
 
 // 演练名称滚动显示组件（首尾相连循环滚动，首尾留空格；点击弹窗）
+// 视口外暂停动画:滚出屏幕的 marquee 不再持续占用合成线程,进入视口后恢复
 const DrillMarquee: React.FC<{ text: string; onClick: () => void }> = ({ text, onClick }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting));
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
   const needScroll = text.length > 12;
   return (
     <div
+      ref={ref}
       className="overflow-hidden whitespace-nowrap cursor-pointer select-none rounded-md"
       onClick={onClick}
       title={text}
@@ -64,7 +77,7 @@ const DrillMarquee: React.FC<{ text: string; onClick: () => void }> = ({ text, o
       {needScroll ? (
         <div
           className="inline-block"
-          style={{ animation: 'duty-marquee 12s linear infinite', willChange: 'transform', transform: 'translateZ(0)' }}
+          style={{ animation: visible ? 'duty-marquee 12s linear infinite' : 'none', willChange: 'transform', transform: 'translateZ(0)' }}
         >
           <span className="px-4">{text}</span>
           <span className="px-4">{text}</span>
@@ -80,6 +93,17 @@ interface RemoteDutyInfo {
   name: string; filename: string; downloadUrl: string; sha: string;
   source: 'system' | 'user'; exists: boolean; hasUpdate: boolean;
   downloading: boolean; progress: number;
+}
+
+// 详情面板分组:某班次类别(白/夜)下的当班班组及其成员
+interface DutySection {
+  shiftType: 'white' | 'night';
+  onDutyGroup: string;      // 当班班组字母,如"D"
+  groupShiftType: DutyShiftType;
+  members: Array<{
+    shift: DutyShift;
+    origin: 'on' | 'cross' | 'rest'; // on=本班组正常上班, cross=跨班组来援, rest=本班组但当日休
+  }>;
 }
 
 const DutySchedule: React.FC = () => {
@@ -152,6 +176,17 @@ const DutySchedule: React.FC = () => {
   const currentDuty = duties.find((d) => d.id === currentDutyId);
   const todayStr = formatDate(now);
 
+  // 班次/人数统计:全量 shifts 遍历,只在值班表变化时算一次
+  // (写在 render body 里会导致每次交互都对数千条 shifts 重算 map+filter+Set)
+  const dutyStats = useMemo(() => {
+    if (!currentDuty) return { count: 0, people: 0 };
+    const people = new Set<string>();
+    for (const s of currentDuty.shifts) {
+      if (s.personInCharge) people.add(s.personInCharge);
+    }
+    return { count: currentDuty.shifts.length, people: people.size };
+  }, [currentDuty]);
+
   const shiftsByDate = useMemo(() => {
     const map = new Map<string, DutyShift[]>();
     if (!currentDuty) return map;
@@ -174,7 +209,7 @@ const DutySchedule: React.FC = () => {
     return map;
   }, [currentDuty]);
 
-  // 详情用：保留休在内，用于标注休和跨班组调班
+  // 详情用:保留休在内,用于标注休和跨班组调班
   const allShiftsByDate = useMemo(() => {
     const map = new Map<string, DutyShift[]>();
     if (!currentDuty) return map;
@@ -185,6 +220,40 @@ const DutySchedule: React.FC = () => {
     }
     return map;
   }, [currentDuty]);
+
+  // 日历格班组字母(date → 各类别当班班组,白前夜后),提前算好供渲染查表,
+  // 避免每次渲染对 42 个格子重复做 Map 统计。
+  // 规则(必须与详情"当班班组"一致):
+  //   对每个班次类别(白/夜),人数最多的归属组 = 当班班组 = 显示字母;
+  //   跨班组来援的人不改变该类别的当班班组归属。
+  // ⚠️ 统计人数时必须剔除"休",否则非当班且休的班组(5人/组)会比实际当班(4人)的班组人数多,
+  //    导致 Day 1 白班被 B(5个休) 胜 D(4人),选出错的当班班组!
+  //    —— shiftsByDate 构建时已过滤休和非班组数据,此处无需再调 isRestShiftText。
+  const dateGroups = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const [date, cellShifts] of shiftsByDate) {
+      const catCount = new Map<string, Map<string, number>>(); // cat(white/night) -> group -> count
+      for (const s of cellShifts) {
+        const cat: 'white' | 'night' = s.shiftType === 'night' ? 'night' : 'white';
+        if (!catCount.has(cat)) catCount.set(cat, new Map());
+        const gm = catCount.get(cat)!;
+        gm.set(s.group!, (gm.get(s.group!) || 0) + 1);
+      }
+      const groups: string[] = [];
+      for (const catStr of ['white', 'night'] as const) { // 循环顺序即保证白在前、夜在后
+        const gm = catCount.get(catStr);
+        if (!gm || gm.size === 0) continue;
+        let bestG = '';
+        let bestN = 0;
+        for (const [g, n] of gm.entries()) {
+          if (n > bestN || (n === bestN && g < bestG)) { bestN = n; bestG = g; }
+        }
+        if (bestG) groups.push(bestG);
+      }
+      if (groups.length > 0) map.set(date, groups);
+    }
+    return map;
+  }, [shiftsByDate]);
 
   const calendarCells = useMemo(() => {
     const firstDay = new Date(viewYear, viewMonth, 1);
@@ -202,6 +271,91 @@ const DutySchedule: React.FC = () => {
     }
     return cells;
   }, [viewYear, viewMonth, todayStr]);
+
+  // 详情面板分组(白/夜 → 当班班组 → 成员 on/cross/rest),提取到 useMemo 避免每次渲染重算
+  const selectedSections = useMemo<DutySection[]>(() => {
+    const dayShifts = selectedDate ? allShiftsByDate.get(selectedDate) || [] : [];
+    const sections: DutySection[] = [];
+
+    // 遍历 shiftType:white first, then night
+    for (const shiftTypeCat of ['white' as const, 'night' as const]) {
+      // 该 shiftType 下,统计「实际当班」的每组人数(休的不计入 bucket,否则长白班会污染统计)
+      const bucket = new Map<string, DutyShift[]>(); // group -> 该类别正常当班的人
+      for (const s of dayShifts) {
+        const g = s.group;
+        if (!g) continue;
+        const isNight = s.shiftType === 'night';
+        const isRest = isRestShiftText(s.tasks[0]);
+        if (isRest) continue; // 休/请假 → 不算当班人数
+        const st = isNight ? 'night' : 'white';
+        if (st !== shiftTypeCat) continue;
+        if (!bucket.has(g)) bucket.set(g, []);
+        bucket.get(g)!.push(s);
+      }
+
+      // 找主班组:当班人数最多的归属班组
+      let onDutyGroup = '';
+      let maxCount = 0;
+      for (const [g, list] of bucket.entries()) {
+        if (list.length > maxCount || (list.length === maxCount && g < onDutyGroup)) {
+          maxCount = list.length;
+          onDutyGroup = g;
+        }
+      }
+      if (!onDutyGroup) continue;
+
+      // 该当班班组的 groupShiftType:取 bucket 里第一个有班的 shiftType
+      const first = bucket.get(onDutyGroup)?.[0];
+      if (!first) continue;
+      const groupShiftType: DutyShiftType = first.shiftType;
+
+      // 成员收集:
+      //   on    = 本班组正常当班(shiftTypeCat 匹配 & 非休)
+      //   cross = 非本班组但 shiftTypeCat 匹配 & 非休(跨班组来援)
+      //   rest  = 本班组但当日休/其它类型上班(标注灰删除线+休)
+      // 注意:只把「当班班组休的人」放进该卡片;其他班组休的人不归入(否则会出现多余"援班")
+      const added = new Set<string>();
+      const members: DutySection['members'] = [];
+
+      // 先加跨班组来援的(shiftTypeCat 匹配且非休,但归属组 ≠ 当班班组)
+      for (const [g, list] of bucket.entries()) {
+        if (g === onDutyGroup) continue;
+        for (const s of list) {
+          if (added.has(s.id)) continue;
+          added.add(s.id);
+          members.push({ shift: s, origin: 'cross' });
+        }
+      }
+      // 再加本班组正常当班的
+      for (const s of bucket.get(onDutyGroup) || []) {
+        if (added.has(s.id)) continue;
+        added.add(s.id);
+        members.push({ shift: s, origin: 'on' });
+      }
+      // 最后补:当班班组里,休/或其它 shiftType 当班的(标注休或其它)
+      for (const s of dayShifts) {
+        if (s.group !== onDutyGroup) continue;
+        if (added.has(s.id)) continue;
+        added.add(s.id);
+        const isRest = isRestShiftText(s.tasks[0]);
+        const isThisCat = (s.shiftType === 'night' ? 'night' : 'white') === shiftTypeCat;
+        if (isRest || !isThisCat) {
+          members.push({ shift: s, origin: 'rest' });
+        } else {
+          members.push({ shift: s, origin: 'on' });
+        }
+      }
+
+      sections.push({ shiftType: shiftTypeCat, onDutyGroup, groupShiftType, members });
+    }
+
+    // 排序:白在前、夜在后;同类型按当班班组字母
+    sections.sort((a, b) => {
+      if (a.shiftType !== b.shiftType) return a.shiftType === 'white' ? -1 : 1;
+      return a.onDutyGroup.localeCompare(b.onDutyGroup);
+    });
+    return sections;
+  }, [selectedDate, allShiftsByDate]);
 
   const goPrevMonth = () => {
     if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); }
@@ -478,7 +632,7 @@ const DutySchedule: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div className="flex-1 min-w-0">
                   <div className="text-base font-bold text-gray-800 dark:text-white truncate">{currentDuty.name}</div>
-                  <div className="text-xs text-gray-500 mt-0.5 dark:text-gray-400">{currentDuty.shifts.length} 条班次 · {new Set(currentDuty.shifts.map(s => s.personInCharge).filter(Boolean)).size} 人</div>
+                  <div className="text-xs text-gray-500 mt-0.5 dark:text-gray-400">{dutyStats.count} 条班次 · {dutyStats.people} 人</div>
                 </div>
                 {duties.length > 1 && (
                   <svg className={`w-5 h-5 text-gray-400 transition-transform ${isDutyListExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
@@ -488,7 +642,7 @@ const DutySchedule: React.FC = () => {
                 <div className="mt-3 pt-3 border-t border-blue-100 dark:border-blue-800 space-y-2 max-h-60 overflow-y-auto">
                   {duties.map(duty => (
                     <div key={duty.id} className="flex items-center gap-2">
-                      <button onClick={() => handleSelectDuty(duty.id)}
+                      <button onClick={() => handleSelectDuty(duty.id)} style={NO_BLUR}
                         className={`flex-1 text-left px-3 py-2 rounded-lg text-sm ${currentDutyId === duty.id ? 'bg-blue-500 text-white' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300'}`}>
                         {duty.name} ({duty.shifts.length})
                       </button>
@@ -544,38 +698,12 @@ const DutySchedule: React.FC = () => {
         <div className="grid grid-cols-7 gap-1 mb-4">
           {calendarCells.map((cell, i) => {
             if (!cell.date) return <div key={i} className="h-11" />;
-            const cellShifts = shiftsByDate.get(cell.date) || [];
-            const hasDuty = cellShifts.length > 0;
+            const hasDuty = shiftsByDate.has(cell.date);
+            // 班组字母直接查表(计算规则见上方 dateGroups 的注释,与详情"当班班组"一致)
+            const groups = dateGroups.get(cell.date) || [];
             const isSelected = selectedDate === cell.date;
             const isWeekend = new Date(cell.date).getDay() === 0 || new Date(cell.date).getDay() === 6;
             const dayOfMonth = cell.day;
-            // 单元格班组字母（必须与详情"当班班组"一致）：
-            //   对每个班次类别（白/夜），人数最多的归属组 = 当班班组 = 显示字母
-            //   跨班组来援的人不改变该类别的当班班组归属（即：单元格不显示跨班组的字母）
-            //   ⚠️ 统计人数时必须剔除"休"，否则所有非当班且休的班组（5人/组）会比实际当班（4人）的班组人数多，
-            //      导致 Day 1 白班被 B(5个休) 胜 D(4人)，选出错的当班班组！
-            const catCount = new Map<string, Map<string, number>>(); // cat -> group -> count
-            for (const s of cellShifts) {
-              if (!s.group) continue;
-              if (isRestShiftText(s.tasks[0])) continue; // 休/请假等非当班→不计
-              const cat: 'white' | 'night' = s.shiftType === 'night' ? 'night' : 'white';
-              if (!catCount.has(cat)) catCount.set(cat, new Map());
-              const gm = catCount.get(cat)!;
-              gm.set(s.group, (gm.get(s.group) || 0) + 1);
-            }
-            // 每个cat选人数最多组；然后按 白在前、夜在后排序
-            interface CellCat { cat: 'white' | 'night'; group: string; }
-            const cats: CellCat[] = [];
-            for (const catStr of ['white', 'night'] as const) {
-              const gm = catCount.get(catStr);
-              if (!gm || gm.size === 0) continue;
-              let bestG = ''; let bestN = 0;
-              for (const [g, n] of gm.entries()) {
-                if (n > bestN || (n === bestN && g < bestG)) { bestN = n; bestG = g; }
-              }
-              if (bestG) cats.push({ cat: catStr, group: bestG });
-            }
-            const groups = cats.sort((a,b) => (a.cat === 'white' ? 0 : 1) - (b.cat === 'white' ? 0 : 1)).map(c => c.group);
 
             return (
               <button key={i} onClick={() => setSelectedDate(cell.date)}
@@ -621,112 +749,9 @@ const DutySchedule: React.FC = () => {
                 <div className="text-center py-6 text-sm text-gray-400">当天无排班</div>
               ) : (
                 <div className="space-y-3">
-                  {(() => {
-                    // 步骤1：只用于 typedMap（后续未使用，保留以避免回归）
-                    const typedMap = new Map<string, DutyShift[]>();
-                    for (const s of selectedDayShifts) {
-                      const st = s.shiftType === 'night' ? 'night' : 'white';
-                      const g = s.group || '';
-                      const key = `${st}|${g}`;
-                      if (!typedMap.has(key)) typedMap.set(key, []);
-                      typedMap.get(key)!.push(s);
-                    }
-
-                    // 找到每个 shiftType 的主班组（当班班组）
-                    type DutySection = {
-                      shiftType: 'white' | 'night';
-                      onDutyGroup: string;      // 当班班组字母，如"D"
-                      groupShiftType: DutyShiftType;
-                      members: Array<{
-                        shift: DutyShift;
-                        origin: 'on' | 'cross' | 'rest'; // on=本班组正常上班, cross=跨班组来援, rest=本班组但当日休
-                      }>;
-                    };
-                    const sections: DutySection[] = [];
-
-                    // 遍历 shiftType：white first, then night
-                    for (const shiftTypeCat of ['white' as const, 'night' as const]) {
-                      // 该 shiftType 下，统计「实际当班」的每组人数（休的不计入 bucket，否则长白班会污染统计）
-                      const bucket = new Map<string, DutyShift[]>(); // group -> 该类别正常当班的人
-                      for (const s of selectedDayShifts) {
-                        const g = s.group;
-                        if (!g) continue;
-                        const isNight = s.shiftType === 'night';
-                        const isRest = isRestShiftText(s.tasks[0]);
-                        if (isRest) continue; // 休/请假 → 不算当班人数
-                        const st = isNight ? 'night' : 'white';
-                        if (st !== shiftTypeCat) continue;
-                        if (!bucket.has(g)) bucket.set(g, []);
-                        bucket.get(g)!.push(s);
-                      }
-
-                      // 找主班组：当班人数最多的归属班组
-                      let onDutyGroup = '';
-                      let maxCount = 0;
-                      for (const [g, list] of bucket.entries()) {
-                        if (list.length > maxCount || (list.length === maxCount && g < onDutyGroup)) {
-                          maxCount = list.length;
-                          onDutyGroup = g;
-                        }
-                      }
-                      if (!onDutyGroup) continue;
-
-                      // 该当班班组的 groupShiftType：取 bucket 里第一个有班的 shiftType
-                      const first = bucket.get(onDutyGroup)?.[0];
-                      if (!first) continue;
-                      const groupShiftType: DutyShiftType = first.shiftType;
-
-                      // 成员收集：
-                      //   on    = 本班组正常当班（shiftTypeCat 匹配 & 非休）
-                      //   cross = 非本班组但 shiftTypeCat 匹配 & 非休（跨班组来援）
-                      //   rest  = 本班组但当日休/其它类型上班（标注灰删除线+休）
-                      // 注意：只把「当班班组休的人」放进该卡片；其他班组休的人不归入（否则会出现多余"援班"）
-                      const added = new Set<string>();
-                      const members: DutySection['members'] = [];
-
-                      // 先加跨班组来援的（shiftTypeCat 匹配且非休，但归属组 ≠ 当班班组）
-                      for (const [g, list] of bucket.entries()) {
-                        if (g === onDutyGroup) continue;
-                        for (const s of list) {
-                          if (added.has(s.id)) continue;
-                          added.add(s.id);
-                          members.push({ shift: s, origin: 'cross' });
-                        }
-                      }
-                      // 再加本班组正常当班的
-                      for (const s of bucket.get(onDutyGroup) || []) {
-                        if (added.has(s.id)) continue;
-                        added.add(s.id);
-                        members.push({ shift: s, origin: 'on' });
-                      }
-                      // 最后补：当班班组里，休/或其它 shiftType 当班的（标注休或其它）
-                      for (const s of selectedDayShifts) {
-                        if (s.group !== onDutyGroup) continue;
-                        if (added.has(s.id)) continue;
-                        added.add(s.id);
-                        const isRest = isRestShiftText(s.tasks[0]);
-                        const isThisCat = (s.shiftType === 'night' ? 'night' : 'white') === shiftTypeCat;
-                        if (isRest || !isThisCat) {
-                          members.push({ shift: s, origin: 'rest' });
-                        } else {
-                          members.push({ shift: s, origin: 'on' });
-                        }
-                      }
-
-                      sections.push({ shiftType: shiftTypeCat, onDutyGroup, groupShiftType, members });
-                    }
-
-                    // 排序：白在前、夜在后；同类型按当班班组字母
-                    sections.sort((a, b) => {
-                      if (a.shiftType !== b.shiftType) return a.shiftType === 'white' ? -1 : 1;
-                      return a.onDutyGroup.localeCompare(b.onDutyGroup);
-                    });
-
-                    if (sections.length === 0) {
-                      return <div className="text-center py-6 text-sm text-gray-400">当天无排班</div>;
-                    }
-
-                    return sections.map(sec => {
+                  {selectedSections.length === 0 ? (
+                    <div className="text-center py-6 text-sm text-gray-400">当天无排班</div>
+                  ) : selectedSections.map(sec => {
                       const g = sec.onDutyGroup;
                       const isNight = sec.shiftType === 'night';
                       const shiftLabel = isNight ? '夜班' : '白班';
@@ -734,7 +759,7 @@ const DutySchedule: React.FC = () => {
                       const drills = currentDuty?.drills?.filter(d => d.date === selectedDate && d.group === g) || [];
                       const drillNames = drills.map(d => d.name);
                       return (
-                        <div key={`${g}-${sec.shiftType}`} className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
+                        <div key={`${g}-${sec.shiftType}`} style={NO_BLUR} className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
                           <div className="flex items-center gap-2 mb-2">
                             <span className={`flex-shrink-0 w-7 h-7 rounded-lg text-sm font-bold flex items-center justify-center ${GROUP_COLOR[g] || 'bg-gray-400 text-white'}`}>
                               {g || '长'}
@@ -780,8 +805,7 @@ const DutySchedule: React.FC = () => {
                           </div>
                         </div>
                       );
-                    });
-                  })()}
+                    })}
                 </div>
               )}
             </div>
@@ -856,19 +880,19 @@ const DutySchedule: React.FC = () => {
                 <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl space-y-2">
                   <div className="text-sm font-medium text-green-700 dark:text-green-300">✓ 解析成功</div>
                   <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="bg-white dark:bg-gray-800 rounded-lg p-2">
+                    <div style={NO_BLUR} className="bg-white dark:bg-gray-800 rounded-lg p-2">
                       <div className="text-gray-500">值班表名</div>
                       <div className="font-medium text-gray-800 dark:text-white truncate">{importPreview.schedule.name}</div>
                     </div>
-                    <div className="bg-white dark:bg-gray-800 rounded-lg p-2">
+                    <div style={NO_BLUR} className="bg-white dark:bg-gray-800 rounded-lg p-2">
                       <div className="text-gray-500">日期范围</div>
                       <div className="font-medium text-gray-800 dark:text-white truncate">{importPreview.preview.dateRange}</div>
                     </div>
-                    <div className="bg-white dark:bg-gray-800 rounded-lg p-2">
+                    <div style={NO_BLUR} className="bg-white dark:bg-gray-800 rounded-lg p-2">
                       <div className="text-gray-500">总人数</div>
                       <div className="font-medium text-gray-800 dark:text-white">{importPreview.preview.totalPeople} 人</div>
                     </div>
-                    <div className="bg-white dark:bg-gray-800 rounded-lg p-2">
+                    <div style={NO_BLUR} className="bg-white dark:bg-gray-800 rounded-lg p-2">
                       <div className="text-gray-500">总班次</div>
                       <div className="font-medium text-gray-800 dark:text-white">{importPreview.preview.totalShifts} 条</div>
                     </div>
