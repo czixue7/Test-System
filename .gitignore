@@ -103,3 +103,6 @@ encrypt-tool/
 docs/代码缺陷审查报告.md
 draft_836d0cbe_folder/
 
+# Local one-off scripts (not version controlled)
+_gen_duty_roles.cjs
+
