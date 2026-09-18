@@ -124,7 +124,9 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
           // 否则界面会被「复活」成下载中
           if (generation !== downloadGeneration) return;
           set({ downloadProgress: progress });
-        }
+        },
+        // 首选源（Gitee）失败时回退到备用源（GitHub）
+        [updateInfo.fallbackDownloadUrl].filter((url): url is string => !!url)
       );
 
       if (generation !== downloadGeneration) {
@@ -192,6 +194,10 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
     } catch (error) {
       addLog(`❌ 安装失败: ${error instanceof Error ? error.message : '未知错误'}`);
       addLog('请手动到下载目录中找到 APK 文件并点击安装');
+    } finally {
+      // 原生侧无法回传「用户是否真的装完」，因此无论拉起安装器、
+      // 跳转权限设置还是失败，都统一回到「点击安装」，避免按钮卡在
+      // 「正在启动安装...」这类无法收敛的中间态。
       set({ downloadStatus: 'downloaded' });
     }
   },

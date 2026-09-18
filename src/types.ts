@@ -217,6 +217,21 @@ export interface DutyDrill {
   name: string;   // 演练名称
 }
 
+// 岗位划分中的一项：岗位名称 → 人员
+export interface DutyRolePost {
+  name: string;    // 岗位名，如 配电 / 柴发 / 暖通① / 暖通②
+  person: string;  // 该岗位人员
+}
+
+// 某日期某班组的岗位划分（用于夜班多岗位分工显示）
+export interface DutyRoleAssignment {
+  date: string;              // YYYY-MM-DD
+  group: string;             // 班组 A/B/C/D
+  shiftType: DutyShiftType;  // 班次（当前仅夜班）
+  leader?: string;           // 值班长
+  posts: DutyRolePost[];     // 岗位划分
+}
+
 // 一份值班表（可包含多天、多班次）
 export interface DutySchedule {
   id: string;
@@ -224,6 +239,7 @@ export interface DutySchedule {
   description?: string;
   shifts: DutyShift[];
   drills?: DutyDrill[];   // 演练抽检计划（日期+班组→演练名称）
+  roles?: DutyRoleAssignment[]; // 岗位划分（日期+班组→岗位→人员）
   createdAt: string;
   updatedAt: string;
   sourceSha?: string;

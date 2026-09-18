@@ -425,7 +425,7 @@ const Home: React.FC = () => {
                 </div>
                 <div className="text-left">
                   <div className="font-medium text-gray-800 dark:text-white">下载题库</div>
-                  <div className="text-sm text-gray-500 dark:text-gray-400">从 GitHub 获取更多题库资源</div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400">从 Gitee 获取更多题库资源</div>
                 </div>
               </button>
             </div>

@@ -1,11 +1,10 @@
 import { QuestionBank, BankIndex, BankIndexItem, BankImageInfo } from '../types';
 import { isBuiltInBank } from './builtInBanks';
+import { contentsApiCandidates, fetchRemoteJson, repoFileCandidates } from './remoteRepo';
 
-const BANK_INDEX_URL = 'https://raw.githubusercontent.com/czixue7/Test-System/main/bank-index.json';
-const GITHUB_REPO = 'czixue7/Test-System';
 const USER_BANK_PATH = 'Question_bank';
 
-interface GitHubContentItem {
+interface RepoContentItem {
   name: string;
   path: string;
   sha: string;
@@ -14,28 +13,16 @@ interface GitHubContentItem {
 }
 
 /**
- * 动态从GitHub获取Question_bank目录下所有用户题库
- * 遍历子目录，找到JSON文件和图片目录
+ * 动态获取 Question_bank 目录下所有用户题库
+ * 优先 Gitee，失败回退 GitHub；遍历子目录，找到 JSON 文件和图片目录
  */
-async function fetchUserBanksFromGitHub(): Promise<BankIndexItem[]> {
+async function fetchUserBanksFromRepo(): Promise<BankIndexItem[]> {
   const items: BankIndexItem[] = [];
 
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-    const response = await fetch(
-      `https://api.github.com/repos/${GITHUB_REPO}/contents/${USER_BANK_PATH}`,
-      { signal: controller.signal }
+    const dirContents = await fetchRemoteJson<RepoContentItem[]>(
+      contentsApiCandidates(USER_BANK_PATH)
     );
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      console.warn('Failed to fetch user bank directory:', response.status);
-      return items;
-    }
-
-    const dirContents: GitHubContentItem[] = await response.json();
     if (!Array.isArray(dirContents)) {
       return items;
     }
@@ -44,18 +31,9 @@ async function fetchUserBanksFromGitHub(): Promise<BankIndexItem[]> {
 
     for (const subDir of subDirs) {
       try {
-        const subController = new AbortController();
-        const subTimeoutId = setTimeout(() => subController.abort(), 10000);
-
-        const subResponse = await fetch(
-          `https://api.github.com/repos/${GITHUB_REPO}/contents/${subDir.path}`,
-          { signal: subController.signal }
+        const subContents = await fetchRemoteJson<RepoContentItem[]>(
+          contentsApiCandidates(subDir.path)
         );
-        clearTimeout(subTimeoutId);
-
-        if (!subResponse.ok) continue;
-
-        const subContents: GitHubContentItem[] = await subResponse.json();
         if (!Array.isArray(subContents)) continue;
 
         const jsonFile = subContents.find(
@@ -79,7 +57,7 @@ async function fetchUserBanksFromGitHub(): Promise<BankIndexItem[]> {
       }
     }
   } catch (error) {
-    console.error('Error fetching user banks from GitHub:', error);
+    console.error('Error fetching user banks:', error);
   }
 
   return items;
@@ -105,22 +83,21 @@ export interface BankUpdateInfo {
 
 /**
  * 获取题库索引文件
- * 合并静态bank-index.json和动态从GitHub获取的用户题库
+ * 合并静态bank-index.json和动态获取的用户题库（均优先 Gitee，失败回退 GitHub）
  */
 export async function fetchBankIndex(): Promise<BankIndex | null> {
   try {
-    // 1. 获取静态索引文件
-    const response = await fetch(BANK_INDEX_URL);
+    // 1. 获取静态索引文件（优先 Gitee，失败回退 GitHub）
     let index: BankIndex;
-    if (response.ok) {
-      index = await response.json();
-    } else {
-      console.warn('Failed to fetch bank index, using empty defaults:', response.status);
+    try {
+      index = await fetchRemoteJson<BankIndex>(repoFileCandidates('bank-index.json'));
+    } catch (error) {
+      console.warn('Failed to fetch bank index, using empty defaults:', error);
       index = { systemBanks: [], userBanks: [] };
     }
 
-    // 2. 动态从GitHub获取Question_bank目录下的用户题库
-    const dynamicUserBanks = await fetchUserBanksFromGitHub();
+    // 2. 动态获取 Question_bank 目录下的用户题库
+    const dynamicUserBanks = await fetchUserBanksFromRepo();
 
     // 3. 合并用户题库：动态获取的优先，静态索引中不重复的保留
     const dynamicNames = new Set(dynamicUserBanks.map(b => b.filename));

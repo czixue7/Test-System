@@ -1,6 +1,6 @@
 use tauri_plugin_sql::{Migration, MigrationKind};
 use serde::{Deserialize, Serialize};
-use tauri::ipc::Channel;
+use tauri::ipc::{Channel, Response};
 use tauri::Manager;
 
 #[cfg(target_os = "android")]
@@ -24,6 +24,149 @@ struct UpdateCheckResult {
     latest_version: String,
     version_hash: Option<String>,
     assets: Vec<UpdateAsset>,
+    fallback_assets: Vec<UpdateAsset>,
+    source: String,
+}
+
+struct ReleaseInfo {
+    version: String,
+    version_hash: Option<String>,
+    assets: Vec<UpdateAsset>,
+}
+
+fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
+    let parse = |s: &str| -> Vec<u64> {
+        s.split('.')
+            .map(|p| {
+                p.chars()
+                    .take_while(|c| c.is_ascii_digit())
+                    .collect::<String>()
+                    .parse::<u64>()
+                    .unwrap_or(0)
+            })
+            .collect()
+    };
+    let pa = parse(a);
+    let pb = parse(b);
+    let len = pa.len().max(pb.len());
+    for i in 0..len {
+        let va = *pa.get(i).unwrap_or(&0);
+        let vb = *pb.get(i).unwrap_or(&0);
+        match va.cmp(&vb) {
+            std::cmp::Ordering::Equal => continue,
+            other => return other,
+        }
+    }
+    std::cmp::Ordering::Equal
+}
+
+// 比较构建号（构建时间戳）：版本号相同时使用，数值越大表示越新的构建
+fn compare_build_numbers(a: Option<&str>, b: Option<&str>) -> std::cmp::Ordering {
+    match (a, b) {
+        (None, None) => std::cmp::Ordering::Equal,
+        (None, Some(_)) => std::cmp::Ordering::Less,
+        (Some(_), None) => std::cmp::Ordering::Greater,
+        (Some(x), Some(y)) => match (x.parse::<u64>(), y.parse::<u64>()) {
+            (Ok(vx), Ok(vy)) => vx.cmp(&vy),
+            _ => x.cmp(y),
+        },
+    }
+}
+
+fn parse_release(json: &serde_json::Value) -> ReleaseInfo {
+    let version = json["tag_name"]
+        .as_str()
+        .unwrap_or("0.0.0")
+        .trim_start_matches('v')
+        .to_string();
+
+    let version_hash = parse_hash_from_body(json["body"].as_str().unwrap_or(""));
+
+    let assets: Vec<UpdateAsset> = json["assets"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|asset| {
+                    Some(UpdateAsset {
+                        name: asset["name"].as_str()?.to_string(),
+                        browser_download_url: asset["browser_download_url"].as_str()?.to_string(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    ReleaseInfo {
+        version,
+        version_hash,
+        assets,
+    }
+}
+
+// 从发行版列表中挑选最新的一个：先比版本号，版本相同再比构建号
+fn pick_best_release(releases: Vec<ReleaseInfo>) -> Option<ReleaseInfo> {
+    releases.into_iter().reduce(|best, cur| {
+        match compare_versions(&cur.version, &best.version) {
+            std::cmp::Ordering::Greater => cur,
+            std::cmp::Ordering::Less => best,
+            std::cmp::Ordering::Equal => {
+                if compare_build_numbers(
+                    cur.version_hash.as_deref(),
+                    best.version_hash.as_deref(),
+                ) == std::cmp::Ordering::Greater
+                {
+                    cur
+                } else {
+                    best
+                }
+            }
+        }
+    })
+}
+
+async fn fetch_release_list(
+    client: &reqwest::Client,
+    api_url: &str,
+    headers: &[(&str, &str)],
+) -> Result<Vec<ReleaseInfo>, String> {
+    let mut request = client.get(api_url).header("User-Agent", "Answer-Test-App");
+    for (key, value) in headers {
+        request = request.header(*key, *value);
+    }
+
+    let response = request
+        .send()
+        .await
+        .map_err(|e| format!("请求失败 {}: {}", api_url, e))?;
+
+    let response = response
+        .error_for_status()
+        .map_err(|e| format!("服务器返回错误状态 {}: {}", api_url, e))?;
+
+    let body_text = response
+        .text()
+        .await
+        .map_err(|e| format!("读取响应失败 {}: {}", api_url, e))?;
+
+    let json: serde_json::Value = serde_json::from_str(&body_text)
+        .map_err(|e| format!("解析JSON失败 {}: {}", api_url, e))?;
+
+    // 列表接口返回数组；兼容单个对象返回
+    let releases = match json.as_array() {
+        Some(arr) => arr.iter().map(parse_release).collect(),
+        None => vec![parse_release(&json)],
+    };
+
+    Ok(releases)
+}
+
+async fn fetch_best_release(
+    client: &reqwest::Client,
+    api_url: &str,
+    headers: &[(&str, &str)],
+) -> Result<ReleaseInfo, String> {
+    let list = fetch_release_list(client, api_url, headers).await?;
+    pick_best_release(list).ok_or_else(|| format!("未找到任何发行版 {}", api_url))
 }
 
 fn parse_hash_from_body(body: &str) -> Option<String> {
@@ -40,18 +183,100 @@ fn parse_hash_from_body(body: &str) -> Option<String> {
         .take_while(|c| c.is_ascii_hexdigit())
         .collect();
 
-    // 只接受真实摘要长度，避免把正文里形如 "hash值abc" 的零碎十六进制
-    // 当成摘要，进而误报「有新版本」
-    if hash.len() == 40 || hash.len() == 64 {
+    // 构建号是 8 位构建时间戳（如 20260918）；同时兼容真实摘要长度（40/64 位十六进制）
+    // 避免把正文里形如 "hash值abc" 的零碎十六进制当成摘要，进而误报「有新版本」
+    if hash.len() == 8 || hash.len() == 40 || hash.len() == 64 {
         Some(hash.to_lowercase())
     } else {
         None
     }
 }
 
+// 解析 Gitee 网页版 releases.json 中的单个发行版
+// 结构：{ tag: { name, message }, release: { description, attach_files: [{ name, cli_download_url }] } }
+fn parse_gitee_web_release(item: &serde_json::Value) -> ReleaseInfo {
+    let version = item["tag"]["name"]
+        .as_str()
+        .unwrap_or("0.0.0")
+        .trim_start_matches('v')
+        .to_string();
+
+    // 发行说明或标签提交信息中可能携带 <!-- hash:xxxx --> 构建号
+    let version_hash = item["release"]["description"]
+        .as_str()
+        .and_then(parse_hash_from_body)
+        .or_else(|| {
+            item["tag"]["message"]
+                .as_str()
+                .and_then(parse_hash_from_body)
+        });
+
+    let assets: Vec<UpdateAsset> = item["release"]["attach_files"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|file| {
+                    let name = file["name"].as_str()?.to_string();
+                    let url = file["cli_download_url"]
+                        .as_str()
+                        .or_else(|| file["download_url"].as_str())?;
+                    let browser_download_url =
+                        if url.starts_with("http://") || url.starts_with("https://") {
+                            url.to_string()
+                        } else {
+                            format!("https://gitee.com{}", url)
+                        };
+                    Some(UpdateAsset {
+                        name,
+                        browser_download_url,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    ReleaseInfo {
+        version,
+        version_hash,
+        assets,
+    }
+}
+
+// Gitee 开放 API v5 对匿名调用限流（403 Rate Limit Exceeded），
+// 改用网页版数据接口 releases.json：匿名可访问，且为结构化 JSON。
+async fn fetch_gitee_web_releases(
+    client: &reqwest::Client,
+) -> Result<Vec<ReleaseInfo>, String> {
+    let api_url = "https://gitee.com/zixue7/Test-System/releases.json";
+
+    let response = client
+        .get(api_url)
+        .header("User-Agent", "Answer-Test-App")
+        .send()
+        .await
+        .map_err(|e| format!("请求失败 {}: {}", api_url, e))?;
+
+    let response = response
+        .error_for_status()
+        .map_err(|e| format!("服务器返回错误状态 {}: {}", api_url, e))?;
+
+    let body_text = response
+        .text()
+        .await
+        .map_err(|e| format!("读取响应失败 {}: {}", api_url, e))?;
+
+    let json: serde_json::Value = serde_json::from_str(&body_text)
+        .map_err(|e| format!("解析JSON失败 {}: {}", api_url, e))?;
+
+    Ok(json["releases"]
+        .as_array()
+        .map(|arr| arr.iter().map(parse_gitee_web_release).collect())
+        .unwrap_or_default())
+}
+
 #[tauri::command]
 async fn check_github_update() -> Result<UpdateCheckResult, String> {
-    log::info!("check_github_update: 开始通过 Rust 后端检查 GitHub 更新");
+    log::info!("check_github_update: 开始通过 Rust 后端检查 GitHub / Gitee 更新");
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
@@ -62,66 +287,128 @@ async fn check_github_update() -> Result<UpdateCheckResult, String> {
             msg
         })?;
 
-    let response = client
-        .get("https://api.github.com/repos/czixue7/Test-System/releases/latest")
-        .header("Accept", "application/vnd.github.v3+json")
-        .header("User-Agent", "Answer-Test-App")
-        .send()
+    let github = fetch_best_release(
+        &client,
+        "https://api.github.com/repos/czixue7/Test-System/releases?per_page=20",
+        &[("Accept", "application/vnd.github.v3+json")],
+    )
+    .await;
+
+    let gitee = fetch_gitee_web_releases(&client)
         .await
-        .map_err(|e| {
-            let msg = format!("GitHub API 请求失败: {}", e);
+        .and_then(|list| {
+            pick_best_release(list).ok_or_else(|| "Gitee 未找到任何发行版".to_string())
+        });
+
+    // 两者都查，取更高版本；版本相同时再比构建号，仍相同则优先 Gitee
+    let prefer_gitee = match (&gitee, &github) {
+        (Ok(g), Ok(h)) => match compare_versions(&g.version, &h.version) {
+            std::cmp::Ordering::Greater => true,
+            std::cmp::Ordering::Less => false,
+            std::cmp::Ordering::Equal => {
+                compare_build_numbers(g.version_hash.as_deref(), h.version_hash.as_deref())
+                    != std::cmp::Ordering::Less
+            }
+        },
+        (Ok(_), Err(_)) => true,
+        (Err(_), Ok(_)) => false,
+        (Err(e1), Err(e2)) => {
+            let msg = format!("GitHub 与 Gitee 均无法访问: GitHub={}; Gitee={}", e1, e2);
             log::error!("{}", msg);
-            msg
-        })?;
+            return Err(msg);
+        }
+    };
 
-    let body_text = response.text()
-        .await
-        .map_err(|e| {
-            let msg = format!("读取GitHub响应失败: {}", e);
+    let (primary, fallback, source) = if prefer_gitee {
+        (gitee, github, "gitee")
+    } else {
+        (github, gitee, "github")
+    };
+
+    let primary = match primary {
+        Ok(info) => info,
+        Err(e) => {
+            let msg = format!("更新源不可用: {}", e);
             log::error!("{}", msg);
-            msg
-        })?;
+            return Err(msg);
+        }
+    };
 
-    let json: serde_json::Value = serde_json::from_str(&body_text)
-        .map_err(|e| {
-            let msg = format!("解析GitHub JSON失败: {}", e);
-            log::error!("{}", msg);
-            msg
-        })?;
+    let fallback_assets = fallback.map(|info| info.assets).unwrap_or_default();
 
-    let latest_version = json["tag_name"]
-        .as_str()
-        .unwrap_or("0.0.0")
-        .trim_start_matches('v')
-        .to_string();
-
-    let body = json["body"].as_str().unwrap_or("");
-    let version_hash = parse_hash_from_body(body);
-
-    let assets: Vec<UpdateAsset> = json["assets"]
-        .as_array()
-        .map(|arr| {
-            arr.iter().filter_map(|asset| {
-                Some(UpdateAsset {
-                    name: asset["name"].as_str()?.to_string(),
-                    browser_download_url: asset["browser_download_url"].as_str()?.to_string(),
-                })
-            }).collect()
-        })
-        .unwrap_or_default();
+    let latest_version = primary.version;
+    let version_hash = primary.version_hash;
 
     log::info!(
-        "check_github_update: 版本={}, 哈希={}, 资产数={}",
+        "check_github_update: 来源={}, 版本={}, 哈希={}, 资产数={}, 备用资产数={}",
+        source,
         latest_version,
         version_hash.as_deref().unwrap_or("无"),
-        assets.len()
+        primary.assets.len(),
+        fallback_assets.len()
     );
 
     Ok(UpdateCheckResult {
         latest_version,
         version_hash,
-        assets,
+        assets: primary.assets,
+        fallback_assets,
+        source: source.to_string(),
     })
+}
+
+#[tauri::command]
+async fn fetch_remote_text(url: String) -> Result<String, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("创建HTTP客户端失败: {}", e))?;
+
+    let response = client
+        .get(&url)
+        .header("User-Agent", "Answer-Test-App")
+        .send()
+        .await
+        .map_err(|e| format!("请求失败 {}: {}", url, e))?;
+
+    let response = response
+        .error_for_status()
+        .map_err(|e| format!("服务器返回错误状态 {}: {}", url, e))?;
+
+    let text = response
+        .text()
+        .await
+        .map_err(|e| format!("读取文本失败 {}: {}", url, e))?;
+
+    log::info!("fetch_remote_text: 成功, url={}, 长度={}", url, text.len());
+    Ok(text)
+}
+
+#[tauri::command]
+async fn fetch_remote_bytes(url: String) -> Result<Response, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .map_err(|e| format!("创建HTTP客户端失败: {}", e))?;
+
+    let response = client
+        .get(&url)
+        .header("User-Agent", "Answer-Test-App")
+        .send()
+        .await
+        .map_err(|e| format!("请求失败 {}: {}", url, e))?;
+
+    let response = response
+        .error_for_status()
+        .map_err(|e| format!("服务器返回错误状态 {}: {}", url, e))?;
+
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| format!("读取数据失败 {}: {}", url, e))?;
+
+    log::info!("fetch_remote_bytes: 成功, url={}, 字节数={}", url, bytes.len());
+    Ok(Response::new(bytes.to_vec()))
 }
 
 #[cfg(target_os = "android")]
@@ -378,6 +665,8 @@ pub fn run() {
             install_apk,
             download_and_install_apk,
             check_github_update,
+            fetch_remote_text,
+            fetch_remote_bytes,
         ])
         .setup(move |_app| {
             #[cfg(all(debug_assertions, not(target_os = "android")))]

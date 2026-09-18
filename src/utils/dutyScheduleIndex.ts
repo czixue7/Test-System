@@ -1,11 +1,10 @@
 import { DutySchedule, DutyIndex, DutyIndexItem } from '../types';
+import { contentsApiCandidates, fetchRemoteJson, repoFileCandidates } from './remoteRepo';
 
-// 与题库一致的 GitHub 仓库
-const GITHUB_REPO = 'czixue7/Test-System';
-const DUTY_INDEX_URL = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/duty-index.json`;
+// 与题库一致的仓库，优先 Gitee，失败回退 GitHub
 const USER_DUTY_PATH = 'Duty_schedule';
 
-interface GitHubContentItem {
+interface RepoContentItem {
   name: string;
   path: string;
   sha: string;
@@ -14,46 +13,26 @@ interface GitHubContentItem {
 }
 
 /**
- * 动态从 GitHub 获取 Duty_schedule 目录下所有用户值班表
- * 遍历子目录，找到 JSON 文件（与题库 Question_bank 目录结构一致）
+ * 动态获取 Duty_schedule 目录下所有用户值班表
+ * 优先 Gitee，失败回退 GitHub；遍历子目录，找到 JSON 文件
+ * （与题库 Question_bank 目录结构一致）
  */
-async function fetchUserDutiesFromGitHub(): Promise<DutyIndexItem[]> {
+async function fetchUserDutiesFromRepo(): Promise<DutyIndexItem[]> {
   const items: DutyIndexItem[] = [];
 
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-    const response = await fetch(
-      `https://api.github.com/repos/${GITHUB_REPO}/contents/${USER_DUTY_PATH}`,
-      { signal: controller.signal }
+    const dirContents = await fetchRemoteJson<RepoContentItem[]>(
+      contentsApiCandidates(USER_DUTY_PATH)
     );
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      console.warn('[dutyIndex] Failed to fetch user duty directory:', response.status);
-      return items;
-    }
-
-    const dirContents: GitHubContentItem[] = await response.json();
     if (!Array.isArray(dirContents)) return items;
 
     const subDirs = dirContents.filter((item) => item.type === 'dir');
 
     for (const subDir of subDirs) {
       try {
-        const subController = new AbortController();
-        const subTimeoutId = setTimeout(() => subController.abort(), 10000);
-
-        const subResponse = await fetch(
-          `https://api.github.com/repos/${GITHUB_REPO}/contents/${subDir.path}`,
-          { signal: subController.signal }
+        const subContents = await fetchRemoteJson<RepoContentItem[]>(
+          contentsApiCandidates(subDir.path)
         );
-        clearTimeout(subTimeoutId);
-
-        if (!subResponse.ok) continue;
-
-        const subContents: GitHubContentItem[] = await subResponse.json();
         if (!Array.isArray(subContents)) continue;
 
         const jsonFile = subContents.find(
@@ -73,7 +52,7 @@ async function fetchUserDutiesFromGitHub(): Promise<DutyIndexItem[]> {
       }
     }
   } catch (error) {
-    console.error('[dutyIndex] Error fetching user duties from GitHub:', error);
+    console.error('[dutyIndex] Error fetching user duties:', error);
   }
 
   return items;
@@ -81,22 +60,21 @@ async function fetchUserDutiesFromGitHub(): Promise<DutyIndexItem[]> {
 
 /**
  * 获取值班表索引文件
- * 合并静态 duty-index.json 和动态从 GitHub 获取的用户值班表
+ * 合并静态 duty-index.json 和动态获取的用户值班表（均优先 Gitee，失败回退 GitHub）
  */
 export async function fetchDutyIndex(): Promise<DutyIndex | null> {
   try {
-    // 1. 获取静态索引文件
-    const response = await fetch(DUTY_INDEX_URL);
+    // 1. 获取静态索引文件（优先 Gitee，失败回退 GitHub）
     let index: DutyIndex;
-    if (response.ok) {
-      index = await response.json();
-    } else {
-      console.warn('[dutyIndex] Failed to fetch duty index, using empty defaults:', response.status);
+    try {
+      index = await fetchRemoteJson<DutyIndex>(repoFileCandidates('duty-index.json'));
+    } catch (error) {
+      console.warn('[dutyIndex] Failed to fetch duty index, using empty defaults:', error);
       index = { systemDuties: [], userDuties: [] };
     }
 
-    // 2. 动态从 GitHub 获取 Duty_schedule 目录下的用户值班表
-    const dynamicUserDuties = await fetchUserDutiesFromGitHub();
+    // 2. 动态获取 Duty_schedule 目录下的用户值班表
+    const dynamicUserDuties = await fetchUserDutiesFromRepo();
 
     // 3. 合并用户值班表：动态获取的优先，静态索引中不重复的保留
     const dynamicNames = new Set(dynamicUserDuties.map((d) => d.filename));

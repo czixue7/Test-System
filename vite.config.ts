@@ -10,6 +10,9 @@ export default defineConfig({
     host: host || false,
     port: 1420,
     strictPort: true,
+    watch: {
+      ignored: ['**/src-tauri/**', '**/.android-sdk/**', '**/dist/**', '**/build/**'],
+    },
     hmr: host
       ? {
           protocol: 'ws',

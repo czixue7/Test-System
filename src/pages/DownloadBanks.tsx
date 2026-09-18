@@ -6,6 +6,7 @@ import { useToast } from '../hooks/useToast';
 import { useSafeArea } from '../hooks/useSafeArea';
 import { fetchBankIndex, checkBankStatus, findBankInIndex } from '../utils/bankIndex';
 import { dictionaryCompare } from '../utils/sortUtils';
+import { contentsApiCandidates, fetchRemoteBytes, fetchRemoteJson, fetchRemoteText, rawUrlCandidates } from '../utils/remoteRepo';
 
 interface GitHubFile {
   name: string;
@@ -56,7 +57,7 @@ const DownloadBanks: React.FC = () => {
   });
   const [bankIndex, setBankIndex] = useState<BankIndex | null>(null);
 
-  const GITHUB_REPO = 'czixue7/Test-System';
+  const GITEE_REPO = 'zixue7/Test-System';
 
   // 使用统一的 bank-index.json 获取题库列表
   const fetchBankList = useCallback(async () => {
@@ -157,43 +158,30 @@ const DownloadBanks: React.FC = () => {
     });
   }, [banks, bankIndex]);
 
-  const downloadImageAsBase64 = async (url: string, timeoutMs: number = 15000): Promise<string> => {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-    
-    try {
-      const response = await fetch(url, { signal: controller.signal });
-      if (!response.ok) throw new Error(`Failed to download image: ${response.status}`);
-      const blob = await response.blob();
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-    } finally {
-      clearTimeout(timeoutId);
+  const downloadImageAsBase64 = async (url: string): Promise<string> => {
+    // Gitee 的 raw 地址在 WebView 中会被 CORS 拦截，这里统一走 remoteRepo：
+    // Tauri 环境由 Rust 后端抓取，浏览器环境退化为 fetch
+    const buffer = await fetchRemoteBytes(rawUrlCandidates(url));
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
     }
+    const lower = url.toLowerCase();
+    const mime = lower.endsWith('.png') ? 'image/png'
+      : lower.endsWith('.gif') ? 'image/gif'
+      : 'image/jpeg';
+    return `data:${mime};base64,${btoa(binary)}`;
   };
 
   const downloadAndProcessImages = async (imagePath: string, totalProgress: (progress: number) => void): Promise<Map<string, string[]>> => {
     const questionImagesMap = new Map<string, string[]>();
     
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
-      
-      const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${imagePath}`, {
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        console.warn(`获取图片列表失败: ${response.status} ${response.statusText}`);
-        return questionImagesMap;
-      }
-      
-      const imageFiles: GitHubFile[] = await response.json();
+      // 优先 Gitee，失败回退 GitHub
+      const imageFiles = await fetchRemoteJson<GitHubFile[]>(
+        contentsApiCandidates(imagePath)
+      );
       
       if (!Array.isArray(imageFiles)) {
         console.warn('图片列表格式错误:', imageFiles);
@@ -281,18 +269,8 @@ const DownloadBanks: React.FC = () => {
         ));
       };
 
-      // 带超时的下载
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
-      
-      const response = await fetch(bank.downloadUrl, { signal: controller.signal });
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP 错误: ${response.status} ${response.statusText}`);
-      }
-
-      const text = await response.text();
+      // 优先 Gitee，失败回退 GitHub（Tauri 环境由 Rust 后端抓取，绕过 CORS）
+      const text = await fetchRemoteText(rawUrlCandidates(bank.downloadUrl));
       if (!text || text.trim().length === 0) {
         throw new Error('下载的文件内容为空');
       }
@@ -633,14 +611,14 @@ const DownloadBanks: React.FC = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <div className="text-sm text-blue-700 dark:text-blue-300">
-              <p>题库来源：GitHub 开源项目</p>
+              <p>题库来源：Gitee 开源项目（优先）</p>
               <a 
-                href={`https://github.com/${GITHUB_REPO}`}
+                href={`https://gitee.com/${GITEE_REPO}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-blue-600 dark:text-blue-400 hover:underline"
               >
-                github.com/{GITHUB_REPO}
+                gitee.com/{GITEE_REPO}
               </a>
             </div>
           </div>
@@ -676,7 +654,7 @@ const DownloadBanks: React.FC = () => {
             {renderBankList(
               systemBanks,
               '系统题库',
-              `https://github.com/${GITHUB_REPO}/tree/main/public/banks`,
+              `https://gitee.com/${GITEE_REPO}/tree/main/public/banks`,
               systemExistingCount,
               systemUpdateCount,
               'system'
@@ -684,7 +662,7 @@ const DownloadBanks: React.FC = () => {
             {renderBankList(
               userBanks,
               '用户题库',
-              `https://github.com/${GITHUB_REPO}/tree/main/Question_bank`,
+              `https://gitee.com/${GITEE_REPO}/tree/main/Question_bank`,
               userExistingCount,
               userUpdateCount,
               'user'

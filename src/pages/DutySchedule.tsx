@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDutyScheduleStore, buildShifts } from '../store/dutyScheduleStore';
-import { DutyShift, DutyShiftType, JsonDutyScheduleData } from '../types';
+import { DutyShift, DutyShiftType, DutyRoleAssignment, JsonDutyScheduleData } from '../types';
 import { useSafeArea } from '../hooks/useSafeArea';
 import { useToast } from '../hooks/useToast';
 import { fetchDutyIndex, checkDutyStatus } from '../utils/dutyScheduleIndex';
-import { parseDutyExcelFile, parseJsonDutyText, isRestShiftText, ExcelParseResult } from '../utils/xlsxDutyParser';
+import { fetchRemoteText, rawUrlCandidates } from '../utils/remoteRepo';
+import { parseDutyExcelFile, parseJsonDutyText, isRestShiftText, DutyParseResult } from '../utils/dutyParsers';
 import { generateDutyForecast } from '../utils/dutyForecast';
 import Modal from '../components/Modal';
 
@@ -148,7 +149,7 @@ const DutySchedule: React.FC = () => {
   const importFileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<string>('');
-  const [importPreview, setImportPreview] = useState<ExcelParseResult | null>(null);
+  const [importPreview, setImportPreview] = useState<DutyParseResult | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
   const [showDownloadPanel, setShowDownloadPanel] = useState(false);
@@ -217,6 +218,16 @@ const DutySchedule: React.FC = () => {
       if (!s.group) continue;
       if (!map.has(s.date)) map.set(s.date, []);
       map.get(s.date)!.push(s);
+    }
+    return map;
+  }, [currentDuty]);
+
+  // 岗位划分查表(date+group → 岗位分配),仅导入岗位表后才存在
+  const rolesByDateGroup = useMemo(() => {
+    const map = new Map<string, DutyRoleAssignment>();
+    if (!currentDuty?.roles) return map;
+    for (const r of currentDuty.roles) {
+      map.set(`${r.date}-${r.group}`, r);
     }
     return map;
   }, [currentDuty]);
@@ -388,7 +399,7 @@ const DutySchedule: React.FC = () => {
     setImportProgress('解析中...');
 
     try {
-      let result: ExcelParseResult;
+      let result: DutyParseResult;
       const name = file.name.toLowerCase();
       if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
         setImportProgress('解析 Excel 矩阵排班表...');
@@ -475,7 +486,7 @@ const DutySchedule: React.FC = () => {
     }
   };
 
-  // ===== GitHub 下载 =====
+  // ===== 远程下载（优先 Gitee，失败回退 GitHub） =====
   const fetchRemoteDutyList = async () => {
     setLoadingRemote(true);
     setRemoteError(null);
@@ -509,12 +520,8 @@ const DutySchedule: React.FC = () => {
     setRemoteDuties(prev => prev.map((d, i) => i === index ? { ...d, downloading: true, progress: 0 } : d));
     showInfo(duty.hasUpdate ? `更新「${duty.name}」...` : `下载「${duty.name}」...`);
     try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 30000);
-      const resp = await fetch(duty.downloadUrl, { signal: ctrl.signal });
-      clearTimeout(t);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const text = await resp.text();
+      // 优先 Gitee，失败回退 GitHub（Tauri 环境由 Rust 后端抓取，绕过 CORS）
+      const text = await fetchRemoteText(rawUrlCandidates(duty.downloadUrl));
       let data: JsonDutyScheduleData;
       try { data = JSON.parse(text); } catch { throw new Error('文件格式无效'); }
       if (!data.shifts) throw new Error('缺少 shifts 字段');
@@ -758,6 +765,23 @@ const DutySchedule: React.FC = () => {
                       // 该班组当天对应的演练名称
                       const drills = currentDuty?.drills?.filter(d => d.date === selectedDate && d.group === g) || [];
                       const drillNames = drills.map(d => d.name);
+                      // 该班组当天的岗位划分(仅夜班岗位表导入后才有)
+                      const role = g ? rolesByDateGroup.get(`${selectedDate}-${g}`) : undefined;
+                      // 岗位划分(值班长+各岗位)已展示的姓名:下方成员标签不再重复展示
+                      const roleNames = isNight && role
+                        ? new Set<string>([
+                            ...(role.leader ? [role.leader] : []),
+                            ...role.posts.map(p => p.person)
+                          ])
+                        : null;
+                      const shownNames = new Set<string>();
+                      const visibleMembers = sec.members.filter(m => {
+                        const name = m.shift.personInCharge || '未命名';
+                        if (roleNames && roleNames.has(name)) return false;
+                        if (shownNames.has(name)) return false;
+                        shownNames.add(name);
+                        return true;
+                      });
                       return (
                         <div key={`${g}-${sec.shiftType}`} style={NO_BLUR} className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
                           <div className="flex items-center gap-2 mb-2">
@@ -771,6 +795,25 @@ const DutySchedule: React.FC = () => {
                               {shiftLabel}
                             </span>
                           </div>
+                          {isNight && role && role.posts.length > 0 && (
+                            <div className="mb-2 pl-9">
+                              <div className="text-[10px] text-gray-400 dark:text-gray-500 mb-1">岗位划分</div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {role.leader && (
+                                  <span style={NO_BLUR} className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                                    <span className="text-[9px] opacity-70">值班长</span>
+                                    <span className="font-medium">{role.leader}</span>
+                                  </span>
+                                )}
+                                {role.posts.map((p, i) => (
+                                  <span key={i} style={NO_BLUR} className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                                    <span className="text-[9px] opacity-70">{p.name}</span>
+                                    <span className="font-medium">{p.person}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                           {!isNight && drillNames.length > 0 && (
                             <div className="mb-2 space-y-1">
                               {drillNames.map((name, i) => (
@@ -778,31 +821,33 @@ const DutySchedule: React.FC = () => {
                               ))}
                             </div>
                           )}
-                          <div className="flex flex-wrap gap-1.5 pl-9">
-                            {sec.members.map(m => {
-                              const isRest = m.origin === 'rest' || isRestShiftText(m.shift.tasks[0]);
-                              const isCross = m.origin === 'cross';
-                              const name = m.shift.personInCharge || '未命名';
-                              const originGroup = m.shift.group;
-                              return (
-                                <span key={m.shift.id} style={NO_BLUR} className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs border transition-colors
-                                  ${isRest
-                                    ? 'bg-gray-100 dark:bg-gray-700/40 text-gray-400 dark:text-gray-500 line-through border-gray-200 dark:border-gray-600'
-                                    : isCross
-                                      ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
-                                      : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-600'
-                                  }`}>
-                                  {isCross && originGroup && originGroup !== g && (
-                                    <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400">
-                                      {originGroup}→{g}
-                                    </span>
-                                  )}
-                                  {name}
-                                  {isRest && <span className="text-[9px] ml-0.5 opacity-70">休</span>}
-                                </span>
-                              );
-                            })}
-                          </div>
+                          {visibleMembers.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 pl-9">
+                              {visibleMembers.map(m => {
+                                const isRest = m.origin === 'rest' || isRestShiftText(m.shift.tasks[0]);
+                                const isCross = m.origin === 'cross';
+                                const name = m.shift.personInCharge || '未命名';
+                                const originGroup = m.shift.group;
+                                return (
+                                  <span key={m.shift.id} style={NO_BLUR} className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs border transition-colors
+                                    ${isRest
+                                      ? 'bg-gray-100 dark:bg-gray-700/40 text-gray-400 dark:text-gray-500 line-through border-gray-200 dark:border-gray-600'
+                                      : isCross
+                                        ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                                        : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-600'
+                                    }`}>
+                                    {isCross && originGroup && originGroup !== g && (
+                                      <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400">
+                                        {originGroup}→{g}
+                                      </span>
+                                    )}
+                                    {name}
+                                    {isRest && <span className="text-[9px] ml-0.5 opacity-70">休</span>}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -851,7 +896,7 @@ const DutySchedule: React.FC = () => {
                     id="duty-file-input"
                     ref={importFileRef}
                     type="file"
-                    accept=".xlsx,.xls"
+                    accept=".xlsx,.xls,.json"
                     multiple={false}
                     onChange={(e) => handleFileSelected(e.target.files)}
                     className="hidden" />
@@ -859,7 +904,7 @@ const DutySchedule: React.FC = () => {
                     <svg className="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
                   </div>
                   <p className="text-sm font-medium text-gray-700 dark:text-white">选择文件上传</p>
-                  <p className="text-xs text-gray-400 mt-1">支持 Excel (.xlsx / .xls)</p>
+                  <p className="text-xs text-gray-400 mt-1">支持 Excel (.xlsx / .xls) / JSON (.json)</p>
                 </label>
               </div>
 
@@ -920,7 +965,7 @@ const DutySchedule: React.FC = () => {
                   <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                 </div>
                 <div className="text-left">
-                  <div className="font-medium text-gray-800 dark:text-white text-sm">从 GitHub 下载</div>
+                  <div className="font-medium text-gray-800 dark:text-white text-sm">从 Gitee 下载</div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">获取云端值班表资源</div>
                 </div>
               </button>

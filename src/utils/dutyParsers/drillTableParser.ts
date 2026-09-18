@@ -10,7 +10,8 @@
  *   R4  "     |      |          | 星期 | ..."
  *   R5+ 数据行："1 | 配电 | 机柜单路失电 | 重要 | D | | B | ..."（单元格字母 = 该演练在该日期由该班组执行）
  */
-import { DutyDrill } from '../types';
+import { DutyDrill } from '../../types';
+import { DutySheetParser, SheetParseContext, SheetParseOutput, emptySheetOutput } from './types';
 
 // 定位表头行（含"序号"和"演练场景"）
 function findHeaderRow(rows: any[][]): number {
@@ -83,3 +84,16 @@ export function parseDrillSheet(rows: any[][], defaultYear: number): DutyDrill[]
 export function isDrillSheet(rows: any[][]): boolean {
   return findHeaderRow(rows) >= 0;
 }
+
+function parseDrill(ctx: SheetParseContext): SheetParseOutput {
+  const out = emptySheetOutput();
+  out.drills = parseDrillSheet(ctx.rows, ctx.defaultYear);
+  return out;
+}
+
+export const drillTableParser: DutySheetParser = {
+  id: 'drill',
+  label: '演练抽检计划表',
+  canHandle: (ctx) => isDrillSheet(ctx.rows),
+  parse: parseDrill
+};

@@ -7,6 +7,7 @@ import { useToast } from '../hooks/useToast';
 import { QuestionBank, BankIndex, BankImageInfo } from '../types';
 import { useSafeArea } from '../hooks/useSafeArea';
 import { fetchBankIndex, checkBankUpdate, findBankInIndex } from '../utils/bankIndex';
+import { fetchRemoteJson, rawUrlCandidates } from '../utils/remoteRepo';
 import { useKnowledgeStore } from '../store/knowledgeStore';
 import { getOrCreateSummary, downloadSummary, SummaryType } from '../utils/knowledgeSummary';
 
@@ -149,13 +150,8 @@ const ManageBanks: React.FC = () => {
     showInfo(`正在更新「${bank.name}」...`);
 
     try {
-      const response = await fetch(remoteBank.downloadUrl);
-
-      if (!response.ok) {
-        throw new Error('下载失败');
-      }
-
-      const data = await response.json();
+      // 优先 Gitee，失败回退 GitHub（Tauri 环境由 Rust 后端抓取，绕过 CORS）
+      const data = await fetchRemoteJson<any>(rawUrlCandidates(remoteBank.downloadUrl));
 
       if (!data.questions || !Array.isArray(data.questions) || data.questions.length === 0) {
         throw new Error('远程题库格式无效或没有题目');
