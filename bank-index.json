@@ -120,18 +120,24 @@
   ],
   "userBanks": [
     {
-      "name": "字节考试题",
-      "filename": "字节考试题.json",
-      "downloadUrl": "https://raw.githubusercontent.com/czixue7/Test-System/main/Question_bank/字节考试题/字节考试题.json",
-      "sha": "307742f1bf2f4592e4d32f5f0e2d8efae9e37ba4fc57396f97c406047d76f051",
+      "name": "值班员考试-字节",
+      "filename": "值班员考试-字节.json",
+      "downloadUrl": "https://raw.githubusercontent.com/czixue7/Test-System/main/Question_bank/值班员考试-字节/值班员考试-字节.json",
+      "sha": "648cf92cddd118d1a7909309c8b1c602cae088bc",
       "images": []
     },
     {
-      "name": "设备",
+      "name": "基础设施运维管理流程SOP",
+      "filename": "基础设施运维管理流程SOP.json",
+      "downloadUrl": "https://raw.githubusercontent.com/czixue7/Test-System/main/Question_bank/基础设施运维管理流程SOP/基础设施运维管理流程SOP.json",
+      "sha": "da785b8ed67b71af146e997689c8e43aed97c145",
+      "images": []
+    },
+    {
+      "name": "设备参数",
       "filename": "基础设施设备参数题库.json",
-      "downloadUrl": "https://raw.githubusercontent.com/czixue7/Test-System/main/Question_bank/设备/基础设施设备参数题库.json",
-      "imagePath": "Question_bank/设备/image",
-      "sha": "60a6f31dffd6e273dde3e8c0178c69ff58268ea1",
+      "downloadUrl": "https://raw.githubusercontent.com/czixue7/Test-System/main/Question_bank/设备参数/基础设施设备参数题库.json",
+      "sha": "18c0a6393875303b00371b62db9869694899158a",
       "images": []
     }
   ]
