@@ -81,13 +81,13 @@
       "explanation": "必须遵循先隔离、后排查、再恢复的原则，防止二次短路。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "热传导和热辐射的导热过程一样",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "错误",
+      "correctAnswer": "B",
       "score": 1,
       "explanation": "热传导依靠微观粒子运动，热辐射依靠电磁波传递能量，两者机理不同。"
     },
@@ -131,24 +131,24 @@
       "explanation": "大规模温升首要排查冷冻水循环是否正常，即流量和压力。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "浸没液冷是将IT设备直接浸泡于绝缘、不可燃的液体中",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "正确",
+      "correctAnswer": "A",
       "score": 1,
       "explanation": "浸没液冷是将IT设备直接浸泡在绝缘、不可燃的冷却液中进行散热。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "绝缘遥测仪可用作是电气运维中高压设备的绝缘性能测量",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "正确",
+      "correctAnswer": "A",
       "score": 1,
       "explanation": "绝缘遥测仪（兆欧表）是测量高压设备绝缘电阻的必备工具。"
     },
@@ -178,13 +178,13 @@
       "explanation": "油路系统的日常巡检需全面覆盖箱体、阀门、油尺和管路。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "可以带电用欧姆档测通断或绝缘电阻",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "错误",
+      "correctAnswer": "B",
       "score": 1,
       "explanation": "严禁带电测量电阻或绝缘电阻，极易烧毁仪表或导致触电。"
     },
@@ -201,13 +201,13 @@
       "explanation": "冷却塔巡检需关注风机频率、循环泵频率以及集水盘水质。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "负荷平衡时，三相电的电流在N线中和为零，任何时间点上的...",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "正确",
+      "correctAnswer": "A",
       "score": 1,
       "explanation": "三相负载平衡时，三相电流矢量和为零，中性线电流为零。"
     },
@@ -224,13 +224,13 @@
       "explanation": "现代数字钳形表通常集电流、电压、电阻测量功能于一体。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "在使用福禄克925风速仪测量风速时叶轮要正对气流方向",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "正确",
+      "correctAnswer": "A",
       "score": 1,
       "explanation": "叶轮式风速仪测量时，叶轮平面必须与气流方向垂直。"
     },
@@ -261,13 +261,13 @@
       "explanation": "室外温度低于5度时需开启电伴热防止冷凝水管冻结。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "柴发并机室的检修联络柜应处于远方位置。",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "错误",
+      "correctAnswer": "B",
       "score": 1,
       "explanation": "检修联络柜在检修状态下必须处于就地位置并挂锁。"
     },
@@ -388,13 +388,13 @@
       "explanation": "CLF（制冷负载系数）反映的是制冷系统能耗与IT设备能耗的比值。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "水质胶囊通常被用来测量水的电导率数值",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "错误",
+      "correctAnswer": "B",
       "score": 1,
       "explanation": "水质胶囊多用于显色反应测pH或余氯等，电导率需用电导率仪测量。"
     },
@@ -411,57 +411,57 @@
       "explanation": "显示屏主要关注实时运行状态和告警信息。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "现场运维人员应第一时间判断温升原因（如空调故障、负载突增、环境温...",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "正确",
+      "correctAnswer": "A",
       "score": 1,
       "explanation": "运维人员应第一时间判断并定位温升原因。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "巡检检查IDEC机组无告警信息即可，对于风机、压缩机等部件出现异常响...",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "错误",
+      "correctAnswer": "B",
       "score": 1,
       "explanation": "不可仅凭无告警信息就认定设备正常，需现场检查异响等物理异常。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "UPS系统的主要作用之一是在市电中断时提供持续电力供应，确保负载不...",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "正确",
+      "correctAnswer": "A",
       "score": 1,
       "explanation": "UPS的核心作用就是市电中断时提供不间断电源。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "冷却塔的补水浮球位置是否正常是巡检需要确认的项目之一",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "正确",
+      "correctAnswer": "A",
       "score": 1,
       "explanation": "浮球位置异常会导致冷却塔水位失控。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "当备用冷机启动后，需要检查油箱温度、油压差是否正常。",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "正确",
+      "correctAnswer": "A",
       "score": 1,
       "explanation": "油温和油压差是保障压缩机润滑的核心参数。"
     },
@@ -492,13 +492,13 @@
       "explanation": "延长水泵升频时间可避免抢水，保证系统压力平稳。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "液冷机房2个冷通道发生超过27度温感报警,确认告警真实后应立即启动应...",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "正确",
+      "correctAnswer": "A",
       "score": 1,
       "explanation": "超过27度属于高温告警，确认真实后需立即启动应急预案。"
     },
@@ -528,35 +528,35 @@
       "explanation": "测通断需确保接触良好、穿戴防护并用验表确认，蜂鸣表示导通。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "在安装应急Manifold时，尽量垂直安装，并将软管平滑放置，避免折角",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "正确",
+      "correctAnswer": "A",
       "score": 1,
       "explanation": "垂直安装便于排气，软管避免折角可防止流阻增加和破损。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "蓄电池维护过程中若发现电池内阻高为本组电池内阻平均初始值的2倍...",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "错误",
+      "correctAnswer": "B",
       "score": 1,
       "explanation": "SOP规定内阻高达到初始值的1.5倍即为异常。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "正常情况下中压母联断路器应处于合闸状态",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "错误",
+      "correctAnswer": "B",
       "score": 1,
       "explanation": "正常运行时母联断路器应处于分闸状态，防止故障扩大。"
     },
@@ -587,13 +587,13 @@
       "explanation": "合闸指示灯为红色，分闸指示灯为绿色。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "判断变压器是否带电,通过低压柜指示灯和仪表来判断",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "错误",
+      "correctAnswer": "B",
       "score": 1,
       "explanation": "严禁依赖指示灯判断，必须使用验电器实际验电。"
     },
@@ -611,13 +611,13 @@
       "explanation": "供回水温差正常说明冷源系统正常，局部温升往往是局部气流短路造成。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "地下泵房、水处理间等潮湿环境，应定期检查配电柜、控制柜内部接线端...进行处理",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "正确",
+      "correctAnswer": "A",
       "score": 1,
       "explanation": "潮湿环境易凝露，需定期检查处理电气柜内部接线端子。"
     },
@@ -635,13 +635,13 @@
       "explanation": "乙二醇溶液属于化学危险废物，需按危废流程严格处理。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "巡检风冷空调时，只要外机运行就无需检查进风滤网是否脏堵。",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "错误",
+      "correctAnswer": "B",
       "score": 1,
       "explanation": "滤网脏堵会影响散热，必须检查，不能仅凭风机在转就判定正常。"
     },
@@ -695,13 +695,13 @@
       "explanation": "空气饱和时，湿球温度等于干球温度。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "中压馈线开关分闸后,合闸之前要对综保进行复位,才能合闸",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "正确",
+      "correctAnswer": "A",
       "score": 1,
       "explanation": "综保动作后会闭锁合闸，需手动复归后才能合闸。"
     },
@@ -732,13 +732,13 @@
       "explanation": "测量380V设备应使用耐压等级匹配的400V绝缘手套。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "液冷系统漏液场景中：支路环网蝶阀，机柜供液管路，manifold，液冷服响机柜≥1，需先下电后再进行阀门隔离。",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "正确",
+      "correctAnswer": "A",
       "score": 1,
       "explanation": "液冷漏液有短路风险，必须遵循先下电后隔离的原则。"
     },
@@ -856,13 +856,13 @@
       "explanation": "需立即通报续航、排查UPS报警原因，并检查上级电源状态。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "列头柜&PDU维护中，发现标识缺失或连接点异常时，只要设备仍在运...",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "错误",
+      "correctAnswer": "B",
       "score": 1,
       "explanation": "发现隐患必须立即上报并整改，不能因设备在运行而忽视。"
     },
@@ -891,13 +891,13 @@
       "explanation": "标准链路为：市电进线-变压器-UPS-列头柜-PDU-IT设备。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "数据中心测试的基本逻辑是先进行全系统联合测试，再逐步缩小到单机设...",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "错误",
+      "correctAnswer": "B",
       "score": 1,
       "explanation": "测试应遵循由单机到系统再到全系统联合的逻辑。"
     },
@@ -927,13 +927,13 @@
       "explanation": "电池组正常状态需无漏液、无鼓包、无异响、端盖无缺失。"
     },
     {
-      "type": "true-false",
+      "type": "single-choice",
       "content": "数据中心以设备运行为主，属于低风险场景，火灾、电弧伤害、化学品泄...按EHS重点管理场景对待。",
       "options": [
         {"id": "A", "content": "正确"},
         {"id": "B", "content": "错误"}
       ],
-      "correctAnswer": "错误",
+      "correctAnswer": "B",
       "score": 1,
       "explanation": "数据中心存在高电压、大电流、易燃物等，属于高风险场景。"
     },
