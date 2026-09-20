@@ -6,12 +6,60 @@
  *   R0  要求说明
  *   R1  班组循环表头：D A B C D A B C ...（参考，可有可无）
  *   R2  "序号 | 专业 | 演练场景 | 月份 | 6月 | ... | 7月 | ..."（月份为合并单元格）
- *   R3  "     |      |          | 日期 | 1 | 2 | 3 | ..."
+ *   R3  "     |      |          | 日期 | 1 | 2 | 3 | ..."（也可能是 Excel 日期序列号，如 46235 = 2026-08-01）
  *   R4  "     |      |          | 星期 | ..."
  *   R5+ 数据行："1 | 配电 | 机柜单路失电 | 重要 | D | | B | ..."（单元格字母 = 该演练在该日期由该班组执行）
  */
 import { DutyDrill } from '../../types';
 import { DutySheetParser, SheetParseContext, SheetParseOutput, emptySheetOutput } from './types';
+
+// Excel 日期序列号 → { year, month, day }（1970-01-01 的序列号为 25569）
+function excelSerialToDate(serial: number): { year: number; month: number; day: number } | null {
+  const dt = new Date(Math.round((serial - 25569) * 86400000));
+  if (isNaN(dt.getTime())) return null;
+  return { year: dt.getUTCFullYear(), month: dt.getUTCMonth() + 1, day: dt.getUTCDate() };
+}
+
+/**
+ * 解析「日期」行单元格，兼容多种格式：
+ *   - 纯日号（1..31）
+ *   - Excel 日期序列号（>31，如 46235 → 2026-08-01），同时还原年/月
+ *   - 日期字符串（2026/8/1、2026-08-01、2026年8月1日、8月1日 等）
+ * 返回 { year?, month?, day }；无法识别时返回 null。
+ */
+function parseDateCell(raw: any): { year?: number; month?: number; day: number } | null {
+  if (raw === null || raw === undefined) return null;
+
+  if (typeof raw === 'number' && isFinite(raw)) {
+    if (Number.isInteger(raw) && raw >= 1 && raw <= 31) return { day: raw };
+    if (raw > 31) return excelSerialToDate(raw);
+    return null;
+  }
+
+  const s = String(raw).trim();
+  if (!s) return null;
+  if (/^\d+(\.\d+)?$/.test(s)) return parseDateCell(Number(s));
+
+  // 2026/8/1、2026-08-01、2026.8.1、2026年8月1日
+  const m1 = s.match(/(\d{4})\s*[年/\-.]\s*(\d{1,2})\s*[月/\-.]\s*(\d{1,2})/);
+  if (m1) return { year: +m1[1], month: +m1[2], day: +m1[3] };
+
+  // 8月1日 / 8月1
+  const m2 = s.match(/(\d{1,2})\s*月\s*(\d{1,2})/);
+  if (m2) return { month: +m2[1], day: +m2[2] };
+
+  // 8/1、8-1
+  const m3 = s.match(/^(\d{1,2})\s*[/\-.]\s*(\d{1,2})$/);
+  if (m3) return { month: +m3[1], day: +m3[2] };
+
+  // 末尾数字作为「日」
+  const m4 = s.match(/(\d{1,2})\s*日?\s*$/);
+  if (m4) {
+    const d = +m4[1];
+    if (d >= 1 && d <= 31) return { day: d };
+  }
+  return null;
+}
 
 // 定位表头行（含"序号"和"演练场景"）
 function findHeaderRow(rows: any[][]): number {
@@ -65,10 +113,15 @@ export function parseDrillSheet(rows: any[][], defaultYear: number): DutyDrill[]
       if (!/^[A-D]$/.test(v)) continue; // 只有 A/B/C/D 字母表示班组
 
       const info = monthCols[c];
-      const day = Number(String(dateRow[c] ?? '').trim());
-      if (!info || !info.month || !day || day < 1 || day > 31) continue;
+      const dd = parseDateCell(dateRow[c]);
+      if (!dd) continue;
 
-      const dateStr = `${info.year}-${String(info.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const day = dd.day;
+      const month = dd.month ?? info?.month;
+      const year = dd.year ?? info?.year;
+      if (!month || !year || !day || day < 1 || day > 31) continue;
+
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const key = `${dateStr}|${v}|${scene}`;
       if (seen.has(key)) continue;
       seen.add(key);
