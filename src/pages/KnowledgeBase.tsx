@@ -8,7 +8,16 @@ import { useQuestionBankStore } from '../store/questionBankStore';
 import { useChatStore } from '../store/chatStore';
 import { parseKnowledgeFile } from '../utils/knowledgeParser';
 import { searchKnowledgeAI, classifyContentWithAI } from '../utils/knowledgeAI';
-import { getOrCreateSummary, SummaryType, SummaryProgress } from '../utils/knowledgeSummary';
+import {
+  getOrCreateSummary,
+  SummaryType,
+  SummaryProgress,
+  SummaryVersion,
+  listSummaryVersions,
+  getActiveSummaryId,
+  activateSummaryVersion,
+  deleteSummaryVersion,
+} from '../utils/knowledgeSummary';
 import { applyConversions, NoteConvertSettings } from '../utils/noteConverter';
 import { useNoteStore } from '../store/noteStore';
 import { useSettingsStore } from '../store/settingsStore';
@@ -147,9 +156,17 @@ const KnowledgeBase: React.FC = () => {
   const setSummaryRunning = useKnowledgeSummaryStore((s) => s.setSummaryRunning);
   const summaryScrollTop = useKnowledgeSummaryStore((s) => s.summaryScrollTop);
   const setSummaryScrollTop = useKnowledgeSummaryStore((s) => s.setSummaryScrollTop);
+  const summaryHistory = useKnowledgeSummaryStore((s) => s.summaryHistory);
+  const summaryActiveId = useKnowledgeSummaryStore((s) => s.summaryActiveId);
+  const setSummaryHistory = useKnowledgeSummaryStore((s) => s.setSummaryHistory);
+  const setSummaryActiveId = useKnowledgeSummaryStore((s) => s.setSummaryActiveId);
   const summaryScrollRef = useRef<HTMLDivElement>(null);
   // 准备中：弹窗已打开但内容和进度都还没出来
   const summaryLoading = summaryOpen && !summaryContent && !summaryProgress;
+  // 总结类型由当前来源决定（纯 AI 以外的来源都映射为综合）
+  const summaryType: SummaryType = source === 'knowledge' ? 'knowledge' : source === 'questionBank' ? 'questionBank' : 'combined';
+  // 历史版本列表展开状态
+  const [summaryHistoryOpen, setSummaryHistoryOpen] = useState(false);
 
   // 弹窗打开时恢复之前的滚动位置（全局记录，切换 tab 不丢失）
   useEffect(() => {
@@ -281,7 +298,17 @@ const KnowledgeBase: React.FC = () => {
     }
   };
 
-  // 触发总结（首次调用生成，之后复用缓存），返回总结内容供 AI 参考
+  // 读取历史版本列表与当前启用项（用于历史面板）
+  const refreshSummaryHistory = async () => {
+    const [history, activeId] = await Promise.all([
+      listSummaryVersions(summaryType),
+      getActiveSummaryId(summaryType),
+    ]);
+    setSummaryHistory(history);
+    setSummaryActiveId(activeId);
+  };
+
+  // 触发总结（首次调用生成，之后复用当前版本），返回总结内容供 AI 参考
   const triggerSummary = async (src: KnowledgeSearchSource, onProgress?: SummaryProgress): Promise<string | undefined> => {
     if (src === 'ai') return undefined;
     const type: SummaryType = src === 'knowledge' ? 'knowledge' : src === 'questionBank' ? 'questionBank' : 'combined';
@@ -305,15 +332,15 @@ const KnowledgeBase: React.FC = () => {
     setSummaryProgress({ done: 0, total: 0, phase: 'split' });
     setSummaryViewMode('progress');
     try {
-      const type: SummaryType = source === 'knowledge' ? 'knowledge' : source === 'questionBank' ? 'questionBank' : 'combined';
       await ensureBanksLoaded();
       // 总结函数内部会实时读取 store 最新题库/知识库数据
-      const result = await getOrCreateSummary(type, undefined, undefined, (done, total, phase) => {
+      const result = await getOrCreateSummary(summaryType, undefined, undefined, (done, total, phase) => {
         setSummaryProgress({ done, total, phase });
       });
       setSummaryContent(result.content);
       setSummaryProgress(null);
       setSummaryViewMode('content');
+      await refreshSummaryHistory();
     } catch (err) {
       setSummaryContent(`总结生成失败：${err instanceof Error ? err.message : '未知错误'}`);
       setSummaryProgress(null);
@@ -346,7 +373,14 @@ const KnowledgeBase: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [summaryOpen, summaryContent, summaryProgress, summaryRunning]);
 
-  // 重新生成知识总结（强制忽略缓存，重新调用 AI）
+  // 弹窗打开（或来源切换）时读取历史版本列表
+  useEffect(() => {
+    if (!summaryOpen) return;
+    void refreshSummaryHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summaryOpen, summaryType]);
+
+  // 重新生成知识总结（用户主动触发：归档为新版本，旧版本保留）
   // 重新生成期间保留旧文档可查看；按钮在"查看进度"/"查看文档"间切换，点击切换显示模式
   const handleRegenerateSummary = () => {
     if (summaryProgress) {
@@ -362,14 +396,14 @@ const KnowledgeBase: React.FC = () => {
     setSummaryRunning(true);
     (async () => {
       try {
-        const type: SummaryType = source === 'knowledge' ? 'knowledge' : source === 'questionBank' ? 'questionBank' : 'combined';
         await ensureBanksLoaded();
-        const result = await getOrCreateSummary(type, undefined, undefined, (done, total, phase) => {
+        const result = await getOrCreateSummary(summaryType, undefined, undefined, (done, total, phase) => {
           setSummaryProgress({ done, total, phase });
         }, true);
         setSummaryContent(result.content);
         setSummaryProgress(null);
         setSummaryViewMode('content');
+        await refreshSummaryHistory();
       } catch (err) {
         setSummaryContent(`重新生成失败：${err instanceof Error ? err.message : '未知错误'}`);
         setSummaryProgress(null);
@@ -377,6 +411,29 @@ const KnowledgeBase: React.FC = () => {
         setSummaryRunning(false);
       }
     })();
+  };
+
+  // 调用某个历史版本（仅切换启用项，不重新生成、不消耗 AI）
+  const handleSwitchSummaryVersion = async (id: string) => {
+    const entry = await activateSummaryVersion(summaryType, id);
+    if (!entry) return;
+    setSummaryContent(entry.content);
+    setSummaryActiveId(id);
+    setSummaryViewMode('content');
+    setSummaryScrollTop(0);
+    setSummaryHistoryOpen(false);
+  };
+
+  // 删除某个历史版本（用户主动删除）
+  const handleDeleteSummaryVersion = async (id: string) => {
+    const { history, activeId } = await deleteSummaryVersion(summaryType, id);
+    setSummaryHistory(history);
+    setSummaryActiveId(activeId);
+    // 若删除的是当前展示版本，回退到新的当前版本；已无剩余版本则清空（下次查看会自动生成）
+    if (id === summaryActiveId) {
+      const next = history.find((h) => h.id === activeId);
+      setSummaryContent(next ? next.content : '');
+    }
   };
 
   const handleImport = async (files: FileList | null) => {
@@ -845,10 +902,16 @@ const KnowledgeBase: React.FC = () => {
               </h2>
               <div className="flex items-center gap-1">
                 <button
+                  onClick={() => setSummaryHistoryOpen((o) => !o)}
+                  className={`w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg border ${summaryHistoryOpen ? 'border-blue-300 bg-blue-50 text-blue-600 dark:border-blue-700 dark:bg-blue-900/20 dark:text-blue-300' : 'border-gray-200 text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'}`}
+                  title="历史版本">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                </button>
+                <button
                   onClick={handleRegenerateSummary}
                   disabled={summaryLoading && !summaryProgress}
                   className="flex flex-shrink-0 items-center gap-1 whitespace-nowrap px-2.5 h-8 text-xs text-gray-600 dark:text-gray-300 rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40"
-                  title={summaryProgress ? (summaryViewMode === 'content' ? '查看当前生成进度' : '返回查看文档') : '强制忽略缓存，重新生成总结'}>
+                  title={summaryProgress ? (summaryViewMode === 'content' ? '查看当前生成进度' : '返回查看文档') : '重新生成并归档为新版本'}>
                   <svg className={`w-4 h-4 ${summaryProgress ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
                   {summaryProgress ? (summaryViewMode === 'content' ? '查看进度' : '查看文档') : '重新生成'}
                 </button>
@@ -859,6 +922,35 @@ const KnowledgeBase: React.FC = () => {
                 </button>
               </div>
             </div>
+            {summaryHistoryOpen && (
+              <div className="mb-3 border border-gray-100 dark:border-gray-700 rounded-lg overflow-hidden">
+                <div className="px-3 py-1.5 text-[11px] text-gray-400 bg-gray-50 dark:bg-gray-700/40">历史版本（点击调用，右侧删除）</div>
+                <div className="max-h-40 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700">
+                  {summaryHistory.length === 0 ? (
+                    <div className="px-3 py-3 text-xs text-gray-400 text-center">暂无历史版本</div>
+                  ) : (
+                    [...summaryHistory].reverse().map((v) => (
+                      <div key={v.id} className={`flex items-center gap-2 px-3 py-2 ${v.id === summaryActiveId ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
+                        <button
+                          onClick={() => handleSwitchSummaryVersion(v.id)}
+                          className="flex-1 min-w-0 text-left text-xs text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400"
+                          title="调用该版本">
+                          <span className="font-medium">{v.version}</span>
+                          <span className="ml-2 text-gray-400">{new Date(v.createdAt).toLocaleString()}</span>
+                          {v.id === summaryActiveId && <span className="ml-2 text-blue-600 dark:text-blue-400">当前</span>}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteSummaryVersion(v.id)}
+                          className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                          title="删除该版本">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
             <div
               ref={summaryScrollRef}
               onScroll={(e) => setSummaryScrollTop(e.currentTarget.scrollTop)}

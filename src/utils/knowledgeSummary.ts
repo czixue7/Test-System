@@ -24,15 +24,6 @@ const CHUNK_SIZE = 8000;
 // 进度回调：done/total 为已处理块数，phase 为当前阶段
 export type SummaryProgress = (done: number, total: number, phase: 'split' | 'summarize' | 'merge') => void;
 
-// 简单字符串 hash（用于判断内容是否变化）
-function hashCode(str: string): string {
-  let h = 5381;
-  for (let i = 0; i < str.length; i++) {
-    h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
-  }
-  return h.toString(36);
-}
-
 // 题目题干文本（兼容 question / content 两种字段，本项目题目内容在 content 中）
 function questionText(q: Question): string {
   return (q.question || '').trim() || (q.content || '').trim();
@@ -93,24 +84,103 @@ function bankMarkdown(banks: QuestionBank[]): string {
   return lines.join('\n');
 }
 
-// 计算内容指纹（知识库 + 题库，确保新增/修改后签名变化）
-// 附带格式版本：总结展示格式变化（如题库清单改为折叠块）或生成规则变化（如冲突优先级）时使旧缓存失效
-const SUMMARY_FORMAT_VERSION = 5;
-function computeSignature(type: SummaryType, items: KnowledgeItem[], banks: QuestionBank[]): string {
-  // ⚠️ 指纹必须覆盖**所有进入 prompt 的字段**。
-  // 旧实现只取 title+content 与题干+答案，但喂给 AI 的原文还包含知识条目的
-  // category 和题目的 explanation —— 只改分类或只修解析时签名不变，
-  // 于是命中旧缓存，并把过期内容当作「核心参考」注入 AI 问答。
-  const k = items.map((i) => [i.title, i.category, i.content].join('|')).join('||');
-  const q = banks
-    .map((b) =>
-      (b.questions || [])
-        .map((x) => [questionText(x), answerText(x), x.explanation ?? '', x.category ?? '', x.difficulty ?? ''].join('|'))
-        .join('|')
-    )
-    .join('||');
-  const base = type === 'knowledge' ? k : type === 'questionBank' ? q : k + '|||' + q;
-  return hashCode(SUMMARY_FORMAT_VERSION + '::' + base);
+// 文档规则版本：唯一决定「软件更新后是否需要重新生成文档」的指标。
+// 仅在总结的生成规则/文档结构发生不兼容变化时手动递增（v1 → v2）。
+// 已彻底移除内容指纹校验：知识库/题库内容增删改一律不影响、不作废已有总结。
+export const SUMMARY_DOC_VERSION = 'v1';
+
+// 历史版本条目：每生成一次追加一条，永不覆盖、永不自动删除（删除仅由用户触发）
+export interface SummaryVersion {
+  id: string;
+  version: string;
+  content: string;
+  createdAt: number;
+}
+
+const historyKey = (type: SummaryType): string => `${type}-summary-history`;
+const activeKey = (type: SummaryType): string => `${type}-summary-active`;
+
+// 选出当前启用版本：优先 activeId 指向的条目，否则回退到最新一条
+export function pickActiveVersion(history: SummaryVersion[], activeId: string | null): SummaryVersion | null {
+  if (!history.length) return null;
+  if (activeId) {
+    const hit = history.find((h) => h.id === activeId);
+    if (hit) return hit;
+  }
+  return history[history.length - 1];
+}
+
+// 是否需要（用 AI）重新生成，只有三条途径：
+// ① 历史为空（首次生成）② 当前版本规则号与 SUMMARY_DOC_VERSION 不一致（软件更新）③ 用户主动点击
+// 其余情况一律直接复用当前启用版本，不再比对内容
+export function resolveSummaryAction(
+  history: SummaryVersion[],
+  activeId: string | null,
+  docVersion: string,
+  force: boolean
+): 'generate' | 'use-cache' {
+  const active = pickActiveVersion(history, activeId);
+  if (!active) return 'generate';
+  if (active.version !== docVersion) return 'generate';
+  if (force) return 'generate';
+  return 'use-cache';
+}
+
+// 删除某历史版本；若删的是当前启用版本则回退到剩余的最新一条
+export function removeVersionFromHistory(
+  history: SummaryVersion[],
+  id: string,
+  activeId: string | null
+): { history: SummaryVersion[]; activeId: string | null } {
+  const next = history.filter((h) => h.id !== id);
+  const keepActive = activeId && next.some((h) => h.id === activeId);
+  return { history: next, activeId: keepActive ? activeId : next.length ? next[next.length - 1].id : null };
+}
+
+// 读取全部历史版本（按生成先后顺序）
+export async function listSummaryVersions(type: SummaryType): Promise<SummaryVersion[]> {
+  const list = await getStoreValue<SummaryVersion[] | null>(historyKey(type), null);
+  return Array.isArray(list) ? list : [];
+}
+
+// 读取当前启用版本 id
+export async function getActiveSummaryId(type: SummaryType): Promise<string | null> {
+  return getStoreValue<string | null>(activeKey(type), null);
+}
+
+// 调用某个历史版本（仅切换启用项，不重新生成、不消耗 AI）
+export async function activateSummaryVersion(type: SummaryType, id: string): Promise<SummaryVersion | null> {
+  const history = await listSummaryVersions(type);
+  const hit = history.find((h) => h.id === id) ?? null;
+  if (hit) await setStoreValue(activeKey(type), id);
+  return hit;
+}
+
+// 删除某个历史版本（仅用户主动触发）
+export async function deleteSummaryVersion(
+  type: SummaryType,
+  id: string
+): Promise<{ history: SummaryVersion[]; activeId: string | null }> {
+  const history = await listSummaryVersions(type);
+  const activeId = await getActiveSummaryId(type);
+  const result = removeVersionFromHistory(history, id, activeId);
+  await setStoreValue(historyKey(type), result.history);
+  await setStoreValue(activeKey(type), result.activeId);
+  return result;
+}
+
+// 追加一条历史版本并设为当前启用项（归档，绝不覆盖旧版本）
+async function archiveSummaryVersion(type: SummaryType, content: string): Promise<SummaryVersion> {
+  const entry: SummaryVersion = {
+    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    version: SUMMARY_DOC_VERSION,
+    content,
+    createdAt: Date.now(),
+  };
+  const history = await listSummaryVersions(type);
+  await setStoreValue(historyKey(type), [...history, entry]);
+  await setStoreValue(activeKey(type), entry.id);
+  return entry;
 }
 
 // ===== 分段总结 =====
@@ -243,11 +313,6 @@ async function aiSummarize(type: SummaryType, rawText: string, onProgress?: Summ
   return `# ${label}总结（AI 生成）\n\n${content}`;
 }
 
-interface SummaryCache {
-  content: string;
-  signature: string;
-}
-
 // 为总结内容附加覆盖范围说明（合并为单个可折叠框，默认收起，用户基本不需要查看）
 function attachCoverage(type: SummaryType, content: string, items: KnowledgeItem[], banks: QuestionBank[]): string {
   const bankCount = banks.length;
@@ -272,7 +337,7 @@ function attachCoverage(type: SummaryType, content: string, items: KnowledgeItem
   // 折叠框：summary 左右分布（左生成时间，右知识库/题库数 + 展开收起提示）
   const details = [
     '<details>',
-    `<summary><span class="kb-summary-time">生成于 ${timeStr}</span><span class="kb-summary-count">${knowledgeCount} 知识库 / ${bankCount} 题库<span class="kb-collapsed">（点击展开）</span><span class="kb-expanded">（点击收起）</span></span></summary>`,
+    `<summary><span class="kb-summary-time">生成于 ${timeStr}　文档规则 ${SUMMARY_DOC_VERSION}</span><span class="kb-summary-count">${knowledgeCount} 知识库 / ${bankCount} 题库<span class="kb-collapsed">（点击展开）</span><span class="kb-expanded">（点击收起）</span></span></summary>`,
     '<div class="kb-details-content">',
     ...detailLines,
     '</div>',
@@ -292,7 +357,10 @@ function attachCoverage(type: SummaryType, content: string, items: KnowledgeItem
 // （API 费用与 429 限流风险成倍放大，多轮 onProgress 还会互相清掉进度条）。
 const inflightSummaries = new Map<string, Promise<{ content: string; generated: boolean }>>();
 
-// 获取或生成总结（带缓存，内容变化时重新生成；force=true 强制忽略缓存重新生成）
+// 获取或生成总结。
+// 只有三条生成途径：① 历史为空（首次）② 规则版本与 SUMMARY_DOC_VERSION 不一致（软件更新）③ 用户点击（force）
+// 其余情况一律复用当前启用版本 —— 不再做任何内容指纹校验，内容增删改不会使总结作废。
+// 每次生成都会归档为新的历史版本，旧版本永不覆盖/删除（删除仅由用户在历史列表中触发）。
 export async function getOrCreateSummary(
   type: SummaryType,
   _items?: KnowledgeItem[],
@@ -305,19 +373,16 @@ export async function getOrCreateSummary(
   const items = useKnowledgeStore.getState().items;
   const banks = useQuestionBankStore.getState().banks;
 
-  const key = `${type}-summary`;
-  const signature = computeSignature(type, items, banks);
+  const history = await listSummaryVersions(type);
+  const activeId = await getActiveSummaryId(type);
+  const action = resolveSummaryAction(history, activeId, SUMMARY_DOC_VERSION, force);
 
-  if (!force) {
-    const cached = await getStoreValue<SummaryCache | null>(key, null);
-    if (cached && cached.signature === signature && cached.content) {
-      return { content: cached.content, generated: false };
-    }
-  } else {
-    console.log(`[总结] 强制重新生成 ${type} 总结`);
+  if (action === 'use-cache') {
+    const active = pickActiveVersion(history, activeId)!;
+    return { content: active.content, generated: false };
   }
 
-  const inflightKey = `${key}::${signature}::${force ? 'force' : 'auto'}`;
+  const inflightKey = `${type}-summary::${SUMMARY_DOC_VERSION}::${force ? 'force' : 'auto'}`;
   const running = inflightSummaries.get(inflightKey);
   if (running) {
     console.log(`[总结] 复用进行中的生成任务: ${inflightKey}`);
@@ -350,12 +415,11 @@ export async function getOrCreateSummary(
     content = attachCoverage(type, content, items, banks);
 
     if (degraded) {
-      // ⚠️ 降级产物（原文拼接）**不写缓存**。
-      // 旧实现把它当成正常结果缓存：用户之后配好 API Key 再点「查看知识总结」，
-      // 因为签名没变会一直命中这份降级文档，只能靠「重新生成」自救。
-      console.warn('[总结] 本次为降级结果，不写入缓存（下次会自动重试）');
+      // ⚠️ 降级产物（原文拼接）**不归档**。
+      // 否则用户之后配好 API Key 再查看时，会一直停在降级文档上，只能靠「重新生成」自救。
+      console.warn('[总结] 本次为降级结果，不归档（下次会自动重试）');
     } else {
-      await setStoreValue(key, { content, signature });
+      await archiveSummaryVersion(type, content);
     }
 
     return { content, generated: true };

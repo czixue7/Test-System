@@ -129,6 +129,80 @@ check('无关键词时返回空分类', () => {
 });
 
 // =====================================================================
+section('知识总结历史版本 — 去除指纹校验，仅「空/规则版本/用户点击」三条生成途径');
+
+const { SUMMARY_DOC_VERSION, pickActiveVersion, resolveSummaryAction, removeVersionFromHistory } =
+  await import('../src/utils/knowledgeSummary');
+
+type Ver = { id: string; version: string; content: string; createdAt: number };
+const mkVersion = (id: string, version = SUMMARY_DOC_VERSION): Ver => ({
+  id,
+  version,
+  content: `content-${id}`,
+  createdAt: 0,
+});
+
+check('文档规则版本固定为 v1', () => {
+  eq(SUMMARY_DOC_VERSION, 'v1');
+});
+
+check('pickActiveVersion：空历史返回 null', () => {
+  eq(pickActiveVersion([], null), null);
+});
+
+check('pickActiveVersion：无 activeId 时回退到最新一条', () => {
+  const h = [mkVersion('a'), mkVersion('b')];
+  eq(pickActiveVersion(h, null)?.id, 'b');
+});
+
+check('pickActiveVersion：activeId 命中时返回该条', () => {
+  const h = [mkVersion('a'), mkVersion('b')];
+  eq(pickActiveVersion(h, 'a')?.id, 'a');
+});
+
+check('pickActiveVersion：activeId 失效时回退到最新一条', () => {
+  const h = [mkVersion('a'), mkVersion('b')];
+  eq(pickActiveVersion(h, 'missing')?.id, 'b');
+});
+
+check('resolveSummaryAction：历史为空 → generate（首次）', () => {
+  eq(resolveSummaryAction([], null, 'v1', false), 'generate');
+});
+
+check('resolveSummaryAction：版本一致且未强制 → use-cache（不再比对内容指纹）', () => {
+  const h = [mkVersion('a')];
+  eq(resolveSummaryAction(h, null, 'v1', false), 'use-cache');
+});
+
+check('resolveSummaryAction：版本不一致（软件更新）→ generate', () => {
+  const h = [mkVersion('a', 'v0')];
+  eq(resolveSummaryAction(h, null, 'v1', false), 'generate');
+});
+
+check('resolveSummaryAction：用户强制重新生成 → generate', () => {
+  const h = [mkVersion('a')];
+  eq(resolveSummaryAction(h, 'a', 'v1', true), 'generate');
+});
+
+check('removeVersionFromHistory：删除非当前版本，当前项不变', () => {
+  const r = removeVersionFromHistory([mkVersion('a'), mkVersion('b')], 'a', 'b');
+  eq(r.history.map((x) => x.id), ['b']);
+  eq(r.activeId, 'b');
+});
+
+check('removeVersionFromHistory：删除当前版本，回退到剩余最新一条', () => {
+  const r = removeVersionFromHistory([mkVersion('a'), mkVersion('b')], 'b', 'b');
+  eq(r.history.map((x) => x.id), ['a']);
+  eq(r.activeId, 'a');
+});
+
+check('removeVersionFromHistory：删除最后一条，activeId 置空', () => {
+  const r = removeVersionFromHistory([mkVersion('a')], 'a', 'a');
+  eq(r.history.length, 0);
+  eq(r.activeId, null);
+});
+
+// =====================================================================
 console.log(`\n${'='.repeat(64)}`);
 console.log(`通过 ${passed} 项，失败 ${failures.length} 项`);
 if (failures.length > 0) {
