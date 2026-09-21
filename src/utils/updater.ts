@@ -65,13 +65,13 @@ export function calculateVersionHash(version: string, buildInfo?: string): strin
   return Math.abs(hash).toString(16).substring(0, 8);
 }
 
-const currentVersion = '0.4.1';
+const currentVersion = '0.4.2';
 
 /**
  * 当前版本哈希（每次构建时更新）
  * 用于区分同一版本的不同构建
  */
-export const CURRENT_VERSION_HASH = '20260918'; // 每次发布时更新此值
+export const CURRENT_VERSION_HASH = '20260922'; // 每次发布时更新此值
 
 /**
  * 检查当前系统架构

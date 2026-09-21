@@ -271,7 +271,7 @@ const Home: React.FC = () => {
         className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg dark:from-blue-700 dark:to-blue-800 transition-colors"
         style={{ paddingTop: safeArea.top }}
       >
-        <div className="relative max-w-lg mx-auto px-4 h-12 flex items-center justify-between">
+        <div className="relative max-w-lg mx-auto px-4 h-9 flex items-center justify-between">
           <div className="w-8 h-8" />
           <h1 className="absolute left-1/2 -translate-x-1/2 text-base font-semibold pointer-events-none">学习</h1>
           <button onClick={() => setShowAddModal(true)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors">
@@ -282,7 +282,7 @@ const Home: React.FC = () => {
 
       <div
         className="max-w-lg mx-auto px-4 py-4 pb-24"
-        style={{ paddingTop: safeArea.top + 48 }}
+        style={{ paddingTop: safeArea.top + 36 }}
       >
         {currentBank && (
           <div className="bg-white rounded-2xl shadow-md mb-6 border border-gray-100 relative dark:bg-gray-800 dark:border-gray-700">

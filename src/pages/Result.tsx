@@ -375,11 +375,11 @@ const Result: React.FC = () => {
           className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg dark:from-blue-700 dark:to-blue-800 transition-colors flex-shrink-0"
           style={{ paddingTop: safeArea.top }}
         >
-          <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="max-w-lg mx-auto px-4 h-9 flex items-center justify-between">
             <button onClick={() => setShowDetail(false)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
             </button>
-            <h1 className="text-lg font-semibold">答题详情</h1>
+            <h1 className="text-base font-semibold">答题详情</h1>
             <div className="w-8 h-8" />
           </div>
         </header>
@@ -390,7 +390,7 @@ const Result: React.FC = () => {
           style={{ 
             WebkitOverflowScrolling: 'touch',
             overscrollBehavior: 'contain',
-            paddingTop: safeArea.top + 72,
+            paddingTop: safeArea.top + 36,
             paddingBottom: safeArea.bottom + 120
           }}
         >
@@ -503,18 +503,18 @@ const Result: React.FC = () => {
         className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg dark:from-blue-700 dark:to-blue-800 transition-colors"
         style={{ paddingTop: safeArea.top }}
       >
-        <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-lg mx-auto px-4 h-9 flex items-center justify-between">
           <button onClick={handleGoBack} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
           </button>
-          <h1 className="text-lg font-semibold">考试结果</h1>
+          <h1 className="text-base font-semibold">考试结果</h1>
           <div className="w-8 h-8" />
         </div>
       </header>
 
       <div
         className="max-w-lg mx-auto px-4 py-6"
-        style={{ paddingTop: safeArea.top + 48, paddingBottom: safeArea.bottom + 20 }}
+        style={{ paddingTop: safeArea.top + 36, paddingBottom: safeArea.bottom + 20 }}
       >
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-6 text-center mb-4">
           <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center shadow-lg">

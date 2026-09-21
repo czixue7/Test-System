@@ -585,7 +585,7 @@ const Exam: React.FC = () => {
         className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg dark:from-blue-700 dark:to-blue-800 transition-colors flex-shrink-0"
         style={{ paddingTop: safeArea.top }}
       >
-        <div className="max-w-lg mx-auto px-4 pt-1 pb-1 flex items-center justify-between">
+        <div className="max-w-lg mx-auto px-4 h-9 flex items-center justify-between">
           <button onClick={handleGoBack} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
@@ -607,7 +607,7 @@ const Exam: React.FC = () => {
       >
         <div 
           className={`max-w-lg mx-auto px-4 py-4 transition-all duration-300 ${isKeyboardOpen ? 'pb-32' : 'pb-24'}`}
-          style={{ paddingTop: safeArea.top + 48 }}
+          style={{ paddingTop: safeArea.top + 36 }}
         >
           {isGrading && (
             <div className="mb-3 px-3 py-2 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg overflow-hidden relative">

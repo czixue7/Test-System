@@ -4,7 +4,7 @@
  * 内容过长时自动切分为多个知识块，逐块 AI 总结后再合并为完整总结。
  */
 import { KnowledgeItem, QuestionBank, Question } from '../types';
-import { getStoreValue, setStoreValue } from './tauriStore';
+import { getStoreValue, setStoreValue, removeStoreValue } from './tauriStore';
 import { apiGradingService } from './apiGradingService';
 import { useSettingsStore } from '../store/settingsStore';
 import { useKnowledgeStore } from '../store/knowledgeStore';
@@ -99,6 +99,104 @@ export interface SummaryVersion {
 
 const historyKey = (type: SummaryType): string => `${type}-summary-history`;
 const activeKey = (type: SummaryType): string => `${type}-summary-active`;
+// 旧版（历史版本功能上线前）的单一缓存键，升级后需迁移为第一条历史版本
+const legacyKey = (type: SummaryType): string => `${type}-summary`;
+
+// 历史版本归一化：剔除脏条目、按 id 去重、按生成时间升序。
+// 兼容旧存档 / 半写入 / 重复条目，防止一次脏读就把整段历史覆盖丢失。
+export function normalizeHistory(raw: unknown): SummaryVersion[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: SummaryVersion[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const v = item as { id?: unknown; version?: unknown; content?: unknown; createdAt?: unknown };
+    const id = typeof v.id === 'string' ? v.id.trim() : '';
+    const content = typeof v.content === 'string' ? v.content : '';
+    if (!id || !content.trim() || seen.has(id)) continue;
+    seen.add(id);
+    out.push({
+      id,
+      version: typeof v.version === 'string' && v.version ? v.version : SUMMARY_DOC_VERSION,
+      content,
+      createdAt: typeof v.createdAt === 'number' && Number.isFinite(v.createdAt) ? v.createdAt : 0,
+    });
+  }
+  return out.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+// 提取旧缓存的内容：旧结构为 { content, signature }，同时兼容直接存字符串的情况
+export function legacyContentOf(legacy: unknown): string {
+  if (typeof legacy === 'string') return legacy;
+  if (legacy && typeof legacy === 'object') {
+    const c = (legacy as { content?: unknown }).content;
+    if (typeof c === 'string') return c;
+  }
+  return '';
+}
+
+// 把旧缓存迁移为历史版本的第一条。仅在历史为空时执行，绝不覆盖已有历史。
+export function migrateLegacyHistory(
+  legacy: unknown,
+  history: SummaryVersion[],
+  now: number = Date.now()
+): SummaryVersion[] {
+  if (history.length > 0) return history;
+  const content = legacyContentOf(legacy);
+  if (!content.trim()) return history;
+  return [{ id: `legacy-${now.toString(36)}`, version: SUMMARY_DOC_VERSION, content, createdAt: now }];
+}
+
+// 按类型串行化「读—改—写」，避免并发归档/删除互相覆盖（丢失更新）
+const historyQueues = new Map<string, Promise<unknown>>();
+
+function withHistoryLock<T>(type: SummaryType, task: () => Promise<T>): Promise<T> {
+  const prev = historyQueues.get(type) ?? Promise.resolve();
+  const run = prev.then(task, task);
+  historyQueues.set(
+    type,
+    run.then(
+      () => undefined,
+      () => undefined
+    )
+  );
+  return run;
+}
+
+// 读取历史状态（归一化 + 旧数据迁移）。
+// 归一出脏数据、迁移旧缓存时会幂等落盘一次；旧键迁移后即删除，
+// 否则用户删光历史后旧缓存会被再次迁移，出现「删不掉的幽灵版本」。
+async function readHistoryState(
+  type: SummaryType
+): Promise<{ history: SummaryVersion[]; activeId: string | null }> {
+  const [rawHistory, rawActiveId, legacy] = await Promise.all([
+    getStoreValue<unknown>(historyKey(type), null),
+    getStoreValue<unknown>(activeKey(type), null),
+    getStoreValue<unknown>(legacyKey(type), null),
+  ]);
+
+  const normalized = normalizeHistory(rawHistory);
+  const history = migrateLegacyHistory(legacy, normalized);
+  const rawLength = Array.isArray(rawHistory) ? rawHistory.length : 0;
+  const migrated = history !== normalized;
+
+  const activeId =
+    typeof rawActiveId === 'string' && history.some((h) => h.id === rawActiveId)
+      ? rawActiveId
+      : history.length
+        ? history[history.length - 1].id
+        : null;
+
+  if (migrated || normalized.length !== rawLength) {
+    await setStoreValue(historyKey(type), history);
+    if (migrated) await removeStoreValue(legacyKey(type));
+  }
+  if (rawActiveId !== activeId) {
+    await setStoreValue(activeKey(type), activeId);
+  }
+
+  return { history, activeId };
+}
 
 // 选出当前启用版本：优先 activeId 指向的条目，否则回退到最新一条
 export function pickActiveVersion(history: SummaryVersion[], activeId: string | null): SummaryVersion | null {
@@ -139,21 +237,24 @@ export function removeVersionFromHistory(
 
 // 读取全部历史版本（按生成先后顺序）
 export async function listSummaryVersions(type: SummaryType): Promise<SummaryVersion[]> {
-  const list = await getStoreValue<SummaryVersion[] | null>(historyKey(type), null);
-  return Array.isArray(list) ? list : [];
+  const { history } = await readHistoryState(type);
+  return history;
 }
 
 // 读取当前启用版本 id
 export async function getActiveSummaryId(type: SummaryType): Promise<string | null> {
-  return getStoreValue<string | null>(activeKey(type), null);
+  const { activeId } = await readHistoryState(type);
+  return activeId;
 }
 
 // 调用某个历史版本（仅切换启用项，不重新生成、不消耗 AI）
 export async function activateSummaryVersion(type: SummaryType, id: string): Promise<SummaryVersion | null> {
-  const history = await listSummaryVersions(type);
-  const hit = history.find((h) => h.id === id) ?? null;
-  if (hit) await setStoreValue(activeKey(type), id);
-  return hit;
+  return withHistoryLock(type, async () => {
+    const { history } = await readHistoryState(type);
+    const hit = history.find((h) => h.id === id) ?? null;
+    if (hit) await setStoreValue(activeKey(type), id);
+    return hit;
+  });
 }
 
 // 删除某个历史版本（仅用户主动触发）
@@ -161,26 +262,32 @@ export async function deleteSummaryVersion(
   type: SummaryType,
   id: string
 ): Promise<{ history: SummaryVersion[]; activeId: string | null }> {
-  const history = await listSummaryVersions(type);
-  const activeId = await getActiveSummaryId(type);
-  const result = removeVersionFromHistory(history, id, activeId);
-  await setStoreValue(historyKey(type), result.history);
-  await setStoreValue(activeKey(type), result.activeId);
-  return result;
+  return withHistoryLock(type, async () => {
+    const { history, activeId } = await readHistoryState(type);
+    const result = removeVersionFromHistory(history, id, activeId);
+    await setStoreValue(historyKey(type), result.history);
+    await setStoreValue(activeKey(type), result.activeId);
+    await removeStoreValue(legacyKey(type));
+    return result;
+  });
 }
 
 // 追加一条历史版本并设为当前启用项（归档，绝不覆盖旧版本）
 async function archiveSummaryVersion(type: SummaryType, content: string): Promise<SummaryVersion> {
-  const entry: SummaryVersion = {
-    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-    version: SUMMARY_DOC_VERSION,
-    content,
-    createdAt: Date.now(),
-  };
-  const history = await listSummaryVersions(type);
-  await setStoreValue(historyKey(type), [...history, entry]);
-  await setStoreValue(activeKey(type), entry.id);
-  return entry;
+  return withHistoryLock(type, async () => {
+    // 读改写整体串行化：并发归档/删除不会互相覆盖（否则一次过期读就会丢掉刚归档的条目）
+    const { history } = await readHistoryState(type);
+    const entry: SummaryVersion = {
+      id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      version: SUMMARY_DOC_VERSION,
+      content,
+      createdAt: Date.now(),
+    };
+    await setStoreValue(historyKey(type), [...history, entry]);
+    await setStoreValue(activeKey(type), entry.id);
+    await removeStoreValue(legacyKey(type));
+    return entry;
+  });
 }
 
 // ===== 分段总结 =====
@@ -373,8 +480,7 @@ export async function getOrCreateSummary(
   const items = useKnowledgeStore.getState().items;
   const banks = useQuestionBankStore.getState().banks;
 
-  const history = await listSummaryVersions(type);
-  const activeId = await getActiveSummaryId(type);
+  const { history, activeId } = await readHistoryState(type);
   const action = resolveSummaryAction(history, activeId, SUMMARY_DOC_VERSION, force);
 
   if (action === 'use-cache') {
@@ -382,7 +488,9 @@ export async function getOrCreateSummary(
     return { content: active.content, generated: false };
   }
 
-  const inflightKey = `${type}-summary::${SUMMARY_DOC_VERSION}::${force ? 'force' : 'auto'}`;
+  // 在途任务按「类型 + 规则版本」合并：自动生成与用户强制重新生成共用一个任务，
+  // 否则两者会并发跑完整总结，各自的「读—改—写」互相覆盖，导致历史条目丢失。
+  const inflightKey = `${type}-summary::${SUMMARY_DOC_VERSION}`;
   const running = inflightSummaries.get(inflightKey);
   if (running) {
     console.log(`[总结] 复用进行中的生成任务: ${inflightKey}`);

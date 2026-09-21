@@ -114,7 +114,7 @@ const DutySchedule: React.FC = () => {
   const { duties, loadDuties, importDuty, importDutyWithSha, updateDutyWithSha, deleteDuty } = useDutyScheduleStore();
 
   const [currentDutyId, setCurrentDutyId] = useState<string | null>(null);
-  const [isDutyListExpanded, setIsDutyListExpanded] = useState(false);
+  const [showDutySheet, setShowDutySheet] = useState(false);
 
   const now = new Date();
   const [viewYear, setViewYear] = useState(() => now.getFullYear());
@@ -177,16 +177,19 @@ const DutySchedule: React.FC = () => {
   const currentDuty = duties.find((d) => d.id === currentDutyId);
   const todayStr = formatDate(now);
 
-  // 班次/人数统计:全量 shifts 遍历,只在值班表变化时算一次
+  // 每个值班表的班次/人数统计:一次遍历全部值班表,仅在 duties 变化时重算
   // (写在 render body 里会导致每次交互都对数千条 shifts 重算 map+filter+Set)
-  const dutyStats = useMemo(() => {
-    if (!currentDuty) return { count: 0, people: 0 };
-    const people = new Set<string>();
-    for (const s of currentDuty.shifts) {
-      if (s.personInCharge) people.add(s.personInCharge);
+  const dutyListStats = useMemo(() => {
+    const map = new Map<string, { count: number; people: number }>();
+    for (const d of duties) {
+      const people = new Set<string>();
+      for (const s of d.shifts) {
+        if (s.personInCharge) people.add(s.personInCharge);
+      }
+      map.set(d.id, { count: d.shifts.length, people: people.size });
     }
-    return { count: currentDuty.shifts.length, people: people.size };
-  }, [currentDuty]);
+    return map;
+  }, [duties]);
 
   const shiftsByDate = useMemo(() => {
     const map = new Map<string, DutyShift[]>();
@@ -276,9 +279,9 @@ const DutySchedule: React.FC = () => {
       const dateStr = formatDate(new Date(viewYear, viewMonth, d));
       cells.push({ date: dateStr, day: d, isToday: dateStr === todayStr, inMonth: true });
     }
-    while (cells.length % 7 !== 0 || cells.length < 42) {
+    // 只补齐最后一周,不再强制补满 6 行(避免月末出现整行空白)
+    while (cells.length % 7 !== 0) {
       cells.push({ date: null, day: 0, isToday: false, inMonth: false });
-      if (cells.length >= 42) break;
     }
     return cells;
   }, [viewYear, viewMonth, todayStr]);
@@ -386,7 +389,7 @@ const DutySchedule: React.FC = () => {
   const handleSelectDuty = (id: string) => {
     setCurrentDutyId(id);
     localStorage.setItem(STORAGE_KEY_CURRENT_DUTY, id);
-    setIsDutyListExpanded(false);
+    setShowDutySheet(false);
   };
 
   // ===== 导入 =====
@@ -553,7 +556,7 @@ const DutySchedule: React.FC = () => {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900" style={{ paddingTop: safeArea.top }}>
         <header className="sticky top-0 z-10 bg-white dark:bg-gray-800 shadow border-b border-gray-200 dark:border-gray-700">
-          <div className="max-w-lg mx-auto px-4 h-12 flex items-center justify-between">
+          <div className="max-w-lg mx-auto px-4 h-9 flex items-center justify-between">
             <button onClick={() => setShowDownloadPanel(false)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
             </button>
@@ -606,7 +609,7 @@ const DutySchedule: React.FC = () => {
   const selectedDayOfMonth = selectedDateObj ? selectedDateObj.getDate() : 0;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900" style={{ paddingTop: safeArea.top + 48, paddingBottom: safeArea.bottom + 70 }}>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900" style={{ paddingTop: safeArea.top + 36, paddingBottom: safeArea.bottom + 70 }}>
       <style>{`
         @keyframes duty-marquee {
           0% { transform: translateX(0); }
@@ -614,11 +617,17 @@ const DutySchedule: React.FC = () => {
         }
       `}</style>
       <header className="fixed top-0 left-0 right-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800" style={{ paddingTop: safeArea.top }}>
-        <div className="relative max-w-lg mx-auto px-4 h-12 flex items-center justify-between">
+        <div className="relative max-w-lg mx-auto px-4 h-9 flex items-center justify-between">
           <button onClick={() => navigate('/')} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-300">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
           </button>
-          <h1 className="absolute left-1/2 -translate-x-1/2 text-base font-semibold text-gray-800 dark:text-white pointer-events-none">值班表</h1>
+          <button onClick={() => (duties.length > 0 ? setShowDutySheet(true) : setShowAddModal(true))}
+            className="absolute left-1/2 -translate-x-1/2 max-w-[55%] flex items-center gap-1 px-2 py-1 rounded-lg text-base font-semibold text-gray-800 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800">
+            <span className="truncate">{currentDuty ? currentDuty.name : '值班表'}</span>
+            {duties.length > 1 && (
+              <svg className="w-4 h-4 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+            )}
+          </button>
           <div className="flex items-center gap-1">
             <button onClick={() => setShowForecastModal(true)} title="推算未来排班" className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-300">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
@@ -630,41 +639,10 @@ const DutySchedule: React.FC = () => {
         </div>
       </header>
 
-      <div className="max-w-lg mx-auto px-4">
-        {/* 当前值班表选择器 */}
-        {currentDuty ? (
-          <div className="mt-4 mb-3">
-            <div onClick={() => duties.length > 1 && setIsDutyListExpanded(!isDutyListExpanded)}
-              className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 cursor-pointer border border-blue-100 dark:border-blue-800">
-              <div className="flex items-center justify-between">
-                <div className="flex-1 min-w-0">
-                  <div className="text-base font-bold text-gray-800 dark:text-white truncate">{currentDuty.name}</div>
-                  <div className="text-xs text-gray-500 mt-0.5 dark:text-gray-400">{dutyStats.count} 条班次 · {dutyStats.people} 人</div>
-                </div>
-                {duties.length > 1 && (
-                  <svg className={`w-5 h-5 text-gray-400 transition-transform ${isDutyListExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                )}
-              </div>
-              {isDutyListExpanded && duties.length > 1 && (
-                <div className="mt-3 pt-3 border-t border-blue-100 dark:border-blue-800 space-y-2 max-h-60 overflow-y-auto">
-                  {duties.map(duty => (
-                    <div key={duty.id} className="flex items-center gap-2">
-                      <button onClick={() => handleSelectDuty(duty.id)} style={NO_BLUR}
-                        className={`flex-1 text-left px-3 py-2 rounded-lg text-sm ${currentDutyId === duty.id ? 'bg-blue-500 text-white' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300'}`}>
-                        {duty.name} ({duty.shifts.length})
-                      </button>
-                      <button onClick={() => { setDutyToDelete(duty.id); setShowDeleteModal(true); }}
-                        className="p-2 text-gray-400 hover:text-red-500">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M4 7h16" /></svg>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="mt-4 mb-3 bg-gray-100 dark:bg-gray-800 rounded-xl p-6 text-center">
+      <div className="max-w-lg mx-auto px-4 pt-3">
+        {/* 空状态：未导入任何值班表 */}
+        {!currentDuty && (
+          <div className="mb-3 bg-gray-100 dark:bg-gray-800 rounded-xl p-6 text-center">
             <p className="text-gray-500 dark:text-gray-400 mb-3 text-sm">暂无值班表</p>
             <button onClick={() => setShowAddModal(true)} className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm">导入值班表</button>
           </div>
@@ -1016,6 +994,41 @@ const DutySchedule: React.FC = () => {
             </div>
             <div className="text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap leading-relaxed break-words">
               {drillModalText}
+            </div>
+      </Modal>
+
+      {/* 值班表切换抽屉（点击顶栏标题打开） */}
+      <Modal open={showDutySheet} onClose={() => setShowDutySheet(false)} containerClassName="items-end" className="w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+              <div className="min-w-0">
+                <h3 className="text-base font-semibold text-gray-800 dark:text-white">切换值班表</h3>
+                <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">共 {duties.length} 个值班表</p>
+              </div>
+              <button onClick={() => setShowDutySheet(false)} className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 p-3 overflow-y-auto space-y-2">
+              {duties.map(duty => {
+                const active = duty.id === currentDutyId;
+                const st = dutyListStats.get(duty.id);
+                return (
+                  <div key={duty.id}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors ${active ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 hover:border-gray-200 dark:hover:border-gray-600'}`}>
+                    <button onClick={() => handleSelectDuty(duty.id)} style={NO_BLUR} className="flex-1 min-w-0 text-left">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`truncate text-sm font-medium ${active ? 'text-blue-600 dark:text-blue-300' : 'text-gray-800 dark:text-gray-100'}`}>{duty.name}</span>
+                        {active && <span className="flex-shrink-0 px-1.5 py-0.5 rounded-full text-[10px] leading-none bg-blue-500 text-white">当前</span>}
+                      </div>
+                      <div className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{st ? st.count : duty.shifts.length} 条班次 · {st ? st.people : 0} 人</div>
+                    </button>
+                    <button onClick={() => { setDutyToDelete(duty.id); setShowDeleteModal(true); }}
+                      className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20" title="删除该值班表">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    </button>
+                  </div>
+                );
+              })}
             </div>
       </Modal>
 

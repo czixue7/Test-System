@@ -41,26 +41,30 @@ const isMobileWebView = (): boolean => {
 };
 
 export async function getStoreValue<T>(key: string, defaultValue: T): Promise<T> {
-  // 如果不是 Tauri 环境，使用 localStorage
-  if (!isTauri()) {
-    try {
-      const item = localStorage.getItem(getLocalStorageKey(key));
-      if (item !== null) {
-        return JSON.parse(item) as T;
-      }
-    } catch (e) {
-      console.error('[tauriStore] Failed to read from localStorage:', e);
+  // 优先读 localStorage：setStoreValue 每次都是「先同步写 localStorage，再异步写 plugin-store」，
+  // 因此 localStorage 里的值永远不旧于 store 插件。历史缺陷：曾优先读插件并在读到值时
+  // 反写回 localStorage 备份 —— 一旦插件 save() 静默失败（文件被占用/体积过大），
+  // 过期值会被反复读回并覆盖掉更新的备份，表现为「刚归档的版本记录消失」。
+  try {
+    const item = localStorage.getItem(getLocalStorageKey(key));
+    if (item !== null) {
+      return JSON.parse(item) as T;
     }
+  } catch (e) {
+    console.error('[tauriStore] Failed to read from localStorage:', e);
+  }
+
+  // localStorage 缺失（首次运行 / 被清理）时才回退到 store 插件，并回填备份
+  if (!isTauri()) {
     return defaultValue;
   }
 
-  // Tauri 环境：优先使用 store 插件
   try {
     const s = await getStoreInstance();
     if (s) {
       const value = await s.get<T>(key);
       if (value !== null && value !== undefined) {
-        // 同时备份到 localStorage，防止 store 文件丢失
+        // 仅作为备份回填，此时 localStorage 本来就是空的
         try {
           localStorage.setItem(getLocalStorageKey(key), JSON.stringify(value));
         } catch (e) {
@@ -73,17 +77,6 @@ export async function getStoreValue<T>(key: string, defaultValue: T): Promise<T>
     console.error('[tauriStore] Failed to read from store:', error);
   }
 
-  // 如果 store 读取失败，尝试从 localStorage 恢复
-  try {
-    const item = localStorage.getItem(getLocalStorageKey(key));
-    if (item !== null) {
-      console.log('[tauriStore] Recovered from localStorage');
-      return JSON.parse(item) as T;
-    }
-  } catch (e) {
-    // 忽略错误
-  }
-
   return defaultValue;
 }
 
@@ -93,6 +86,12 @@ export async function setStoreValue<T>(key: string, value: T): Promise<void> {
     localStorage.setItem(getLocalStorageKey(key), JSON.stringify(value));
   } catch (e) {
     console.error('[tauriStore] Failed to save to localStorage:', e);
+    // 写入失败时清掉旧备份，避免后续读到「更旧的」localStorage 值（改用插件里的最新值）
+    try {
+      localStorage.removeItem(getLocalStorageKey(key));
+    } catch (removeError) {
+      // 忽略
+    }
   }
 
   // 如果不是 Tauri 环境，只使用 localStorage

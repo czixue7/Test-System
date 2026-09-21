@@ -426,13 +426,16 @@ const KnowledgeBase: React.FC = () => {
 
   // 删除某个历史版本（用户主动删除）
   const handleDeleteSummaryVersion = async (id: string) => {
+    // 先判断被删的是不是当前展示的版本，await 之后 state 可能已更新
+    const wasDisplayed = id === summaryActiveId;
     const { history, activeId } = await deleteSummaryVersion(summaryType, id);
     setSummaryHistory(history);
     setSummaryActiveId(activeId);
     // 若删除的是当前展示版本，回退到新的当前版本；已无剩余版本则清空（下次查看会自动生成）
-    if (id === summaryActiveId) {
+    if (wasDisplayed) {
       const next = history.find((h) => h.id === activeId);
       setSummaryContent(next ? next.content : '');
+      setSummaryViewMode('content');
     }
   };
 
@@ -485,6 +488,8 @@ const KnowledgeBase: React.FC = () => {
     } finally {
       setSearching(false);
       setSummaryProgress(null);
+      // 搜索过程中可能自动生成并归档了新版本，刷新历史面板保持一致
+      void refreshSummaryHistory();
     }
   };
 
@@ -648,18 +653,20 @@ const KnowledgeBase: React.FC = () => {
   }, [convertSettings]);
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900 overflow-hidden" style={{ paddingTop: safeArea.top + 48, paddingBottom: safeArea.bottom + 70 }}>
+    <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900 overflow-hidden" style={{ paddingTop: safeArea.top + 36, paddingBottom: safeArea.bottom + 70 }}>
       {/* 顶部导航 */}
       <header className="fixed top-0 left-0 right-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800" style={{ paddingTop: safeArea.top }}>
-        <div className="relative max-w-lg mx-auto px-4 h-12 flex items-center justify-between">
-          <button onClick={openSidebar} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-300" title="内容分类">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4h6v6H4zM14 4h6v6h-6zM14 14h6v6h-6zM4 14h6v6H4z" /></svg>
-          </button>
-          <h1 className="absolute left-1/2 -translate-x-1/2 text-base font-semibold text-gray-800 dark:text-white pointer-events-none">知识库</h1>
+        <div className="relative max-w-lg mx-auto px-4 h-9 flex items-center justify-between">
           <div className="flex items-center gap-1">
+            <button onClick={openSidebar} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-300" title="内容分类">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4h6v6H4zM14 4h6v6h-6zM14 14h6v6h-6zM4 14h6v6H4z" /></svg>
+            </button>
             <button onClick={handleViewSummary} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-300" title="查看知识总结">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
             </button>
+          </div>
+          <h1 className="absolute left-1/2 -translate-x-1/2 text-base font-semibold text-gray-800 dark:text-white pointer-events-none">知识库</h1>
+          <div className="flex items-center gap-1">
             <button onClick={() => setChatManageOpen(true)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-300" title="对话管理">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v4m-2-2h4" /></svg>
             </button>
@@ -923,30 +930,36 @@ const KnowledgeBase: React.FC = () => {
               </div>
             </div>
             {summaryHistoryOpen && (
-              <div className="mb-3 border border-gray-100 dark:border-gray-700 rounded-lg overflow-hidden">
-                <div className="px-3 py-1.5 text-[11px] text-gray-400 bg-gray-50 dark:bg-gray-700/40">历史版本（点击调用，右侧删除）</div>
+              <div className="mb-3 flex-shrink-0 border border-gray-100 dark:border-gray-700 rounded-lg overflow-hidden">
+                <div className="px-3 py-1.5 text-[11px] text-gray-400 bg-gray-50 dark:bg-gray-700/40">
+                  历史版本（共 {summaryHistory.length} 个 · 点击调用，右侧删除）
+                </div>
                 <div className="max-h-40 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700">
                   {summaryHistory.length === 0 ? (
                     <div className="px-3 py-3 text-xs text-gray-400 text-center">暂无历史版本</div>
                   ) : (
-                    [...summaryHistory].reverse().map((v) => (
-                      <div key={v.id} className={`flex items-center gap-2 px-3 py-2 ${v.id === summaryActiveId ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
-                        <button
-                          onClick={() => handleSwitchSummaryVersion(v.id)}
-                          className="flex-1 min-w-0 text-left text-xs text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400"
-                          title="调用该版本">
-                          <span className="font-medium">{v.version}</span>
-                          <span className="ml-2 text-gray-400">{new Date(v.createdAt).toLocaleString()}</span>
-                          {v.id === summaryActiveId && <span className="ml-2 text-blue-600 dark:text-blue-400">当前</span>}
-                        </button>
-                        <button
-                          onClick={() => handleDeleteSummaryVersion(v.id)}
-                          className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
-                          title="删除该版本">
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                        </button>
-                      </div>
-                    ))
+                    [...summaryHistory].reverse().map((v, i) => {
+                      const ordinal = summaryHistory.length - i;
+                      return (
+                        <div key={v.id} className={`flex items-center gap-2 px-3 py-2 ${v.id === summaryActiveId ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
+                          <button
+                            onClick={() => handleSwitchSummaryVersion(v.id)}
+                            className="flex-1 min-w-0 text-left text-xs text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400"
+                            title="调用该版本">
+                            <span className="font-medium">第 {ordinal} 版</span>
+                            <span className="ml-2 text-gray-400">规则 {v.version}</span>
+                            <span className="ml-2 text-gray-400">{new Date(v.createdAt).toLocaleString()}</span>
+                            {v.id === summaryActiveId && <span className="ml-2 text-blue-600 dark:text-blue-400">当前</span>}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSummaryVersion(v.id)}
+                            className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                            title="删除该版本">
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                          </button>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               </div>

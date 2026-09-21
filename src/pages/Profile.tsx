@@ -40,7 +40,7 @@ const Profile: React.FC = () => {
     }
   };
 
-  const currentVersion = '0.4.1';
+  const currentVersion = '0.4.2';
 
 
 
@@ -115,7 +115,7 @@ const Profile: React.FC = () => {
         className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg dark:from-blue-700 dark:to-blue-800 transition-colors"
         style={{ paddingTop: safeArea.top }}
       >
-        <div className="relative max-w-lg mx-auto px-4 h-12 flex items-center justify-between">
+        <div className="relative max-w-lg mx-auto px-4 h-9 flex items-center justify-between">
           <div className="w-8 h-8" />
           <h1 className="absolute left-1/2 -translate-x-1/2 text-base font-semibold pointer-events-none">我的</h1>
           <div className="w-8 h-8" />
@@ -124,7 +124,7 @@ const Profile: React.FC = () => {
 
       <div
         className="max-w-lg mx-auto px-4 py-4 pb-24"
-        style={{ paddingTop: safeArea.top + 48 }}
+        style={{ paddingTop: safeArea.top + 36 }}
       >
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md overflow-hidden">
           {menuItems.map((item, index) => (

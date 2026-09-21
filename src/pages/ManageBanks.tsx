@@ -282,11 +282,11 @@ const ManageBanks: React.FC = () => {
         className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg dark:from-blue-700 dark:to-blue-800 transition-colors"
         style={{ paddingTop: safeArea.top }}
       >
-        <div className="max-w-lg mx-auto px-4 pt-1 pb-1 flex items-center justify-between">
+        <div className="max-w-lg mx-auto px-4 h-9 flex items-center justify-between">
           <button onClick={handleGoBack} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
           </button>
-          <h1 className="text-lg font-semibold">题库管理</h1>
+          <h1 className="text-base font-semibold">题库管理</h1>
           <div className="flex items-center gap-1">
             <button
               onClick={() => setShowExportModal(true)}
@@ -316,7 +316,7 @@ const ManageBanks: React.FC = () => {
 
       <div
         className="max-w-lg mx-auto px-4 py-4 pb-24"
-        style={{ paddingTop: safeArea.top + 48 }}
+        style={{ paddingTop: safeArea.top + 36 }}
       >
         {userBanks.length > 0 && (
           <div className="mb-4">

@@ -578,11 +578,11 @@ const DownloadBanks: React.FC = () => {
         className="fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-800 text-gray-800 dark:text-white shadow dark:shadow-gray-700 transition-colors border-b border-gray-200 dark:border-gray-700"
         style={{ paddingTop: safeArea.top }}
       >
-        <div className="max-w-lg mx-auto px-4 pt-1 pb-1 flex items-center justify-between">
+        <div className="max-w-lg mx-auto px-4 h-9 flex items-center justify-between">
           <button onClick={handleGoBack} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
           </button>
-          <h1 className="text-lg font-semibold">下载题库</h1>
+          <h1 className="text-base font-semibold">下载题库</h1>
           <button
             onClick={fetchBankList}
             disabled={loading}
@@ -603,7 +603,7 @@ const DownloadBanks: React.FC = () => {
 
       <div 
         className="max-w-lg mx-auto px-4 py-4 pb-24"
-        style={{ paddingTop: safeArea.top + 48 }}
+        style={{ paddingTop: safeArea.top + 36 }}
       >
         <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl py-2 px-4 mb-4">
           <div className="flex items-center gap-3">

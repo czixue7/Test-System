@@ -131,8 +131,15 @@ check('无关键词时返回空分类', () => {
 // =====================================================================
 section('知识总结历史版本 — 去除指纹校验，仅「空/规则版本/用户点击」三条生成途径');
 
-const { SUMMARY_DOC_VERSION, pickActiveVersion, resolveSummaryAction, removeVersionFromHistory } =
-  await import('../src/utils/knowledgeSummary');
+const {
+  SUMMARY_DOC_VERSION,
+  pickActiveVersion,
+  resolveSummaryAction,
+  removeVersionFromHistory,
+  normalizeHistory,
+  legacyContentOf,
+  migrateLegacyHistory,
+} = await import('../src/utils/knowledgeSummary');
 
 type Ver = { id: string; version: string; content: string; createdAt: number };
 const mkVersion = (id: string, version = SUMMARY_DOC_VERSION): Ver => ({
@@ -200,6 +207,83 @@ check('removeVersionFromHistory：删除最后一条，activeId 置空', () => {
   const r = removeVersionFromHistory([mkVersion('a')], 'a', 'a');
   eq(r.history.length, 0);
   eq(r.activeId, null);
+});
+
+// =====================================================================
+section('历史版本归一化与旧数据迁移 — 修复「重新生成后历史记录消失」');
+
+check('normalizeHistory：非数组一律返回空数组（不抛错、不误删历史）', () => {
+  eq(normalizeHistory(null), []);
+  eq(normalizeHistory(undefined), []);
+  eq(normalizeHistory({ content: 'x' }), []);
+  eq(normalizeHistory('raw'), []);
+});
+
+check('normalizeHistory：剔除缺 id / 内容为空的脏条目', () => {
+  const dirty = [mkVersion('a'), { id: '', content: 'x' }, { id: 'b', content: '' }, null, 42, mkVersion('c')];
+  eq(normalizeHistory(dirty).map((v) => v.id), ['a', 'c']);
+});
+
+check('normalizeHistory：按 id 去重，保留首次出现', () => {
+  const dup = [{ ...mkVersion('a'), createdAt: 2 }, { ...mkVersion('a'), createdAt: 1 }, mkVersion('b')];
+  const out = normalizeHistory(dup);
+  eq(out.length, 2);
+  eq([...out.map((v) => v.id)].sort(), ['a', 'b']);
+  eq(out.find((v) => v.id === 'a')?.createdAt, 2);
+});
+
+check('normalizeHistory：按生成时间升序排列（决定「当前版本」回退顺序）', () => {
+  const h = [
+    { ...mkVersion('c'), createdAt: 300 },
+    { ...mkVersion('a'), createdAt: 100 },
+    { ...mkVersion('b'), createdAt: 200 },
+  ];
+  eq(normalizeHistory(h).map((v) => v.id), ['a', 'b', 'c']);
+  eq(pickActiveVersion(normalizeHistory(h), null)?.id, 'c');
+});
+
+check('normalizeHistory：缺失版本号时补当前文档规则号', () => {
+  const out = normalizeHistory([{ id: 'a', content: 'c', createdAt: 1 }]);
+  eq(out[0].version, SUMMARY_DOC_VERSION);
+});
+
+check('normalizeHistory：脏数据归一化后不丢条目（稳定幂等）', () => {
+  const cleaned = normalizeHistory([mkVersion('a'), mkVersion('b')]);
+  eq(normalizeHistory(cleaned).map((v) => v.id), ['a', 'b']);
+});
+
+check('legacyContentOf：兼容旧缓存结构 { content, signature }', () => {
+  eq(legacyContentOf({ content: '旧总结正文', signature: 'abc' }), '旧总结正文');
+});
+
+check('legacyContentOf：兼容直接存字符串，其余情况返回空串', () => {
+  eq(legacyContentOf('纯字符串历史'), '纯字符串历史');
+  eq(legacyContentOf(null), '');
+  eq(legacyContentOf({ signature: 'abc' }), '');
+});
+
+check('migrateLegacyHistory：已有历史时绝不覆盖', () => {
+  const h = [mkVersion('a')];
+  const out = migrateLegacyHistory({ content: '旧缓存' }, h, 1700000000000);
+  eq(out.map((v) => v.id), ['a']);
+});
+
+check('migrateLegacyHistory：历史为空时把旧缓存迁移为第一条版本', () => {
+  const out = migrateLegacyHistory({ content: '旧总结正文', signature: 'sig' }, [], 1700000000000);
+  eq(out.length, 1);
+  eq(out[0].content, '旧总结正文');
+  eq(out[0].version, SUMMARY_DOC_VERSION);
+  eq(out[0].createdAt, 1700000000000);
+});
+
+check('migrateLegacyHistory：迁移结果可被 normalizeHistory 稳定保留', () => {
+  const out = migrateLegacyHistory({ content: '旧总结正文' }, [], 1700000000000);
+  eq(normalizeHistory(out).length, 1);
+});
+
+check('migrateLegacyHistory：无旧缓存时不产生幽灵版本', () => {
+  eq(migrateLegacyHistory(null, []), []);
+  eq(migrateLegacyHistory({ content: '   ' }, []).length, 0);
 });
 
 // =====================================================================
