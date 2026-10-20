@@ -1,0 +1,138 @@
+{
+  "updatedAt": "2026-08-23T19:00:44.231Z",
+  "systemBanks": [
+    {
+      "bankId": "bank:第一周考题.json",
+      "name": "第一周考题",
+      "filename": "第一周考题.json",
+      "downloadUrl": "https://raw.githubusercontent.com/czixue7/Test-System/main/Question_bank/public/banks/第一周考题/第一周考题.json",
+      "imagePath": "Question_bank/public/banks/第一周考题/image",
+      "sha": "8d5a2171c8e997eacd30cdc02fe984efc56f46cf91d09b2b7d9bab4c9e6affdc",
+      "updatedAt": "2026-08-23T19:00:44.145Z",
+      "images": [
+        {
+          "filename": "17-1.png",
+          "sha": "d4e987921b7cf10d55bfe4c9efaf11ce047e5b004e91a0be7d618c59eac32a5a"
+        }
+      ]
+    },
+    {
+      "bankId": "bank:第二周考题.json",
+      "name": "第二周考题",
+      "filename": "第二周考题.json",
+      "downloadUrl": "https://raw.githubusercontent.com/czixue7/Test-System/main/Question_bank/public/banks/第二周考题/第二周考题.json",
+      "sha": "180bee9682fabc3cab639a47e6a63d2f82a85f5e47d9b30c6ce638ecc84abebb",
+      "updatedAt": "2026-08-23T19:00:44.158Z",
+      "images": []
+    },
+    {
+      "bankId": "bank:第三周考题.json",
+      "name": "第三周考题",
+      "filename": "第三周考题.json",
+      "downloadUrl": "https://raw.githubusercontent.com/czixue7/Test-System/main/Question_bank/public/banks/第三周考题/第三周考题.json",
+      "imagePath": "Question_bank/public/banks/第三周考题/image",
+      "sha": "ff9ed7ecc69e75adcb83caa8ba3afc2c19e4995d3519f909ea9ca261b4cfe869",
+      "updatedAt": "2026-08-23T19:00:44.154Z",
+      "images": [
+        {
+          "filename": "13-1.jpg",
+          "sha": "c93387b4f06676f48a1fa48b07c887cf132c12dd219cc790f9f85dc70fa490f5"
+        },
+        {
+          "filename": "15-1.jpg",
+          "sha": "7955dca0c6e8f3b243216c24df49439ec17f63f9cd49fa4fece8a2001212d791"
+        }
+      ]
+    },
+    {
+      "bankId": "bank:第四周考题.json",
+      "name": "第四周考题",
+      "filename": "第四周考题.json",
+      "downloadUrl": "https://raw.githubusercontent.com/czixue7/Test-System/main/Question_bank/public/banks/第四周考题/第四周考题.json",
+      "imagePath": "Question_bank/public/banks/第四周考题/image",
+      "sha": "109ecc8b1779dfb92aacdd91dd20eb8dd8fff935f572efcb67de36aff12b742f",
+      "updatedAt": "2026-08-23T19:00:44.231Z",
+      "images": [
+        {
+          "filename": "12-1.jpg",
+          "sha": "8c232fd569f949e1ad31b9469d4174a56cc991a24b1925c58ff105ed5133420b"
+        }
+      ]
+    },
+    {
+      "bankId": "bank:第五周考题.json",
+      "name": "第五周考题",
+      "filename": "第五周考题.json",
+      "downloadUrl": "https://raw.githubusercontent.com/czixue7/Test-System/main/Question_bank/public/banks/第五周考题/第五周考题.json",
+      "imagePath": "Question_bank/public/banks/第五周考题/image",
+      "sha": "a013bb54f6e70241f9b355863992f83b5fb9323757dd2c4e1c5414da7760ac37",
+      "updatedAt": "2026-08-23T19:00:44.167Z",
+      "images": [
+        {
+          "filename": "12-1.jpg",
+          "sha": "e4ec10e5a5bcb3e00239090fca5f7986d05b09412b60a67032b203198af04d28"
+        },
+        {
+          "filename": "18-1.jpg",
+          "sha": "c288006bff7fadd053345c323f5e995b84479272e4976d1735b6ed3bced00c31"
+        }
+      ]
+    },
+    {
+      "bankId": "bank:第六周考题.json",
+      "name": "第六周考题",
+      "filename": "第六周考题.json",
+      "downloadUrl": "https://raw.githubusercontent.com/czixue7/Test-System/main/Question_bank/public/banks/第六周考题/第六周考题.json",
+      "imagePath": "Question_bank/public/banks/第六周考题/image",
+      "sha": "1a7f8f3d6652f6ca4aa1e8714ecb0b3768409b259e01fb2e4bae5340c281c847",
+      "updatedAt": "2026-08-23T19:00:44.224Z",
+      "images": [
+        {
+          "filename": "11-1.jpg",
+          "sha": "f5d85ecd05d5b2a75eed2b72c98746d3d59585a0787a2d113f19105354e987ef"
+        },
+        {
+          "filename": "12-1.jpg",
+          "sha": "52dfc4291c4cd8de95059b670b36e3868459d226de5fdc9a14708f653120167d"
+        }
+      ]
+    },
+    {
+      "bankId": "bank:第七周考题.json",
+      "name": "第七周考题",
+      "filename": "第七周考题.json",
+      "downloadUrl": "https://raw.githubusercontent.com/czixue7/Test-System/main/Question_bank/public/banks/第七周考题/第七周考题.json",
+      "sha": "f4dc6d3ce0b9c0b7a1ac4b78e99af994eb748f5ecafcf69f91439531494a148f",
+      "updatedAt": "2026-08-23T19:00:44.145Z",
+      "images": []
+    },
+    {
+      "bankId": "bank:第八周考题.json",
+      "name": "第八周考题",
+      "filename": "第八周考题.json",
+      "downloadUrl": "https://raw.githubusercontent.com/czixue7/Test-System/main/Question_bank/public/banks/第八周考题/第八周考题.json",
+      "sha": "1c787e3580809d0aaa2769bdbd03a73546f6c8c4208230b7adbbd604c6ce9301",
+      "updatedAt": "2026-08-23T19:00:44.211Z",
+      "images": []
+    },
+    {
+      "bankId": "bank:第九周考题.json",
+      "name": "第九周考题",
+      "filename": "第九周考题.json",
+      "downloadUrl": "https://raw.githubusercontent.com/czixue7/Test-System/main/Question_bank/public/banks/第九周考题/第九周考题.json",
+      "sha": "2ed488b1e116c47566d5a6a4def26200a07736074eb61cc766f4639e34a4b023",
+      "updatedAt": "2026-08-23T19:00:44.156Z",
+      "images": []
+    },
+    {
+      "bankId": "bank:第十周考题.json",
+      "name": "第十周考题",
+      "filename": "第十周考题.json",
+      "downloadUrl": "https://raw.githubusercontent.com/czixue7/Test-System/main/Question_bank/public/banks/第十周考题/第十周考题.json",
+      "sha": "c12e95d65f0a0c2be257969a7695cbdb310f07d0ac34b2595562f5fe61b6ff88",
+      "updatedAt": "2026-08-23T19:00:44.225Z",
+      "images": []
+    }
+  ],
+  "userBanks": []
+}

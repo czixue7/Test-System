@@ -1,0 +1,125 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies
+node_modules
+
+# Build outputs
+dist
+dist-ssr
+build/
+.cache/
+*.local
+
+# Editor directories and files
+.idea
+.vscode/*
+!.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS generated files
+.DS_Store
+Thumbs.db
+*.tmp
+*.temp
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Trae IDE
+.trae/
+
+# Tauri - Rust
+target/
+
+# Tauri - Android
+/src-tauri/gen/android/.gradle
+/src-tauri/gen/android/app/build
+/src-tauri/gen/android/app/src/main/assets/*
+!/src-tauri/gen/android/app/src/main/assets/.gitkeep
+/src-tauri/gen/android/app/src/main/jniLibs/*
+!/src-tauri/gen/android/app/src/main/jniLibs/.gitkeep
+/src-tauri/gen/android/local.properties
+/src-tauri/gen/android/*.iml
+/src-tauri/gen/android/.idea
+/src-tauri/gen/android/captures
+/src-tauri/gen/android/gradle
+/src-tauri/gen/android/gradlew
+/src-tauri/gen/android/gradlew.bat
+/src-tauri/gen/android/buildSrc/build
+/src-tauri/gen/android/app/release-key.jks
+/src-tauri/gen/android/app/keystore.properties
+
+# Android Studio
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+bin/
+gen/
+out/
+.gradle/
+proguard/
+*.jks
+*.keystore
+
+# Android SDK (local install)
+.android-sdk/
+
+# Local toolchain byproducts (self-built SDK / JDK, not source)
+.buildtools/
+.build-temp/
+release/
+
+# Local UI previews and design proposals (not application source)
+/duty-preview/
+/*-proposals.html
+
+# Debug utilities (development only)
+src/utils/bankDebug.ts
+
+# Build summary and reference files
+gguf-build-summary.md
+import-local-model-lag.md
+参考.md
+火山引擎流式输出.md
+
+# Encryption tool (contains sensitive API keys and passwords)
+encrypt-tool/
+
+# Excel tables (not version controlled)
+*.xlsx
+*.xls
+
+# Local review notes and drafts (not version controlled)
+docs/代码缺陷审查报告.md
+draft_836d0cbe_folder/
+
+# Local one-off scripts (not version controlled)
+_gen_duty_roles.cjs
+
+# Repository rebuild: keep local documentation and business data out of source uploads.
+/docs/
+/Question_bank/
+/public/
+/src-tauri/gen/schemas/
+/src-tauri/vendor/*/.cargo_vcs_info.json
+/src-tauri/vendor/*/.github/
+
