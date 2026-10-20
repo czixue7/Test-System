@@ -1,5 +1,5 @@
 import Collapse from '../components/Collapse';
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuestionBankStore } from '../store/questionBankStore';
 import { QuestionBank, BankIndex, BankImageInfo, BankIndexItem } from '../types';
@@ -65,14 +65,18 @@ const DownloadBanks: React.FC = () => {
     user: true
   });
   const [bankIndex, setBankIndex] = useState<BankIndex | null>(null);
+  const requestPending = useRef(false);
 
 
   // 使用统一的 bank-index.json 获取题库列表
   const fetchBankList = useCallback(async () => {
+    if (requestPending.current) return;
+    requestPending.current = true;
     setLoading(true);
     setError(null);
     try {
       const index = await fetchBankIndex();
+      const banks = useQuestionBankStore.getState().banks;
       
       if (index) {
         setBankIndex(index);
@@ -141,9 +145,10 @@ const DownloadBanks: React.FC = () => {
       setError('获取题库列表失败');
       showError('获取题库列表失败，请检查网络连接');
     } finally {
+      requestPending.current = false;
       setLoading(false);
     }
-  }, [banks, showError, showInfo, sourceEntries]);
+  }, [showError]);
 
   useEffect(() => {
     fetchBankList();

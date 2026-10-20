@@ -2490,6 +2490,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "percent-encoding",
+ "regex",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -2498,6 +2499,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "tokio",
+ "tokio-util",
  "uuid",
 ]
 

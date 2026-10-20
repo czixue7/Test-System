@@ -39,6 +39,7 @@ globalThis.fetch = (async (input: any, init: any = {}) => {
   if (mode === "gateway") return new Response("Bad Gateway", { status: 502 });
   if (mode === "hold") { await new Promise<void>(resolve => { release = resolve; }); }
   if (path.endsWith("-index.json")) {
+    if (mode === "empty") return Response.json({systemDuties:[],userDuties:[]});
     const bank = path === "bank-index.json", kind = bank ? "banks" : "duty";
     return Response.json(bank ? { systemBanks: [], userBanks: [{ name: "题库", filename: "bank.json", downloadUrl: "/files/banks.json", sha: hashes.banks }] }
       : { systemDuties: [], userDuties: [{ name: "值班表", filename: "duty.json", downloadUrl: "/files/duty.json", sha: hashes[kind] }] });
@@ -56,6 +57,16 @@ source.getState().setSync("duty", true);
 window.dispatchEvent(new Event("online"));
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(requests.length, 0, "settings and network restoration must not sync");
+await duties.getState().loadDuties();
+assert.equal(requests.length,0,'Loading missing local duty data must not request a remote resource');
+mode='empty';
+await syncDataNow('public');
+assert.equal(requests.length,1,'An explicitly requested empty catalog is read once');
+window.dispatchEvent(new Event('online'));
+await new Promise(resolve=>setTimeout(resolve,0));
+assert.equal(requests.length,1,'An empty catalog must not schedule any automatic retry');
+assert.equal(duties.getState().duties.length,0);
+requests=[];mode='normal';
 await syncDataNow("public");
 assert.equal(banks.getState().banks.length, 0, 'Settings must ignore the legacy bank flag');
 await fetchBanks();

@@ -11,11 +11,9 @@ type Row = {
 };
 type Overview = { rows: Row[]; warnings: string[] };
 const kinds = [
-  ["banks", "题库", "个题库"],
   ["knowledge", "知识库", "条知识"],
   ["summaries", "总结", "个版本"],
   ["chat", "AI 聊天", "个会话"],
-  ["duty", "值班表", "张表"],
 ] as const;
 const size = (n: number) =>
   n < 1024
@@ -56,7 +54,7 @@ export default function SyncOverview({ dataDir }: { dataDir: string }) {
       clearInterval(timer);
     };
   }, [open]);
-  const rows = data?.rows ?? [];
+  const rows = (data?.rows ?? []).filter(row => kinds.some(([kind]) => kind === row.kind));
   const spaces = [...new Set(rows.map((row) => row.space))];
   return (
     <section className="panel sync-overview" aria-label="电脑同步存储" data-expanded={open}>
@@ -71,7 +69,7 @@ export default function SyncOverview({ dataDir }: { dataDir: string }) {
           <small>
             {data
               ? `${spaces.length} 个空间 · ${size(rows.reduce((sum, row) => sum + row.bytes, 0))}`
-              : "题库、知识库、总结、AI 聊天、值班表"}
+              : "知识库、总结、AI 聊天"}
           </small>
         </span>
         <span
@@ -84,7 +82,7 @@ export default function SyncOverview({ dataDir }: { dataDir: string }) {
       {open && (
         <div id="sync-storage-body" className="sync-overview-body">
           <p className="sync-storage-hint">
-            客户端开启同步后，内容保存在这台电脑。相同空间的设备会合并共享；发布目录与同步存储分别管理。
+            客户端点击手动同步后，知识库、总结和 AI 聊天保存在这台电脑。题库和值班表只读取发布目录，不存入同步空间。
           </p>
           {error && (
             <p role="alert" className="warning">
@@ -127,7 +125,7 @@ export default function SyncOverview({ dataDir }: { dataDir: string }) {
                         {kinds.find((kind) => kind[0] === row.kind)?.[1]}
                       </span>
                       <small>
-                        {row.kind === "banks" ? "SHA-256 校验" : `版本 ${row.revision}`} · {size(row.bytes)}
+                        版本 {row.revision} · {size(row.bytes)}
                       </small>
                       <time>
                         {row.updatedAt

@@ -1,6 +1,8 @@
 import { enabledSources, updateSourcesFingerprint, useDataSourceStore } from "../store/dataSourceStore";
 import { DataSourceEntry } from "./sourceConfig";
 import { fetchRemoteJson, releaseMetadataUrl } from "./remoteRepo";
+import { resolveSourceResource } from "./dataSourceRequest";
+import { platformAsset } from "./updateAssets";
 export type ReleaseAsset = { name: string; browser_download_url: string };
 interface Release {
   version: string;
@@ -58,7 +60,7 @@ function parseReleases(data: any, entry: DataSourceEntry): Release[] {
       const hash = gitee
         ? hashOf(item.release?.description) || hashOf(item.tag?.message)
         : typeof item.versionHash === "string"
-          ? normalizeHash(item.versionHash)
+          ? entry.kind === "service" && /^\d{1,20}$/.test(item.versionHash) ? item.versionHash : normalizeHash(item.versionHash)
           : hashOf(item.body);
       const raw = gitee ? item.release?.attach_files : item.assets;
       const assets: ReleaseAsset[] = (Array.isArray(raw) ? raw : []).flatMap(
@@ -68,6 +70,10 @@ function parseReleases(data: any, entry: DataSourceEntry): Release[] {
             : asset.browser_download_url || asset.url;
           if (typeof asset.name !== "string" || typeof url !== "string")
             return [];
+          if (entry.kind === "service") {
+            try { return [{ name: asset.name, browser_download_url: resolveSourceResource(url, entry.url) }]; }
+            catch { return []; }
+          }
           const resolved = new URL(
             url,
             gitee ? "https://gitee.com" : `${entry.url}/`,
@@ -79,7 +85,9 @@ function parseReleases(data: any, entry: DataSourceEntry): Release[] {
       );
       return { version, hash, assets, entry };
     })
-    .filter((release) => /^\d+(?:\.\d+){1,3}$/.test(release.version));
+    .filter((release) => /^\d+(?:\.\d+){1,3}$/.test(release.version)
+      && (entry.kind !== "service" || release.hash !== null)
+      && platformAsset(release.assets) !== null);
 }
 const newer = (a: Release, b: Release) =>
   compareVersions(a.version, b.version) || compareBuildNumbers(a.hash, b.hash);

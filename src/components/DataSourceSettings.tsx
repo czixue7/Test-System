@@ -401,14 +401,14 @@ export default function DataSourceSettings() {
             <span className="ds-subtitle">
               {active
                 ? `${active.name} · 仅手动同步 · ${state.lastSync ? `最近 ${new Date(state.lastSync).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "尚未同步"}`
-                : "题库 · 知识库 · 总结 · AI 聊天 · 值班表"}
+                : "知识库 · 总结 · AI 聊天；值班表只获取发布内容"}
             </span>
           </span>
           <Chevron open={syncExpanded} />
         </button>
         <Collapse open={syncExpanded}>
           <div className="ds-body" id={`${id}-sync`}>
-            <p className="ds-note">仅手动执行。题库由“题库下载／题库管理”获取与刷新；个人内容按空间 ID 合并，启动和恢复网络均不会自动同步。</p>
+            <p className="ds-note">仅手动执行。题库和值班表只获取发布目录，不上传到同步空间；知识库、总结、AI 聊天按空间 ID 合并。启动、资料缺失和恢复网络均不会自动同步。</p>
             <div className="ds-sync-list" role="group" aria-label="软件更新设置">
               <label className="ds-sync-row">
                 <span><span className="ds-sync-name">软件更新</span><span className="ds-sync-hint">允许从已启用来源检查和下载软件更新，不影响题库获取</span></span>

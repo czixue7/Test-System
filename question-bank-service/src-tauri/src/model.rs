@@ -57,7 +57,7 @@ impl Config {
             if !valid_id(&m.id) || !ids.insert(&m.id) {
                 return Err("目录标识重复或无效".into());
             }
-            if !["bank", "knowledge", "duty"].contains(&m.kind.as_str()) {
+            if !["bank", "knowledge", "duty", "package"].contains(&m.kind.as_str()) {
                 return Err("目录类型无效".into());
             }
             if m.enabled && !Path::new(&m.path).is_dir() {

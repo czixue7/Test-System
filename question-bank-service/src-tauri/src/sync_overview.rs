@@ -23,20 +23,8 @@ pub fn overview(dir: &Path) -> Result<Value, String> {
         {
             continue;
         }
-        let banks = space.path().join("banks");
-        if banks.is_dir() {
-            let mut bytes = 0; let mut records = 0; let mut updated = 0;
-            for file in fs::read_dir(&banks).map_err(|e| e.to_string())? {
-                let file = file.map_err(|e| e.to_string())?;
-                let meta = file.metadata().map_err(|e| e.to_string())?;
-                if file.file_type().map_err(|e| e.to_string())?.is_file() && file.path().extension().and_then(|s| s.to_str()) == Some("json") {
-                    bytes += meta.len(); records += 1;
-                    updated = updated.max(meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |t| t.as_secs()));
-                }
-            }
-            rows.push(json!({"space":id,"kind":"banks","revision":0,"updatedAt":updated,"bytes":bytes,"records":records}));
-        }
-        for kind in ["knowledge", "summaries", "chat", "duty"] {
+        // Old bank/duty archives stay untouched and are excluded from storage.
+        for kind in ["knowledge", "summaries", "chat"] {
             let file = space.path().join(format!("{kind}.json"));
             let Ok(meta) = fs::symlink_metadata(&file) else {
                 continue;
@@ -55,7 +43,7 @@ pub fn overview(dir: &Path) -> Result<Value, String> {
                             .map(|key| count(key))
                             .sum(),
                         "chat" => count("conversations"),
-                        _ => count("duties"),
+                        _ => 0,
                     };
                     rows.push(json!({"space":id,"kind":kind,"revision":value["revision"].as_u64().unwrap_or(0),"updatedAt":value["updatedAt"].as_u64().unwrap_or(0),"bytes":meta.len(),"records":records}));
                 }
@@ -77,7 +65,7 @@ mod tests {
     use super::*;
     use crate::model::write_json;
     #[test]
-    fn counts_all_four_channels_and_survives_bad_records() {
+    fn counts_only_personal_channels_and_ignores_legacy_archives() {
         let dir = std::env::temp_dir().join(format!("sync-overview-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
         assert_eq!(overview(&dir).unwrap()["rows"].as_array().unwrap().len(), 0);
@@ -89,7 +77,6 @@ mod tests {
                 3,
             ),
             ("chat", json!({"conversations":[{}]}), 1),
-            ("duty", json!({"duties":[{},{}]}), 2),
         ] {
             write_json(
                 &dir.join("sync/one").join(format!("{kind}.json")),
@@ -107,11 +94,16 @@ mod tests {
             assert_eq!(row["revision"], 2);
             assert_eq!(row["updatedAt"], 123);
         }
+        fs::create_dir_all(dir.join("sync/legacy/banks")).unwrap();
+        fs::write(dir.join("sync/legacy/banks/one.json"),"legacy bank").unwrap();
+        fs::write(dir.join("sync/legacy/duty.json"),"legacy duty").unwrap();
         fs::create_dir_all(dir.join("sync/broken")).unwrap();
         fs::write(dir.join("sync/broken/chat.json"), "invalid").unwrap();
         let result = overview(&dir).unwrap();
-        assert_eq!(result["rows"].as_array().unwrap().len(), 4);
+        assert_eq!(result["rows"].as_array().unwrap().len(), 3);
         assert_eq!(result["warnings"].as_array().unwrap().len(), 1);
+        assert_eq!(fs::read_to_string(dir.join("sync/legacy/banks/one.json")).unwrap(),"legacy bank");
+        assert_eq!(fs::read_to_string(dir.join("sync/legacy/duty.json")).unwrap(),"legacy duty");
         fs::remove_dir_all(dir).unwrap();
     }
 }

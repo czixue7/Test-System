@@ -326,7 +326,7 @@ function App() {
         <header>
           <div>
             <h1>{tabs.find((t) => t[0] === tab)?.[1]}{tab === "traffic" && !desktop && <small className="preview-badge">预览</small>}</h1>
-            {tab === "folders" && <p>把电脑里的题库、知识库和值班表，发布到同一个地址。</p>}
+            {tab === "folders" && <p>把电脑里的题库、知识库、值班表和软件包，发布到同一个地址。</p>}
           </div>
           <div className="actions">
             {tab === "folders" && <button
@@ -405,6 +405,7 @@ function App() {
                 <span><strong>{catalog?.banks.userBanks.length ?? (config?.mounts.length ? "—" : 0)}</strong> 题库</span>
                 <span><strong>{catalog?.knowledge.items.length ?? (config?.mounts.length ? "—" : 0)}</strong> 知识条目</span>
                 <span><strong>{catalog?.duties.userDuties.length ?? (config?.mounts.length ? "—" : 0)}</strong> 值班表</span>
+                <span><strong>{catalog?.packages?.items.length ?? (config?.mounts.length ? "—" : 0)}</strong> 软件包</span>
               </div>
               <div className="directory-content" tabIndex={0} aria-label="发布目录列表">
               {!config?.mounts.length ? (
@@ -413,9 +414,9 @@ function App() {
                   <div>
                   <h3>选择第一个发布目录</h3>
                   <p>
-                    添加文件夹后，题库、知识库和值班表会在这里集中管理。
+                    添加文件夹后，题库、知识库、值班表和软件包会在这里集中管理。
                   </p>
-                  <div className="format-labels"><span>JSON 题库</span><span>Markdown / TXT</span><span>值班表</span></div>
+                  <div className="format-labels"><span>JSON 题库</span><span>Markdown / TXT</span><span>值班表</span><span>软件包</span></div>
                   </div>
                 </div>
               ) : (
@@ -472,6 +473,7 @@ function App() {
                         <option value="bank">题库</option>
                         <option value="knowledge">知识库</option>
                         <option value="duty">值班表</option>
+                        <option value="package">软件包</option>
                       </select>
                       <button
                         className="quiet"
@@ -507,7 +509,7 @@ function App() {
               </footer>
               <div className="directory-notes">
                 {catalog?.warnings?.length > 0 && <details className="catalog-warnings"><summary>目录检查提示 · {catalog.warnings.length} 项</summary>{catalog.warnings.map((w: string, i: number) => <p className="warning" key={i}>{w}</p>)}</details>}
-                <details className="help"><summary>目录准备说明</summary><p>题库与值班表使用 JSON；题库图片放在同级 image 文件夹。知识库支持 JSON、Markdown 和 UTF-8 TXT。发布目录只读，客户端同步备份单独存放。</p></details>
+                <details className="help"><summary>目录准备说明</summary><p>题库与值班表使用 JSON；题库图片放在同级 image 文件夹。知识库支持 JSON、Markdown 和 UTF-8 TXT。软件包名称需包含版本号与构建号，例如 Answer_Test_v0.4.4_build20261021_arm64.apk 或 Answer_Test_v0.4.4_build20261021_x64.exe。发布目录只读，客户端同步备份单独存放。</p></details>
               </div>
             </section>
             </div>

@@ -3,7 +3,7 @@ import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createServer } from 'node:net';
 import { randomUUID } from 'node:crypto';
-const dir = resolve('.build-temp', `bank-sync-live-${randomUUID()}`);
+const dir = resolve('local-archive', 'validation', `manual-resources-live-${randomUUID()}`);
 const socket = createServer();
 await new Promise(r => socket.listen(0, '127.0.0.1', r));
 const port = socket.address().port;
@@ -19,7 +19,7 @@ for (const [id, kind, filename, content] of [
   mounts.push({id,kind,path,name:{bank:'题库目录',knowledge:'知识库目录',duty:'值班表目录'}[id],enabled:true});
 }
 await writeFile(resolve(dir,'config.json'),JSON.stringify({host:'127.0.0.1',port,accessToken:token,theme:'dark',mounts,publicUrl:'',publicPort:null}));
-await writeFile(resolve('.build-temp','latest-bank-sync-fixture.json'),JSON.stringify({dir,port}));
+await writeFile(resolve('local-archive','validation','latest-service-fixture.json'),JSON.stringify({dir,port}));
 const service = spawn(resolve('question-bank-service/src-tauri/target/release/question-bank-service.exe'), ['--headless',dir], {windowsHide:true,stdio:'ignore'});
 try {
   let ready = false;

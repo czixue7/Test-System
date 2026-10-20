@@ -2,8 +2,10 @@
 mod endpoint;
 mod bank_sync;
 mod model;
+mod packages;
 mod server;
 mod sync_overview;
+mod tray;
 use model::*;
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -172,8 +174,10 @@ fn main() {
                     running: None,
                 }),
             });
+            tray::setup(app)?;
             Ok(())
         })
+        .on_window_event(tray::on_window_event)
         .invoke_handler(tauri::generate_handler![
             get_state,
             save_config,

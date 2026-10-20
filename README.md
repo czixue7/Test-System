@@ -1,0 +1,534 @@
+> **环境已迁移（2026-09-25）**：编译工具链统一到系统共享目录 `D:\Android\Sdk`，通过用户级环境变量 `ANDROID_HOME` / `JAVA_HOME` / `NDK_HOME` 使用；项目内 `.android-sdk` 与 `local.properties` 已移除。本文中出现的旧路径均为历史记录。
+
+# 答题测试库
+
+一个基于 Tauri 2.x 构建的跨平台测试应用，支持 Windows 桌面端和 Android 移动端。
+
+## 项目介绍
+
+本系统用于考试练习，包含以下功能：
+- 多题库练习与切换
+- 选择题、多选题、填空题、主观题答题
+- **AI 智能判题**：支持 API 云端判题和 WebLLM 本地判题
+  - 固定判题全对时跳过 AI 判题，节省资源
+  - 固定判题不全对时自动使用 AI 判题
+  - AI 判题失败时降级到固定判题并标记
+- 多种模型支持：
+  - API 云端判题：智谱 AI GLM 系列免费模型（GLM-4-Flash 200并发、GLM-4.7-Flash、GLM-Z1-Flash 等）
+  - WebLLM 本地模型：Qwen3 1.7B（推荐）、Qwen3 0.6B（轻量）
+- **输入框样式优化**：统一答题输入框样式，选中时淡蓝色线框渐显，答案正确/错误时颜色变化
+- AI 考试评价：考试结束后生成 AI 总体评价和每题解析
+- 主观题智能评分（基于文本相似度算法）
+- 答题记录管理
+- 错题回顾功能
+- 自定义题库导入
+- **在线题库下载**：设置中管理多个数据来源，默认加入 Gitee、GitHub，可添加电脑服务或其他兼容仓库，支持启用、排序、编辑和删除确认；已启用来源共同提供题库和值班表，同仓库镜像去重
+- **题库管理**：管理已导入题库，支持更新和删除
+- **检查更新**：仅向已启用的数据来源检查新版本，优先更高版本和构建，相同时按来源顺序选择；备用下载要求版本和构建一致，删除条目后不再向其请求
+- **值班表**：排班矩阵表 / 岗位表 / 演练抽检表 / JSON 表解析，支持月份日历、岗位与班组分工查看
+- **知识总结**：AI 覆盖全部题库（含自建题库）分批总结并归档为历史版本，可查看、调用与逐条删除（固定文档规则号 v1）
+- **双主题布局**：经典 / 沉浸式两种布局自由切换，沉浸式带 Hero 大卡、模式网格、浮动毛玻璃导航，默认跟随系统深浅色
+
+## 技术栈
+
+| 类别 | 技术 |
+|------|------|
+| 前端框架 | React 18 + TypeScript |
+| 构建工具 | Vite 5 |
+| 桌面端 | Tauri 2.x (Rust) |
+| 移动端 | Tauri Mobile (Android) |
+| 样式 | TailwindCSS |
+| 状态管理 | Zustand |
+| 路由 | React Router DOM |
+| 本地存储 | SQLite (Tauri Plugin) |
+| 文件系统 | tauri-plugin-fs |
+| AI 推理 | @mlc-ai/web-llm (WebGPU) + API 云端判题 |
+| 文本相似度 | string-similarity |
+
+## 环境要求
+
+### 基础环境
+
+| 工具 | 版本要求 | 说明 |
+|------|----------|------|
+| Node.js | >= 18.x | JavaScript 运行时 |
+| Rust | >= 1.70 | 系统编程语言 |
+| pnpm/npm/yarn | 最新版 | 包管理器 |
+
+### Windows 开发环境
+
+1. **安装 Node.js**
+   ```bash
+   # 推荐使用 nvm-windows 管理 Node.js 版本
+   # 下载地址: https://github.com/coreybutler/nvm-windows/releases
+
+   nvm install 20
+   nvm use 20
+   ```
+
+2. **安装 Rust**
+   ```bash
+   # 下载并运行 rustup-init.exe
+   # 官网: https://www.rust-lang.org/tools/install
+
+   # 或使用 winget
+   winget install Rustlang.Rustup
+   ```
+
+3. **安装 Visual Studio Build Tools**
+   - 下载地址: https://visualstudio.microsoft.com/visual-cpp-build-tools/
+   - 选择 "Desktop development with C++" 工作负载
+
+### Android 开发环境
+
+> **本项目实际使用**：Android SDK / JDK / NDK 已统一到系统共享目录 `D:\Android\Sdk`（JDK 17.0.13、build-tools 34/35/36、NDK 26.3.11579264），无需联网下载，也不需要装 Android Studio。以下 1~4 步是通用安装方法（对应系统默认 `%LOCALAPPDATA%` 路径）；本机可直接用共享 SDK 按 `docs/Tauri2双端编译与图标更换通用指南.md` 操作（Android 部分见其 §6）。
+
+1. **安装 Android SDK**
+   ```bash
+   # 下载 Android Studio 或仅下载 Command Line Tools
+   # 官网: https://developer.android.com/studio
+
+   # 设置环境变量
+   ANDROID_HOME=C:\Users\<用户名>\AppData\Local\Android\Sdk
+   ```
+
+2. **安装 Android NDK**
+   ```bash
+   # 通过 Android Studio SDK Manager 安装
+   # 或手动下载: https://developer.android.com/ndk/downloads
+
+   # 推荐版本: NDK r26d 或更高
+   # 设置环境变量
+   NDK_HOME=C:\Users\<用户名>\AppData\Local\Android\Sdk\ndk\26.3.11579264
+   ```
+
+3. **安装 Rust Android 编译目标**
+   ```bash
+   rustup target add aarch64-linux-android
+   rustup target add armv7-linux-androideabi
+   rustup target add i686-linux-android
+   rustup target add x86_64-linux-android
+   ```
+
+4. **配置 NDK 路径（重要）**
+   ```bash
+   # 设置 NDK_TOOLCHAIN 环境变量
+   # 或在项目根目录创建 .cargo/config.toml:
+
+   [target.aarch64-linux-android]
+   linker = "C:\\Users\\<用户名>\\AppData\\Local\\Android\\Sdk\\ndk\\26.3.11579264\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\aarch64-linux-android35-clang.cmd"
+
+   [target.armv7-linux-androideabi]
+   linker = "C:\\Users\\<用户名>\\AppData\\Local\\Android\\Sdk\\ndk\\26.3.11579264\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\armv7a-linux-androideabi35-clang.cmd"
+
+   [target.i686-linux-android]
+   linker = "C:\\Users\\<用户名>\\AppData\\Local\\Android\\Sdk\\ndk\\26.3.11579264\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\i686-linux-android35-clang.cmd"
+
+   [target.x86_64-linux-android]
+   linker = "C:\\Users\\<用户名>\\AppData\\Local\\Android\\Sdk\\ndk\\26.3.11579264\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\x86_64-linux-android35-clang.cmd"
+   ```
+
+## 快速开始
+
+### 安装依赖
+
+```bash
+npm install
+```
+
+### 启动开发服务
+
+```bash
+# 启动 Web 开发服务（仅前端）
+npm run dev
+
+# 启动 Tauri 开发模式（Windows 桌面应用）
+npm run tauri:dev
+
+# 启动 Tauri 开发模式（带调试信息）
+npm run tauri:dev:debug
+```
+
+开发服务将在 `http://localhost:1420` 启动。
+
+## 构建打包
+
+### Windows 桌面应用打包
+
+```bash
+# 构建生产版本
+npm run tauri:build
+
+# 构建调试版本
+npm run tauri:build:debug
+```
+
+构建产物位于 `src-tauri/target/release/bundle/` 目录：
+- `nsis/` - NSIS 安装程序
+- `msi/` - MSI 安装包
+
+### Android APK 打包
+
+> ⚠️ **不要用 `npm run tauri:android:build`**：Windows 上该命令的符号链接步骤会失败，且会尝试往 `%LOCALAPPDATA%` 安装 SDK。本项目已验证的流程是「前端 build → cargo 编 arm64 的 .so → 拷入 jniLibs → gradlew 直接打包」，完整可复现命令见 **`docs/Tauri2双端编译与图标更换通用指南.md`**（§6.7 命令清单）。
+
+当前 gradle 仅启用 **arm64-v8a** 单架构（`src-tauri/gen/android/app/build.gradle.kts` 中的 `ndk { abiFilters.add("arm64-v8a") }`），APK 产物位于：
+
+- `src-tauri/gen/android/app/build/outputs/apk/arm64/release/Answer_Test_v<版本>-arm64-release.apk`（如 `Answer_Test_v0.4.2-arm64-release.apk`，约 18MB）
+
+## APK 签名配置
+
+### 生成签名密钥
+
+```bash
+# 进入 Android 项目目录
+cd src-tauri/gen/android/app
+
+# 生成密钥库（keystore）
+keytool -genkey -v -keystore release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias exam-key
+
+# 按提示输入密钥库密码、个人信息等
+```
+
+### 配置签名信息
+
+1. 创建 `keystore.properties` 文件（位于 `src-tauri/gen/android/app/`）：
+
+```properties
+storePassword=你的密钥库密码
+keyPassword=你的密钥密码
+keyAlias=exam-key
+```
+
+2. 确保 `build.gradle.kts` 中已配置签名：
+
+```kotlin
+signingConfigs {
+    create("release") {
+        storeFile = file("release-key.jks")
+        storePassword = keystoreProperties.getProperty("storePassword", "123456")
+        keyAlias = keystoreProperties.getProperty("keyAlias", "exam-key")
+        keyPassword = keystoreProperties.getProperty("keyPassword", "123456")
+    }
+}
+```
+
+### 注意事项
+
+- **不要将 `keystore.properties` 和 `release-key.jks` 提交到版本控制**
+- 妥善保管密钥库文件和密码，丢失后无法更新应用
+- 生产环境建议使用更复杂的密码
+
+## 项目结构
+
+```
+Low_Voltage_Electrician_Exam/
+├── src/                          # 前端源码
+│   ├── pages/                    # 页面组件
+│   │   ├── Exam.tsx              # 答题页面
+│   │   ├── Home.tsx              # 首页
+│   │   ├── Import.tsx            # 题库导入
+│   │   ├── QuestionBankDetail.tsx# 题库详情
+│   │   ├── Records.tsx           # 答题记录列表
+│   │   └── Result.tsx            # 答题结果
+│   ├── store/                    # 状态管理
+│   │   ├── examStore.ts          # 考试状态
+│   │   ├── questionBankStore.ts  # 题库状态
+│   │   └── recordStore.ts        # 记录状态
+│   ├── utils/                    # 工具函数
+│   │   ├── builtInBanks.ts       # 内置题库
+│   │   ├── jsonImporter.ts       # JSON 导入
+│   │   ├── similarity.ts         # 相似度计算
+│   │   └── tauriStore.ts         # Tauri 存储
+│   ├── App.tsx                   # 根组件
+│   ├── main.tsx                  # 入口文件
+│   ├── index.css                 # 全局样式
+│   └── types.ts                  # 类型定义
+├── src-tauri/                    # Tauri 后端
+│   ├── src/                      # Rust 源码
+│   │   ├── main.rs               # 主入口
+│   │   └── lib.rs                # 库文件
+│   ├── icons/                    # 应用图标
+│   ├── capabilities/             # 权限配置
+│   ├── Cargo.toml                # Rust 依赖
+│   ├── build.rs                  # 构建脚本
+│   └── tauri.conf.json           # Tauri 配置
+├── Question_bank/                # 统一题库与资料目录
+│   ├── public/                   # Vite 静态资源目录，构建时复制到 dist 根目录
+│   │   └── banks/                # 内置题库 JSON 与各题库 image 文件夹
+│   └── private/                  # 原有私人内容
+│       ├── Question/             # 私人题库
+│       ├── Knowledge/            # 私人知识资料
+│       └── Excel/                # 原有表格
+├── bank-index.json               # 系统与私人题库索引，下载路径指向上述新目录
+├── scripts/                      # 脚本工具
+│   ├── parse-pdf.ts              # PDF 解析脚本
+│   ├── create-icons.js           # 图标生成
+│   └── create-ico.js             # ICO 生成
+├── index.html                    # HTML 入口
+├── package.json                  # 项目配置
+├── vite.config.ts                # Vite 配置
+├── tailwind.config.js            # TailwindCSS 配置
+├── postcss.config.js             # PostCSS 配置
+└── tsconfig.json                 # TypeScript 配置
+```
+
+## 开发命令汇总
+
+| 命令 | 说明 | 详细作用 |
+|------|------|----------|
+| `npm run dev` | 启动 Web 开发服务 | 仅启动 Vite 前端开发服务器，用于浏览器预览和调试前端界面 |
+| `npm run build` | 构建前端生产版本 | 执行 TypeScript 类型检查 + Vite 构建，输出静态文件到 `dist/` 目录 |
+| `npm run preview` | 预览构建结果 | 启动本地服务器预览已构建的前端产物，用于验证构建结果 |
+| `npm run update:bank-index` | 更新题库索引 | 离线生成 SHA-256、bankId 与 updatedAt；发布前执行，未变内容不重置时间戳 |
+| `npm run tauri:dev` | 启动 Tauri 开发模式 | 启动 Vite 开发服务器 + Rust 后端热重载，打开桌面应用窗口进行开发调试 |
+| `npm run tauri:dev:debug` | 启动 Tauri 调试模式 | 同上，但启用 Rust 调试符号，便于使用调试器排查问题 |
+| `npm run tauri:build` | 构建 Windows 安装包 | 编译前端 + Rust 后端，生成可直接运行的 EXE 和 NSIS 安装程序 |
+| `npm run tauri:build:debug` | 构建 Windows 调试版本 | 同上，但生成调试版本（未优化），体积更大但便于调试 |
+| `npm run tauri:android` | Tauri Android 命令 | 执行 Tauri Android 相关命令（如 init 初始化项目） |
+| `npm run tauri:android:build` | 构建 Android APK | ⚠️ Windows 上符号链接步骤会失败，不推荐；请改用 `docs/Tauri2双端编译与图标更换通用指南.md` 的手动流程（cargo 编 .so + gradlew 直打，§6.1～§6.7） |
+| `npm run parse-pdf` | 解析 PDF 题库 | 运行 PDF 解析脚本，从 PDF 文件提取题目并生成 JSON 题库 |
+
+### 构建产物说明
+
+执行 `npm run tauri:build` 后，产物位于 `src-tauri/target/release/` 目录：
+
+| 文件/目录 | 说明 |
+|-----------|------|
+| `low-voltage-electrician-exam.exe` | 可直接运行的应用程序（无需安装） |
+| `bundle/nsis/答题测试库_0.4.2_x64-setup.exe` | NSIS 安装程序（带安装向导） |
+
+## NSIS 安装包汉化配置
+
+安装包默认支持简体中文界面，配置位于 `src-tauri/tauri.conf.json`：
+
+```json
+{
+  "bundle": {
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["SimpChinese"],
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico"
+      }
+    }
+  }
+}
+```
+
+### 配置项说明
+
+| 配置项 | 说明 |
+|--------|------|
+| `installMode` | 安装模式：`currentUser`（当前用户）或 `perMachine`（所有用户） |
+| `languages` | 安装界面语言，支持 `SimpChinese`（简体中文）、`English` 等 |
+| `displayLanguageSelector` | 是否显示语言选择器，设为 `false` 直接使用默认语言 |
+| `installerIcon` | 安装程序图标路径 |
+| `headerImage` | 安装向导头部图片（可选，建议尺寸 150x57） |
+| `sidebarImage` | 安装向导侧边栏图片（可选，建议尺寸 164x314） |
+| `license` | 许可协议文件路径（可选，支持 .txt 和 .rtf） |
+
+### 支持的语言
+
+NSIS 支持的主要语言标识：
+
+- `SimpChinese` - 简体中文
+- `TradChinese` - 繁体中文
+- `English` - 英语
+- `Japanese` - 日语
+- `Korean` - 韩语
+- `German` - 德语
+- `French` - 法语
+
+如需多语言支持，可配置：
+
+```json
+{
+  "languages": ["SimpChinese", "English"],
+  "displayLanguageSelector": true
+}
+```
+
+### 自定义安装界面图片
+
+1. 准备图片文件：
+   - 头部图片：150x57 像素，BMP 格式
+   - 侧边栏图片：164x314 像素，BMP 格式
+
+2. 放置到 `src-tauri/icons/` 目录
+
+3. 更新配置：
+
+```json
+{
+  "nsis": {
+    "headerImage": "icons/header.bmp",
+    "sidebarImage": "icons/sidebar.bmp"
+  }
+}
+```
+
+## 常见问题
+
+### 1. Rust 编译错误
+
+确保已安装正确的 Rust 版本和编译目标：
+```bash
+rustup update
+rustup target add aarch64-linux-android
+```
+
+### 2. Android SDK 找不到
+
+检查环境变量配置：
+```bash
+echo %ANDROID_HOME%
+echo %NDK_HOME%
+```
+
+### 3. Tauri 开发模式启动失败
+
+确保已安装 Visual Studio Build Tools，并重启终端。
+
+### 4. APK 签名失败
+
+检查 `keystore.properties` 文件路径和密码是否正确。
+
+### 5. Android 构建时符号链接失败
+
+**问题现象：**
+```
+Failed to create a symbolic link... IO error: 系统找不到指定的文件
+```
+
+**原因：** Windows 环境下创建符号链接需要管理员权限，或 Tauri 尝试在不存在的目录创建链接。
+
+**解决方案：**
+1. 手动创建 jniLibs 目录：
+```bash
+mkdir src-tauri\gen\android\app\src\main\jniLibs\arm64-v8a
+```
+
+2. 手动复制 .so 文件：
+```bash
+copy src-tauri\target\aarch64-linux-android\release\libanswer_test_lib.so src-tauri\gen\android\app\src\main\jniLibs\arm64-v8a\
+```
+
+### 6. Gradle 构建时 rustBuild 任务失败
+
+**问题现象：**
+```
+failed to read CLI options: Context("failed to build WebSocket client"...ConnectionRefused)
+```
+
+**原因：** Tauri CLI 在 Gradle 构建过程中尝试连接 WebSocket 开发服务器失败。
+
+**解决方案：** 在 `build.gradle.kts` 中禁用 rustBuild 任务（适用于已有 .so 文件的情况）：
+```kotlin
+tasks.whenTaskAdded {
+    if (name.contains("rustBuild")) {
+        enabled = false
+    }
+}
+```
+
+### 7. jarsigner 显示 "jar 未签名"
+
+**问题现象：**
+使用 `jarsigner -verify app.apk` 显示 "jar 未签名"。
+
+**原因：** jarsigner 是旧版 Java 签名工具，不支持 Android APK v2/v3 签名格式。
+
+**解决方案：** 使用 Android SDK 提供的 apksigner 工具验证：
+```bash
+cd %ANDROID_HOME%\build-tools\35.0.0
+apksigner.bat verify --print-certs path\to\app.apk
+```
+
+### 8. Gradle 找不到 Android SDK
+
+**问题现象：**
+```
+SDK location not found. Define a valid SDK location with an ANDROID_HOME environment variable
+```
+
+**解决方案：** 设置用户级环境变量 `ANDROID_HOME`（本项目指向共享 SDK）：
+```properties
+sdk.dir=D:\Android\Sdk
+```
+
+## 下载安装
+
+### Windows 桌面端 v0.4.2
+- **安装包**: `Answer_Test_v0.4.2-x64-setup.exe` (~6MB)
+- **便携版**: `Answer_Test_v0.4.2.exe`（免安装，解压即用）
+- 支持 Windows 10/11 64位系统
+- 下载地址：[GitHub Releases](https://github.com/czixue7/Test-System/releases) ｜ [Gitee Releases](https://gitee.com/zixue7/Test-System/releases)
+
+### Android 移动端 v0.4.2
+- **ARM64 版本**: `Answer_Test_v0.4.2-arm64-release.apk` (~19MB) - 推荐，性能更好
+- 支持 Android 8.0+ 系统
+- 下载地址：[GitHub Releases](https://github.com/czixue7/Test-System/releases) ｜ [Gitee Releases](https://gitee.com/zixue7/Test-System/releases)
+
+## 最新更新 (v0.4.2)
+
+- **知识总结历史版本**：生成即归档为历史条目，不再覆盖或删除；「重新生成」左侧新增历史版本入口，可查看、调用与逐条删除
+- **文档规则号固定为 v1**：知识总结去除全部指纹与版本校验，软件更新后仅以固定文档规则号判断文档是否需要更新
+- **全站顶栏统一**：首页、值班表、知识库、我的等页面顶栏高度统一为 36px，字号与值班表一致
+- **值班表表单选择器**：改为标题下拉切换，切换 / 删除收进底部面板，去掉冗余的「导入新值班表」按钮；条目与删除按键重新美化
+- **知识库**：查看知识总结入口移至「内容分类」右侧
+- **修复**：日历月末整行空白、值班表演练表日期识别（兼容 Excel 序列号与多种格式，如「工程师抽检 2026」）、重新生成后知识总结历史记录丢失
+- **版本**：0.4.2 / 构建号 20260922，Android 仅出 arm64 APK
+
+## 历史更新
+
+### v0.4.1
+- **双源镜像（Gitee 优先）**：题库、值班表、版本更新等默认优先使用 Gitee，失败自动回退 GitHub
+- **更新检测双源比对**：同时检查 GitHub 与 Gitee，取版本更高者（相同则优先 Gitee），再比较构建号
+- **应用内仓库入口统一**：由 GitHub 改为 Gitee（个人页同时展示两个仓库链接）
+- **值班表岗位划分**：新增岗位（角色）排班表解析，夜班可按班组查看值班长及各岗位人员分工；排班表解析拆分为矩阵表/岗位表/演练抽检表/JSON 表等独立模块
+- **评分准确性修复**：填空按空位独立比对、乱序填空每个答案仅消耗一次；主观题支持「部分正确」三态，统一结果页 / 记录页统计口径；批量评分找不到结果块时明确报错
+- **流式评分稳定性**：跨数据块按行缓冲、兼容仅返回推理内容、120 秒超时、空结果明确报错
+- **Markdown 安全**：渲染时安全清洗，移除脚本等危险内容，防 XSS
+- **自动化回归测试**：新增评分逻辑、工具函数、Markdown 安全三类测试（`npm test` 共 82 例）
+- **其他修复**：安卓返回键、重复点击加锁、深色启动首帧闪白、AI 对话流式丢内容、题库更新不覆盖自建题库、下载取消后忽略迟到进度等
+
+### v0.4.0
+- **更新状态全局化**：检查更新 / 下载 / 安装状态与调试日志迁移到全局 store，关闭弹窗或切换标签页后任务在后台继续，重开不再丢失状态
+- **AI 配置简化**：移除 API 地址与密钥的 XOR 加密解密，直接填写「API 地址 / 密钥 / 模型」；密钥输入框改为普通文本（支持粘贴、不触发 Android 安全键盘）；移除 endpoint 自动补全
+- **知识总结进度三阶段**：新增「拆份」阶段（拆份 → 逐份总结 → 合并）；重新生成按钮图标改为顺时针箭头
+
+### v0.3.8
+- **JSON 模板错误修复**：修复规范题库 JSON 模板格式错误，统一所有题库结构
+- **选择题判题逻辑修复**：多选题部分正确时显示"部分正确"，统一所有页面判题逻辑
+- **GitHub 题库获取修复**：修复从 GitHub 获取题库不完整的问题
+- **题库更新检测修复**：修复相同文件误报更新的问题，优化哈希值比对逻辑
+- **题库排序修复**：实现字典式排序，数字、字母、汉字逐字对应比较
+- **本地题库持久化修复**：修复本地导入题库退出后丢失的问题，使用 Tauri Store 持久化
+- **更新检测缓存问题修复**：修复构建哈希被截断导致误识别更新的问题，将 GitHub API 调用移到 Rust 后端绕过 WebView 缓存
+- **安全区域检测完善**：三层降级检测策略，修复状态栏/导航栏遮挡，支持绝大多数 Android/iOS 设备
+- **键盘检测完善**：visualViewport 精确检测 + 动态阈值 + 状态防抖，修复键盘遮挡输入框问题
+- **统一边距管理**：新增 `useInsets` Hook，整合安全区域和键盘边距
+- **填空题答案判断优化**：新增 `normalizeAnswer` 标准化函数，处理全角/半角、大小写、数字尾零、分隔符差异、数学符号（×→*、÷→/）、末尾标点等不影响答案正确性的格式差异
+- **沉浸式主题**：新增布局优先的"沉浸式"主题（我的 > 主题可切换），Hero 大卡 + 统计卡片 + 题库封面 + 模式网格 + 浮动毛玻璃导航，默认跟随系统深浅色，经典主题保留原有布局
+- **弹窗毛玻璃增强**：遮罩背景模糊 + 弹窗半透明玻璃质感（高光边框 + 柔和投影），关于、主题、退出确认等弹窗统一生效
+- **关于弹窗优化**：信息卡片毛玻璃化，版本与描述合并为一张卡片，调试日志分级着色（成功/警告/错误）并显示具体原因
+- **退出保存恢复进度**：顺序练题/模拟考试中途退出自动保存进度，再次进入可一键恢复，交卷后自动清除
+- **检查更新失败提示优化**：失败与"已是最新版本"明确区分，失败时按钮显示"检查失败，点击重试"并在日志中展示具体错误原因
+
+### v0.3.7
+- **下载进度实时显示**：修复下载安装包时进度条不显示进度的问题，使用流式下载实现实时进度推送
+- **更新检测增强**：除版本号外新增哈希值比对，同一版本的不同构建也能被检测为更新
+- **顺序练题颜色显示修复**：修复固定判题提交后错误答案输入框显示绿色的 bug
+- **考试结果页面布局修复**：移除底部多余的空白遮挡区域
+
+### v0.3.5
+- **批量 AI 判题优化**：简化 prompt 类型，提高判题效率
+- **测试记录持久化**：使用本地文件存储，数据更安全
+- **题库索引文件**：避免 GitHub API 限制，支持更新检测
+- **题库排序优化**：内置题库按正确周数顺序显示
+- **体积优化**：PC 版本减小约 287 KB
+
+## 许可证
+
+MIT License

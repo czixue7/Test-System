@@ -343,9 +343,26 @@ async fn install_apk(app: tauri::AppHandle, apk_path: String) -> Result<String, 
 
     #[cfg(not(target_os = "android"))]
     {
-        let _ = &app; // 非 Android 平台下不使用 app，避免 unused_variables 警告
-        log::warn!("install_apk: 非 Android 平台, 不支持安装");
-        Err("仅支持 Android 平台".to_string())
+        // Reveal an updater-owned file; portable builds are replaced manually.
+        let root = std::fs::canonicalize(app.path().download_dir().map_err(|e|e.to_string())?)
+            .map_err(|e|e.to_string())?;
+        let file = std::fs::canonicalize(&apk_path).map_err(|e|e.to_string())?;
+        if file.parent() != Some(root.as_path()) || !file.is_file()
+            || !file.file_name().unwrap_or_default().to_string_lossy().starts_with("app-update-") {
+            return Err("只能打开更新程序下载的安装包".into());
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let path = file.to_string_lossy();
+            let path = path.strip_prefix(r"\\?\UNC\").map(|s| format!(r"\\{s}"))
+                .unwrap_or_else(|| path.strip_prefix(r"\\?\").unwrap_or(&path).to_owned());
+            std::process::Command::new("explorer.exe").arg(format!("/select,{path}")).spawn().map_err(|e|e.to_string())?;
+        }
+        #[cfg(target_os = "macos")]
+        std::process::Command::new("open").arg("-R").arg(&file).spawn().map_err(|e|e.to_string())?;
+        #[cfg(target_os = "linux")]
+        std::process::Command::new("xdg-open").arg(&root).spawn().map_err(|e|e.to_string())?;
+        Ok("已尝试打开下载目录，请关闭当前程序后手动安装或替换便携版".into())
     }
 }
 

@@ -99,9 +99,8 @@ const ManageBanks: React.FC = () => {
   }, [loadBanks, showError, showSuccess, showInfo]);
 
   useEffect(() => {
-    fetchRemoteBanks();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    void loadBanks();
+  }, [loadBanks]);
 
   const handleGoBack = () => {
     if (window.history.length > 1 && location.key !== 'default') {

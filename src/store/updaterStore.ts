@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { sourceTokenFor } from '../utils/dataSourceRequest';
 import { updateSourcesFingerprint as sourcesFingerprint, useDataSourceStore } from './dataSourceStore';
 import {
   checkUpdate as doCheckUpdate,
@@ -114,13 +115,11 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
     }
 
     if (!isTauri()) {
+      if (sourceTokenFor(updateInfo.downloadUrl)) {
+        addLog('电脑服务安装包需要在桌面或 Android 应用中下载');
+        return;
+      }
       addLog('错误: 不在 Tauri 环境中，无法使用原生下载');
-      window.open(updateInfo.downloadUrl, '_blank');
-      return;
-    }
-
-    if (!isAndroid()) {
-      addLog('错误: 不在 Android 环境中');
       window.open(updateInfo.downloadUrl, '_blank');
       return;
     }
@@ -130,10 +129,11 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
     const generation = ++downloadGeneration;
     const id = `apk-${generation}-${Date.now()}`;
     const controller = new AbortController();
-    addLog('开始下载 APK...');
+    addLog('开始下载安装包...');
 
     try {
-      const filename = `app-update-${updateKey(updateInfo).replace(/[^a-zA-Z0-9._-]/g, '_')}.apk`;
+      const assetName = (updateInfo.assetName || 'update.apk').replace(/[^a-zA-Z0-9._-]/g, '_');
+      const filename = `app-update-${updateKey(updateInfo).replace(/[^a-zA-Z0-9._-]/g, '_')}-${assetName}`;
       addLog(`文件名: ${filename}`);
 
       const promise = downloadApk(
@@ -197,13 +197,8 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
       return;
     }
 
-    if (!isAndroid()) {
-      addLog('错误: 不在 Android 环境中');
-      return;
-    }
-
     set({ downloadStatus: 'installing' });
-    addLog('开始安装 APK...');
+    addLog(isAndroid() ? '开始安装 APK...' : '正在打开下载文件...');
     addLog(`文件路径: ${downloadedFilePath}`);
 
     try {
@@ -213,16 +208,18 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
       if (result === 'REQUEST_INSTALL_PERMISSION') {
         addLog('⚠️ 需要允许安装未知来源应用，已跳转系统设置');
         addLog('请在系统设置中允许后，返回应用再次点击安装');
+      } else if (!isAndroid()) {
+        addLog('下载目录已打开，请关闭当前程序后手动安装或替换便携版');
       } else if (result === 'INSTALL_INTENT_SENT' || result.includes('已尝试打开') || result.includes('成功')) {
         addLog('✅ 系统安装器已启动，请查看系统界面');
       } else {
         addLog('⚠️ 自动安装可能未成功');
-        addLog('请手动到下载目录中找到 APK 文件并点击安装');
+        addLog('请手动到下载目录中找到安装包并更新');
         addLog(`文件位置: ${downloadedFilePath}`);
       }
     } catch (error) {
       addLog(`❌ 安装失败: ${error instanceof Error ? error.message : '未知错误'}`);
-      addLog('请手动到下载目录中找到 APK 文件并点击安装');
+      addLog('请手动到下载目录中找到安装包并更新');
     } finally {
       // 原生侧无法回传「用户是否真的装完」，因此无论拉起安装器、
       // 跳转权限设置还是失败，都统一回到「点击安装」，避免按钮卡在

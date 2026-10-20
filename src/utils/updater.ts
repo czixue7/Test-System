@@ -2,6 +2,7 @@ import { invoke, Channel } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
 import { configuredRelease, compareVersions, compareBuildNumbers } from './releaseSources';
 import { sourceTokenFor } from './dataSourceRequest';
+import { platformAsset } from './updateAssets';
 import { updateSourcesFingerprint as sourcesFingerprint, useDataSourceStore } from '../store/dataSourceStore';
 
 export interface DownloadProgress {
@@ -77,7 +78,7 @@ const currentVersion = '0.4.4';
  * 当前版本哈希（每次构建时更新）
  * 用于区分同一版本的不同构建
  */
-export const CURRENT_VERSION_HASH = '20261020'; // 每次发布时更新此值
+export const CURRENT_VERSION_HASH = '20261021'; // 每次发布时更新此值
 
 /**
  * 检查当前系统架构
@@ -241,102 +242,8 @@ export async function checkUpdate(): Promise<UpdateInfo> {
  * 获取适合当前平台的资源文件
  * 优先根据系统架构选择对应的 APK，如果不支持则回退到 universal
  */
-function getPlatformAsset(assets: { name: string; browser_download_url: string }[]): { name: string; browser_download_url: string } | null {
-  if (!assets || !Array.isArray(assets) || assets.length === 0) {
-    console.log('[Updater] 没有可用的资产');
-    return null;
-  }
-
-  const platform = navigator.platform.toLowerCase();
-  const userAgent = navigator.userAgent.toLowerCase();
-  const arch = getSystemArchitecture();
-
-  console.log(`[Updater] 平台信息: platform=${platform}, userAgent=${userAgent}, arch=${arch}`);
-
-  // Android 平台
-  if (userAgent.includes('android') || platform.includes('android')) {
-    console.log('[Updater] 检测到 Android 平台');
-
-    // 如果系统支持 ARM64，优先找 ARM64 APK
-    if (arch === 'arm64') {
-      console.log('[Updater] 系统支持 ARM64，开始查找 ARM64 APK...');
-
-      // 查找包含 arm64 的 APK（不区分大小写）
-      const arm64Apk = assets.find(a => {
-        const nameLower = a.name.toLowerCase();
-        const isMatch = nameLower.includes('arm64') && nameLower.endsWith('.apk');
-        console.log(`[Updater] 检查资产: ${a.name}, 匹配: ${isMatch}`);
-        return isMatch;
-      });
-
-      if (arm64Apk) {
-        console.log(`[Updater] ✅ 找到 ARM64 APK: ${arm64Apk.name}`);
-        return arm64Apk;
-      }
-      console.log('[Updater] ❌ 未找到 ARM64 APK，将尝试 universal');
-    }
-
-    // 如果系统是 ARM 但不支持 ARM64，找 ARM APK
-    if (arch === 'arm') {
-      console.log('[Updater] 系统是 ARM，开始查找 ARM APK...');
-      const armApk = assets.find(a => {
-        const nameLower = a.name.toLowerCase();
-        return (nameLower.includes('armeabi') || nameLower.includes('arm-v7a') || nameLower.includes('armeabi-v7a')) &&
-               nameLower.endsWith('.apk') &&
-               !nameLower.includes('arm64');
-      });
-      if (armApk) {
-        console.log(`[Updater] ✅ 找到 ARM APK: ${armApk.name}`);
-        return armApk;
-      }
-      console.log('[Updater] ❌ 未找到 ARM APK，将尝试 universal');
-    }
-
-    // 回退到 Universal APK（支持所有架构）
-    console.log('[Updater] 开始查找 Universal APK...');
-    const universalApk = assets.find(a => {
-      const nameLower = a.name.toLowerCase();
-      return nameLower.includes('universal') && nameLower.endsWith('.apk');
-    });
-    if (universalApk) {
-      console.log(`[Updater] ✅ 找到 Universal APK: ${universalApk.name}`);
-      return universalApk;
-    }
-
-    // 最后找任意 APK
-    console.log('[Updater] 开始查找任意 APK...');
-    const anyApk = assets.find(a => a.name.toLowerCase().endsWith('.apk'));
-    if (anyApk) {
-      console.log(`[Updater] ✅ 找到 APK: ${anyApk.name}`);
-      return anyApk;
-    }
-
-    console.log('[Updater] ❌ 未找到任何 APK');
-    return null;
-  }
-
-  // Windows 平台
-  if (platform.includes('win') || userAgent.includes('windows')) {
-    return assets.find(a => a.name.toLowerCase().endsWith('.exe')) ??
-           assets.find(a => a.name.toLowerCase().includes('windows') && a.name.toLowerCase().endsWith('.zip')) ??
-           null;
-  }
-
-  // macOS 平台
-  if (platform.includes('mac') || userAgent.includes('mac')) {
-    return assets.find(a => a.name.toLowerCase().endsWith('.dmg')) ??
-           assets.find(a => a.name.toLowerCase().includes('macos') && a.name.toLowerCase().endsWith('.zip')) ??
-           null;
-  }
-
-  // Linux 平台
-  if (platform.includes('linux') || userAgent.includes('linux')) {
-    return assets.find(a => a.name.toLowerCase().endsWith('.appimage')) ??
-           assets.find(a => a.name.toLowerCase().includes('linux') && a.name.toLowerCase().endsWith('.zip')) ??
-           null;
-  }
-
-  return null;
+function getPlatformAsset(assets: { name: string; browser_download_url: string }[]) {
+  return platformAsset(assets);
 }
 
 /**
@@ -408,6 +315,9 @@ export async function cancelApkDownload(downloadId: string): Promise<void> {
  * 调用 Android 系统安装器
  */
 export async function installApk(filePath: string): Promise<string> {
+  if (!isAndroid()) {
+    return invoke<string>('install_apk', { apkPath: filePath });
+  }
   console.log(`[Updater] 开始安装 APK: ${filePath}`);
 
   try {

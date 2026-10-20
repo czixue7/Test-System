@@ -41,7 +41,7 @@ await syncDataNow();
 assert(useKnowledgeStore.getState().items.length>1,'Published documents should merge with local content.');
 const revisions: number[]=[];
 for(const kind of ['knowledge','summaries','chat']){ const result=await sourceRequest<any>(`api/v1/sync/${space}/${kind}`); assert(result.data.revision>=1);revisions.push(result.data.revision); }
-assert.equal((await sourceRequest<any>(`api/v1/sync/${space}/duty`)).data.revision,0,'Public duty data must not upload into a personal space.');
+await assert.rejects(sourceRequest<any>(`api/v1/sync/${space}/duty`),/不使用同步存储|HTTP 410/);
 await syncDataNow();
 for(const [i,kind] of ['knowledge','summaries','chat'].entries()){ const result=await sourceRequest<any>(`api/v1/sync/${space}/${kind}`); assert.equal(result.data.revision,revisions[i],'Unchanged data should not cause another upload.'); }
 console.log('PASS: real HTTP auth, public duty download without upload, three personal channels and idempotent re-sync.');
@@ -50,8 +50,8 @@ const localId = bankStore.getState().addBank({ name: 'Synthetic local bank', que
 useDataSourceStore.getState().setSync('banks',true);
 await fetchPublicResources('banks', {url:base,token}, () => true);
 assert.equal(useDataSourceStore.getState().lastError, '');
-assert(bankStore.getState().banks.length >= 2, 'Published bank should import automatically.');
-await assert.rejects(sourceRequest<any>(`api/v1/bank-sync/${space}/banks/${localId}`), /不存在|HTTP 404/);
+assert(bankStore.getState().banks.length >= 2, 'Explicit public bank download should import.');
+await assert.rejects(sourceRequest<any>(`api/v1/bank-sync/${space}/banks/${localId}`), /同步存储已停用|HTTP 410/);
 const ids = bankStore.getState().banks.map(b => b.id).sort();
 useDataSourceStore.getState().setSpace(`${space}-other`);
 await fetchPublicResources('banks', {url:base,token}, () => true);

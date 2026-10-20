@@ -222,11 +222,11 @@ async fn udp_read(state: &Arc<Shared>, path: &str, offset: u64) -> (u16, Value) 
                 .find(|m| m.enabled && m.id == id)
                 .ok_or((404, "目录不存在".into()))?;
             let file = safe_file(&mount.path, relative).map_err(|e| (403, e))?;
-            if !allowed(&file) || !file.is_file() {
+            if !mount_file_allowed(mount, &file) || !file.is_file() {
                 return Err((404, "文件不存在".into()));
             }
             let total = fs::metadata(&file).map_err(|e| (500, e.to_string()))?.len();
-            if total > MAX_FILE || offset > total {
+            if total > file_limit(mount) || offset > total {
                 return Err((413, "文件过大或偏移超出范围".into()));
             }
             let mut file = tokio::fs::File::open(file)
@@ -330,7 +330,7 @@ async fn handle(
         }
     };
     use axum::body::HttpBody;
-    let upload = res.body().size_hint().exact().unwrap_or(0);
+    let upload = res.body().size_hint().exact().or_else(|| res.headers().get("content-length").and_then(|v|v.to_str().ok()?.parse().ok())).unwrap_or(0);
     state.metrics.lock().unwrap().record(Record {
         time: now(),
         method,
@@ -359,7 +359,10 @@ async fn route(state: &Arc<Shared>, method: &str, path: &str, body: &[u8]) -> Ap
         let Some((space, kind)) = rest.split_once('/') else {
             return Err((400, "同步路径无效".into()));
         };
-        if !valid_id(space) || !["knowledge", "summaries", "chat", "duty"].contains(&kind) {
+        if ["banks", "duty"].contains(&kind) {
+            return Err((410, "题库和值班表不使用同步存储，请从发布目录手动获取".into()));
+        }
+        if !valid_id(space) || !["knowledge", "summaries", "chat"].contains(&kind) {
             return Err((400, "同步空间或数据类型无效".into()));
         }
         let _lock = state.sync_lock.lock().await;
@@ -399,10 +402,12 @@ async fn route(state: &Arc<Shared>, method: &str, path: &str, body: &[u8]) -> Ap
         "/duty-index.json",
         "/api/v1/knowledge",
         "/api/v1/catalog",
+        "/app-update.json",
     ]
     .contains(&path)
     {
-        let mounts = state.config.mounts.clone();
+        let mounts: Vec<Mount> = state.config.mounts.iter()
+            .filter(|m| path != "/app-update.json" || m.kind == "package").cloned().collect();
         let catalog = tokio::task::spawn_blocking(move || catalog(&mounts))
             .await
             .map_err(|e| (500, e.to_string()))?
@@ -411,6 +416,7 @@ async fn route(state: &Arc<Shared>, method: &str, path: &str, body: &[u8]) -> Ap
             "/bank-index.json" => catalog["banks"].clone(),
             "/duty-index.json" => catalog["duties"].clone(),
             "/api/v1/knowledge" => catalog["knowledge"].clone(),
+            "/app-update.json" => json!(crate::packages::releases(catalog["packages"]["items"].as_array().unwrap())),
             _ => catalog,
         };
         return Ok(response(200, value));
@@ -426,11 +432,23 @@ async fn route(state: &Arc<Shared>, method: &str, path: &str, body: &[u8]) -> Ap
             .find(|m| m.enabled && m.id == id)
             .ok_or((404, "目录不存在".into()))?;
         let file = safe_file(&mount.path, relative).map_err(|e| (403, e))?;
-        if !allowed(&file) || !file.is_file() {
+        if !mount_file_allowed(mount, &file) || !file.is_file() {
             return Err((404, "文件类型不允许或不存在".into()));
         }
-        if fs::metadata(&file).map_err(|e| (404, e.to_string()))?.len() > MAX_FILE {
-            return Err((413, "文件超过 32 MiB".into()));
+        let size = fs::metadata(&file).map_err(|e| (404, e.to_string()))?.len();
+        if size > file_limit(mount) {
+            return Err((413, "文件超过此目录允许的大小".into()));
+        }
+        if mount.kind == "package" {
+            crate::packages::metadata(&file).map_err(|e| (404, e))?;
+            let file = tokio::fs::File::open(&file).await.map_err(|e| (500,e.to_string()))?;
+            return Ok(Response::builder().status(200)
+                .header("Content-Type", "application/octet-stream")
+                .header("Content-Length", size)
+                .header("Content-Disposition", "attachment")
+                .header("Access-Control-Allow-Origin", "*")
+                .header("Cache-Control", "no-store")
+                .body(Body::from_stream(tokio_util::io::ReaderStream::new(file))).unwrap());
         }
         let mime = mime(&file);
         let bytes = tokio::fs::read(&file)
@@ -504,6 +522,12 @@ fn is_image(p: &Path) -> bool {
 fn allowed(p: &Path) -> bool {
     is_image(p) || ["json", "md", "txt"].contains(&ext(p).as_str())
 }
+fn mount_file_allowed(mount: &Mount, path: &Path) -> bool {
+    if mount.kind == "package" { crate::packages::metadata(path).is_ok() } else { allowed(path) }
+}
+fn file_limit(mount: &Mount) -> u64 {
+    if mount.kind == "package" { crate::packages::MAX_PACKAGE } else { MAX_FILE }
+}
 fn mime(p: &Path) -> &'static str {
     match ext(p).as_str() {
         "json" => "application/json; charset=utf-8",
@@ -525,7 +549,7 @@ fn encoded(p: &Path) -> String {
 fn file_url(id: &str, relative: &Path) -> String {
     format!("/files/{id}/{}", encoded(relative))
 }
-fn walk(root: &Path, dir: &Path, files: &mut Vec<PathBuf>, depth: usize) -> Result<(), String> {
+fn walk(root: &Path, dir: &Path, files: &mut Vec<PathBuf>, depth: usize, package: bool) -> Result<(), String> {
     if depth > 12 {
         return Err("目录层级超过 12 层".into());
     }
@@ -541,8 +565,8 @@ fn walk(root: &Path, dir: &Path, files: &mut Vec<PathBuf>, depth: usize) -> Resu
             continue;
         }
         if typ.is_dir() {
-            walk(root, &full, files, depth + 1)?;
-        } else if typ.is_file() && allowed(&full) {
+            walk(root, &full, files, depth + 1, package)?;
+        } else if typ.is_file() && (if package {crate::packages::allowed(&full)} else {allowed(&full)}) {
             files.push(full);
             if files.len() > 10000 {
                 return Err("发布目录超过 10000 个文件".into());
@@ -556,6 +580,7 @@ pub fn catalog(mounts: &[Mount]) -> Result<Value, String> {
     let mut duties = vec![];
     let mut knowledge = vec![];
     let mut warnings = vec![];
+    let mut packages = vec![];
     for m in mounts.iter().filter(|m| m.enabled) {
         let root = match fs::canonicalize(&m.path) {
             Ok(p) => p,
@@ -565,8 +590,20 @@ pub fn catalog(mounts: &[Mount]) -> Result<Value, String> {
             }
         };
         let mut files = vec![];
-        walk(&root, &root, &mut files, 0)?;
+        walk(&root, &root, &mut files, 0, m.kind == "package")?;
         files.sort();
+        if m.kind == "package" {
+            for full in &files {
+                match crate::packages::metadata(full) {
+                    Ok(mut item) => {
+                        item["downloadUrl"] = json!(file_url(&m.id,full.strip_prefix(&root).unwrap()));
+                        packages.push(item);
+                    }
+                    Err(e) => warnings.push(format!("{}：{e}",full.file_name().unwrap().to_string_lossy())),
+                }
+            }
+            continue;
+        }
         for full in files
             .iter()
             .filter(|p| ["json", "md", "txt"].contains(&ext(p).as_str()))
@@ -639,13 +676,57 @@ pub fn catalog(mounts: &[Mount]) -> Result<Value, String> {
         }
     }
     Ok(
-        json!({"banks":{"systemBanks":[],"userBanks":banks},"duties":{"systemDuties":[],"userDuties":duties},"knowledge":{"items":knowledge},"warnings":warnings}),
+        json!({"banks":{"systemBanks":[],"userBanks":banks},"duties":{"systemDuties":[],"userDuties":duties},"knowledge":{"items":knowledge},"packages":{"items":packages},"warnings":warnings}),
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn package_updates_and_large_authenticated_downloads() {
+        let dir = std::env::temp_dir().join(format!("package-api-{}",uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let name = "Answer_Test_v0.4.4_build2026102101_arm64.apk";
+        let file = fs::File::create(dir.join(name)).unwrap();
+        let size = MAX_FILE + 17;
+        file.set_len(size).unwrap(); drop(file);
+        fs::write(dir.join("Answer_Test_v0.5.0_build9_x64.exe"),b"installer").unwrap();
+        fs::write(dir.join("Answer_Test_v0.4.4_arm64.apk"),b"no build").unwrap();
+        fs::write(dir.join("private.json"),b"{}").unwrap();
+        let mount = Mount{id:"packages".into(),name:"软件包".into(),path:dir.to_string_lossy().into(),kind:"package".into(),enabled:true};
+        let disabled = Mount{id:"disabled".into(),enabled:false,..mount.clone()};
+        let ordinary = Mount{id:"ordinary".into(),kind:"bank".into(),..mount.clone()};
+        let mut config = Config::default();
+        // Use an ephemeral listener port selected in the same controlled test.
+        let socket = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        config.port = socket.local_addr().unwrap().port(); drop(socket);
+        config.mounts=vec![mount,disabled,ordinary]; config.validate().unwrap();
+        let token=config.access_token.clone();
+        let running=start(config,dir.join("data")).await.unwrap();
+        let base=format!("http://127.0.0.1:{}",running.shared.config.port);
+        let client=reqwest::Client::new();
+        assert_eq!(client.get(format!("{base}/app-update.json")).send().await.unwrap().status(),401);
+        let res=client.get(format!("{base}/app-update.json")).bearer_auth(&token).send().await.unwrap();
+        let list: Value=serde_json::from_slice(&res.bytes().await.unwrap()).unwrap();
+        assert_eq!(list.as_array().unwrap().len(),2);
+        let asset=list.as_array().unwrap().iter().find(|v|v["version"]=="0.4.4").unwrap()["assets"][0].clone();
+        let url=format!("{base}{}",asset["browser_download_url"].as_str().unwrap());
+        assert_eq!(client.get(&url).send().await.unwrap().status(),401);
+        let mut response=client.get(&url).bearer_auth(&token).send().await.unwrap();
+        assert_eq!(response.status(),200); assert_eq!(response.content_length(),Some(size));
+        let mut total=0;
+        while let Some(chunk)=response.chunk().await.unwrap(){assert!(chunk.iter().all(|b|*b==0));total+=chunk.len() as u64;}
+        assert_eq!(total,size);
+        for path in [format!("/files/disabled/{name}"),format!("/files/ordinary/{name}"),"/files/packages/private.json".into(),"/files/packages/Answer_Test_v0.4.4_arm64.apk".into()] {
+            assert_eq!(client.get(format!("{base}{path}")).bearer_auth(&token).send().await.unwrap().status(),404);
+        }
+        let catalog=catalog(&running.shared.config.mounts).unwrap();
+        assert_eq!(catalog["packages"]["items"].as_array().unwrap().len(),2);
+        assert!(catalog["warnings"].as_array().unwrap().iter().any(|v|v.as_str().unwrap().contains("构建号")));
+        running.stop().await.unwrap();
+        fs::remove_dir_all(dir).unwrap();
+    }
     #[test]
     fn rejects_traversal() {
         let dir = std::env::temp_dir().join(format!("bank-test-{}", uuid::Uuid::new_v4()));
@@ -860,28 +941,21 @@ mod tests {
             serde_json::from_slice::<Value>(&restored).unwrap()["name"],
             "测试题库"
         );
-        for kind in ["knowledge", "summaries", "chat", "duty"] {
+        for kind in ["knowledge", "summaries", "chat"] {
             let path = format!("/api/v1/sync/roundtrip/{kind}");
             let payload = json!({"baseRevision":0,"data":{"channel":kind}});
             assert_eq!(request(port,"PUT",&path,token,payload.clone()).await.0,200);
             assert_eq!(request(port,"PUT",&path,token,payload).await.0,409);
             assert_eq!(request(port,"GET",&path,token,Value::Null).await.1["data"]["channel"],kind);
         }
-        let bank_path = "/api/v1/bank-sync/hash-test/banks/local-bank";
-        let bank_content = r#"{"id":"local-bank","name":"同步题库","questions":[],"createdAt":"now","updatedAt":"now"}"#;
-        let hash = format!("{:x}", Sha256::digest(bank_content.as_bytes()));
-        let manifest = json!({"banks":[{"id":"local-bank","hash":hash}],"published":[]});
-        let plan = request(port,"PUT","/api/v1/bank-sync/hash-test/manifest",token,manifest.clone()).await;
-        assert_eq!(plan.0, 200);
-        assert_eq!(plan.1["upload"].as_array().unwrap().len(), 1);
-        assert_eq!(plan.1["published"].as_array().unwrap().len(), 1);
-        let upload = json!({"hash":hash,"baseHash":null,"content":bank_content});
-        assert_eq!(request(port,"PUT",bank_path,"wrong",upload.clone()).await.0,401);
-        assert_eq!(request(port,"PUT",bank_path,token,upload).await.0,200);
-        let repeated = request(port,"PUT","/api/v1/bank-sync/hash-test/manifest",token,manifest).await;
-        assert_eq!(repeated.1["upload"],json!([]));
-        assert_eq!(repeated.1["download"],json!([]));
-        assert_eq!(request(port,"GET",bank_path,token,Value::Null).await.1["content"],bank_content);
+        for path in ["/api/v1/bank-sync/hash-test/manifest", "/api/v1/bank-sync/hash-test/banks/local-bank", "/api/v1/sync/roundtrip/duty", "/api/v1/sync/roundtrip/banks"] {
+            for method in ["GET", "PUT"] {
+                assert_eq!(request(port,method,path,token,json!({"baseRevision":0,"data":{}})).await.0,410);
+            }
+        }
+        assert!(!dir.join("state/sync/hash-test").exists());
+        assert!(!dir.join("state/sync/roundtrip/duty.json").exists());
+        assert!(!dir.join("state/sync/roundtrip/banks.json").exists());
         running.stop().await.unwrap();
         assert!(tokio::net::TcpStream::connect(("127.0.0.1", port))
             .await
@@ -895,7 +969,7 @@ mod tests {
             restarted.shared.metrics.lock().unwrap().requests,
             history.requests
         );
-        for kind in ["knowledge", "summaries", "chat", "duty"] {
+        for kind in ["knowledge", "summaries", "chat"] {
             let path=format!("/api/v1/sync/roundtrip/{kind}");
             let result=request(port,"GET",&path,token,Value::Null).await;
             assert_eq!(result.0,200);assert_eq!(result.1["revision"],1);assert_eq!(result.1["data"]["channel"],kind);

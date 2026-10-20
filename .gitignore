@@ -88,6 +88,12 @@ proguard/
 .build-temp/
 release/
 
+# Local archives: old releases, previews, records and private utilities.
+/local-archive/
+
+# Local AI operating rules (kept on this computer only).
+/AGENTS.md
+
 # Local UI previews and design proposals (not application source)
 /duty-preview/
 /*-proposals.html

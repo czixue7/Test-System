@@ -249,6 +249,7 @@ const DutySchedule: React.FC = () => {
   const [importError, setImportError] = useState<string | null>(null);
 
   const [showDownloadPanel, setShowDownloadPanel] = useState(false);
+  const remoteRequestPending = useRef(false);
   const [remoteDuties, setRemoteDuties] = useState<RemoteDutyInfo[]>([]);
   const [loadingRemote, setLoadingRemote] = useState(false);
   const [remoteError, setRemoteError] = useState<string | null>(null);
@@ -593,6 +594,8 @@ const DutySchedule: React.FC = () => {
 
   // ===== 远程下载（优先 Gitee，失败回退 GitHub） =====
   const fetchRemoteDutyList = async () => {
+    if (remoteRequestPending.current) return;
+    remoteRequestPending.current = true;
     setLoadingRemote(true);
     setRemoteError(null);
     try {
@@ -610,7 +613,7 @@ const DutySchedule: React.FC = () => {
       all.sort((a, b) => a.name.localeCompare(b.name, 'zh'));
       setRemoteDuties(all);
     } catch { setRemoteError('获取值班表列表失败'); showError('获取值班表列表失败'); }
-    finally { setLoadingRemote(false); }
+    finally { remoteRequestPending.current = false; setLoadingRemote(false); }
   };
 
   useEffect(() => {
@@ -667,7 +670,6 @@ const DutySchedule: React.FC = () => {
 
   // ===== 下载面板 =====
   const renderDownloadPanel = () => {
-    if (!loadingRemote && remoteDuties.length === 0 && !remoteError) fetchRemoteDutyList();
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900" style={{ paddingTop: safeArea.top }}>
         <header className="sticky top-0 z-10 bg-white dark:bg-gray-800 shadow border-b border-gray-200 dark:border-gray-700">
@@ -1089,7 +1091,7 @@ const DutySchedule: React.FC = () => {
                 <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
               </div>
 
-              <button onClick={() => { closeAddModal(); setShowDownloadPanel(true); }}
+              <button onClick={() => { closeAddModal(); setShowDownloadPanel(true); void fetchRemoteDutyList(); }}
                 className="w-full flex items-center gap-3 p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-purple-500 hover:bg-purple-50/50 dark:hover:bg-purple-900/20 transition-colors">
                 <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900/50 rounded-full flex items-center justify-center flex-shrink-0">
                   <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>

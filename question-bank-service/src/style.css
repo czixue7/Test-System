@@ -99,7 +99,7 @@ header p, .panel-head p { color: var(--muted); font-size: 12px; margin: 0; }
 .publish-side .sync-storage-path > span { display: block; margin: 4px 0 0; }
 .publish-side .sync-space-rows > div { grid-template-columns: 65px 1fr; gap: 6px; }
 .publish-side .sync-space-rows time { grid-column: 1 / -1; }
-.catalog-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 13px 0; margin-bottom: 4px; }
+.catalog-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 13px 0; margin-bottom: 4px; }
 .catalog-strip > span { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 12px; padding: 0 16px; }
 .catalog-strip > span:first-child { padding-left: 2px; }
 .catalog-strip > span + span { border-left: 1px solid var(--line); }
