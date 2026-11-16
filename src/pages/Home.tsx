@@ -18,6 +18,54 @@ const getGreeting = (): string => {
   return '晚上好';
 };
 
+// 首页副标题在时间问候之外轮换的励志短语
+const ENCOURAGEMENTS = [
+  '每天进步一点点，考试稳一点。',
+  '今天多练一题，明天少慌一点。',
+  '把不会的变成会的，就是进步。',
+  '坚持刷题，答案会记住你。',
+  '慢一点没关系，别停下就好。',
+  '你今天的努力，考场上都算数。',
+  '错题不是打击，是提分线索。',
+  '先做完，再做好。',
+  '书读百遍，其义自见。',
+  '一次通过，从今天这页开始。',
+  '不怕基础差，就怕不开始。',
+  '每天半小时，胜过临时抱佛脚。',
+  '题做三遍，胜过看十遍。',
+  '稳稳复习，慢慢变强。',
+  '专注眼前这一题。',
+  '会的不丢分，不会的变会。',
+  '今天的坚持，是明天的底气。',
+  '别急，先把知识点吃透。',
+  '复习没有捷径，但有方法。',
+  '记不住的，就多写一遍。',
+  '状态不好也学十分钟。',
+  '每一次练习，都是在攒分。',
+  '目标不大，每天达标。',
+  '把时间花在能提分的地方。',
+  '考前的每一天，都还有机会。',
+  '不会就问，问完就会。',
+  '认真对待每一道错题。',
+  '从薄弱处下手，提分最快。',
+  '学习是场马拉松，不是冲刺。',
+  '今天也为自己加一分。',
+  '先理解，再记忆，最后练习。',
+  '不跟别人比，跟昨天的自己比。',
+  '多看一眼笔记，少错一道题。',
+  '你离及格线，可能只差几套题。',
+  '想放弃时，再坚持五分钟。',
+  '每天都有新收获，就是好消息。',
+  '把大目标拆成今天的小任务。',
+  '稳定发挥，就是最好的状态。',
+  '学会一个知识点，就赚到了。',
+  '别怕重复，熟练来自重复。',
+];
+const HERO_ROTATE_MS = 12000;
+// 记录副标题轮换进度：Home 重新挂载时按离开时长继续轮换，
+// 否则每次切回首页都从第一句问候重新开始，看起来像“一直不变”。
+let heroRotation = { index: 0, at: Date.now() };
+
 const Home: React.FC = () => {
   const navigate = useNavigate();
   const { banks } = useQuestionBankStore();
@@ -31,6 +79,34 @@ const Home: React.FC = () => {
   const [wrongQuestions, setWrongQuestions] = useState<Question[]>([]);
   const [favoriteQuestions, setFavoriteQuestions] = useState<Question[]>([]);
   const [commonQuestions, setCommonQuestions] = useState<Question[]>([]);
+  // 首条为当前时段问候，其余为轮换的励志短语
+  const [heroLines] = useState(() => [`${getGreeting()}，今天想学点什么？`, ...ENCOURAGEMENTS]);
+  const [heroIndex, setHeroIndex] = useState(() => {
+    // 按离开首页的时长补上错过的轮换次数，回来时直接显示当前该显示的那句
+    const skipped = Math.floor((Date.now() - heroRotation.at) / HERO_ROTATE_MS);
+    return (heroRotation.index + skipped) % heroLines.length;
+  });
+  const [heroVisible, setHeroVisible] = useState(true);
+
+  useEffect(() => {
+    heroRotation = { index: heroIndex, at: Date.now() };
+  }, [heroIndex]);
+
+  useEffect(() => {
+    let swapTimer: number | undefined;
+    const rotateTimer = window.setInterval(() => {
+      // 先柔和淡出，再换文字淡入，避免内容瞬间跳变
+      setHeroVisible(false);
+      swapTimer = window.setTimeout(() => {
+        setHeroIndex((index) => (index + 1) % heroLines.length);
+        setHeroVisible(true);
+      }, 340);
+    }, HERO_ROTATE_MS);
+    return () => {
+      window.clearInterval(rotateTimer);
+      if (swapTimer) window.clearTimeout(swapTimer);
+    };
+  }, [heroLines.length]);
 
     useEffect(() => {
     initTheme();
@@ -122,7 +198,7 @@ const Home: React.FC = () => {
           <div className="flex items-start justify-between">
             <div className="min-w-0">
               <div className="im-hero-title">学习</div>
-              <div className="im-hero-sub">{getGreeting()}，今天想学点什么？</div>
+              <div className={`im-hero-sub ${heroVisible ? '' : 'im-hero-sub--out'}`}>{heroLines[heroIndex]}</div>
             </div>
             <button onClick={() => setShowAddModal(true)} className="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors flex-shrink-0">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
@@ -136,7 +212,7 @@ const Home: React.FC = () => {
               >
                 <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
                 <span className="min-w-0 break-words leading-snug">{currentBank.name}</span>
-                <span className="opacity-75 flex-shrink-0">{totalQuestions} 题</span>
+                <span className="opacity-75 flex-shrink-0">{currentBank.questions.length} 题</span>
                 {banks.length > 1 && (
                   <svg className={`w-4 h-4 flex-shrink-0 transition-transform duration-200 ${isBankListExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                 )}

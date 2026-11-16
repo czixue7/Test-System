@@ -2,16 +2,22 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuestionBankStore } from '../store/questionBankStore';
 import { useExamStore, SavedProgress } from '../store/examStore';
-import { Question, QuestionBank, PracticeMode } from '../types';
+import { useRecordStore } from '../store/recordStore';
+import { useSettingsStore } from '../store/settingsStore';
+import { Question, QuestionBank, PracticeMode, UserAnswer } from '../types';
 import { useSwipeElement } from '../hooks/useSwipe';
 import { useKeyboard } from '../hooks/useKeyboard';
 import { useSafeArea } from '../hooks/useSafeArea';
+import { useToast } from '../hooks/useToast';
 import ImageViewer from '../components/ImageViewer';
 import ExitConfirmModal from '../components/ExitConfirmModal';
 import ResumePromptModal from '../components/ResumePromptModal';
+import GradingResultCard from '../components/GradingResultCard';
+import { getGradedBlankResults } from '../utils/practiceGrading';
 import {
   getBlankAnswers,
   getMultipleChoiceIds,
+  isEmptyAnswer,
   matchDisorderBlanks,
   matchOrderedBlanks,
 } from '../utils/answerUtils';
@@ -40,9 +46,16 @@ const Practice: React.FC = () => {
   const location = useLocation();
   const { getBank } = useQuestionBankStore();
   const { setAnswer, getAnswer, confirmAnswer, getResult, startExam, loadExamProgress, saveExamProgress, restoreExamProgress, clearExamProgress } = useExamStore();
+  const { addRecord } = useRecordStore();
+  const { markQuestionsDone, resetDoneQuestions } = useSettingsStore();
+  const { showSuccess } = useToast();
 
   const [practiceQuestions, setPracticeQuestions] = useState<Question[]>([]);
   const [practiceIndex, setPracticeIndex] = useState(0);
+  // 顺序练题开启「避免重复做题」后，题库已无剩余题目
+  const [isBankExhausted, setIsBankExhausted] = useState(false);
+  // 一轮练习只能写一条测试记录（防止完成/退出两条路径重复写入）
+  const roundRecordSavedRef = useRef(false);
   const [showAnswer, setShowAnswer] = useState(false);
   // 判题进行中（AI 判题可能数秒）：期间禁止切题，避免答案面板显示到别的题上
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -98,6 +111,8 @@ const Practice: React.FC = () => {
 
   useEffect(() => {
     setIsInitialized(false);
+    setIsBankExhausted(false);
+    roundRecordSavedRef.current = false;
   }, [bankId, practiceMode]);
 
   useEffect(() => {
@@ -126,7 +141,15 @@ const Practice: React.FC = () => {
 
       const getQuestionsForMode = (mode: PracticeMode, bank: QuestionBank): Question[] => {
         switch (mode) {
-          case 'sequential':
+          case 'sequential': {
+            // 顺序练题：按题库顺序取题；开启「避免重复做题」时跳过已做过的题目，并按设置的每轮题量截取
+            const { avoidRepeatQuestions, questionsPerRound, doneQuestionIds } = useSettingsStore.getState();
+            const doneSet = new Set(avoidRepeatQuestions ? (doneQuestionIds[bank.id] ?? []) : []);
+            const pool = avoidRepeatQuestions
+              ? bank.questions.filter(q => !doneSet.has(q.id))
+              : [...bank.questions];
+            return pool.slice(0, questionsPerRound);
+          }
           case 'view':
             return [...bank.questions];
           case 'wrong':
@@ -145,6 +168,16 @@ const Practice: React.FC = () => {
         return;
       }
 
+      // 顺序练题：库里的题都已做过，不再重复出题
+      if (practiceMode === 'sequential' && questions.length === 0) {
+        setPracticeQuestions([]);
+        setIsBankExhausted(true);
+        setIsInitialized(true);
+        return;
+      }
+
+      roundRecordSavedRef.current = false;
+      setIsBankExhausted(false);
       setPracticeQuestions(questions);
       setPracticeIndex(0);
       setShowAnswer(false);
@@ -185,6 +218,64 @@ const Practice: React.FC = () => {
     }));
   }, []);
 
+  /**
+   * 顺序练题：把本轮题目、作答、得分、用时写成一条测试记录，
+   * 并把这些题标记为「已做」，下一轮开启去重时不再出现。
+   * 一题都没作答（只翻看）时不算一轮，既不写记录也不标记。
+   */
+  const saveRoundRecord = async (questions: Question[]) => {
+    if (practiceMode !== 'sequential' || roundRecordSavedRef.current || !bank || questions.length === 0) return;
+
+    const state = useExamStore.getState().examState;
+    const answers: UserAnswer[] = questions.map(question => {
+      const result = state?.results.get(question.id);
+      const answer = state?.answers.get(question.id) ?? '';
+      if (result) {
+        return {
+          questionId: question.id,
+          answer: result.answer ?? answer,
+          score: result.score,
+          isCorrect: result.isCorrect,
+          aiFeedback: result.aiFeedback,
+          aiExplanation: result.aiExplanation,
+          gradingMode: result.gradingMode,
+          blankResults: result.blankResults,
+        };
+      }
+      return { questionId: question.id, answer, score: 0, isCorrect: 0 };
+    });
+
+    if (!answers.some(item => !isEmptyAnswer(item.answer))) return;
+
+    roundRecordSavedRef.current = true;
+    const maxScore = questions.reduce((sum, q) => sum + q.score, 0);
+    try {
+      // 顺序练题的提交走固定判题（confirmAnswer 未启用 AI）
+      await addRecord(bank.id, bank.name, questions, answers, elapsedTime, maxScore, 'fixed');
+      markQuestionsDone(bank.id, questions.map(q => q.id));
+    } catch (error) {
+      console.error('[Practice] 写入练题记录失败:', error);
+    }
+  };
+
+  /** 完成本轮：写记录后返回，下一轮自动跳过这些题 */
+  const handleFinishRound = async () => {
+    if (isSubmitting) return;
+    await saveRoundRecord(practiceQuestions);
+    await clearExamProgress();
+    showSuccess('本轮已结束，测试记录已保存', 2500);
+    goBack();
+  };
+
+  /** 题目都做过了：重置本题库的已做记录，重新开始一轮 */
+  const handleResetDoneQuestions = () => {
+    if (!bank) return;
+    resetDoneQuestions(bank.id);
+    roundRecordSavedRef.current = false;
+    setIsBankExhausted(false);
+    setIsInitialized(false);
+  };
+
   const goBack = () => {
     if (window.history.length > 1 && location.key !== 'default') {
       navigate(-1);
@@ -203,11 +294,14 @@ const Practice: React.FC = () => {
   };
 
   const handleSaveAndExit = async () => {
+    // 保存进度表示本轮还没结束，下次可继续，不写测试记录
     await saveExamProgress('practice', elapsedTime, practiceMode);
     goBack();
   };
 
   const handleExitWithoutSave = async () => {
+    // 中途直接退出也算本轮结束：写出记录并标记已做，避免下次重复出题
+    await saveRoundRecord(practiceQuestions);
     await clearExamProgress();
     goBack();
   };
@@ -356,7 +450,21 @@ const Practice: React.FC = () => {
           </div>
         </header>
         <div className="max-w-lg mx-auto px-4 py-8 text-center">
-          <p className="text-gray-500 dark:text-gray-400">暂无题目</p>
+          {isBankExhausted ? (
+            <>
+              <p className="text-gray-500 dark:text-gray-400 mb-4">
+                本题库的题目都已练过，已按设置跳过重复题目
+              </p>
+              <button
+                onClick={handleResetDoneQuestions}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors"
+              >
+                重置已做记录并重新开始
+              </button>
+            </>
+          ) : (
+            <p className="text-gray-500 dark:text-gray-400">暂无题目</p>
+          )}
         </div>
       </div>
     );
@@ -486,7 +594,7 @@ const Practice: React.FC = () => {
                 const allowDisorder = currentQuestion.allowDisorder ?? false;
                 // 与判题共用同一套匹配结果（乱序会消费命中的标准答案），
                 // 避免界面把「重复填同一个答案」的空也显示成绿色
-                const blankMatches = allowDisorder
+                const blankMatches = isConfirmed ? getGradedBlankResults(currentQuestion, currentAnswer, result) : allowDisorder
                   ? matchDisorderBlanks(userAnswers, blanks).blankResults
                   : matchOrderedBlanks(userAnswers, blanks).blankResults;
 
@@ -495,7 +603,7 @@ const Practice: React.FC = () => {
                 const hasInput = userAnswer.trim().length > 0;
                 const allowDisorder = currentQuestion.allowDisorder ?? false;
                 
-                const isMatch = blankMatches[idx]?.isCorrect ?? false;
+                const isMatch = blankMatches[idx]?.isCorrect;
                 
                 let inputClass = 'w-full p-3 border-2 border-transparent rounded-lg text-gray-800 dark:text-gray-100 dark:placeholder-gray-400 transition-colors duration-300 outline-none focus:border-blue-300 focus:outline-none';
                 
@@ -503,8 +611,10 @@ const Practice: React.FC = () => {
                   // 提交后根据当前空是否匹配显示颜色
                   if (isMatch) {
                     inputClass += ' border-green-500 bg-green-50 dark:bg-green-900/30 dark:border-green-500';
-                  } else {
+                  } else if (isMatch === false) {
                     inputClass += ' border-red-400 bg-red-50 dark:bg-red-900/20 dark:border-red-500';
+                  } else {
+                    inputClass += ' bg-gray-100 dark:bg-gray-700';
                   }
                 } else if (hasInput) {
                   if (isMatch) {
@@ -611,85 +721,13 @@ const Practice: React.FC = () => {
         )}
 
         {!isViewMode && showAnswer && (
-          <div className="mt-4 p-4 bg-gray-50 rounded-lg dark:bg-gray-800">
-            <div className="flex items-center gap-2 mb-2">
-              {(() => {
-                if (!isConfirmed) {
-                  return <span className="text-gray-600 dark:text-gray-300 font-medium">未作答</span>;
-                }
-                if (result?.isCorrect === 2) {
-                  return <span className="text-green-600 dark:text-green-400 font-medium">✓ 正确</span>;
-                }
-                if (result?.isCorrect === 1) {
-                  return <span className="text-orange-500 dark:text-orange-400 font-medium">◐ 部分正确</span>;
-                }
-                return <span className="text-red-600 dark:text-red-400 font-medium">✗ 错误</span>;
-              })()}
-              {isConfirmed && <span className="text-gray-500 dark:text-gray-400">得分: {result?.score}/{currentQuestion.score}</span>}
-            </div>
-            {/* 显示参考答案图片 */}
-            {(() => {
-              const answer = currentQuestion.correctAnswer;
-              if (typeof answer === 'object' && answer !== null && 'images' in answer && Array.isArray(answer.images) && answer.images.length > 0) {
-                return (
-                  <div className="mb-3 space-y-2">
-                    {answer.images.map((img: string, idx: number) => (
-                      <img 
-                        key={idx} 
-                        src={img} 
-                        alt="" 
-                        className="w-full rounded-lg object-contain cursor-pointer hover:opacity-80 transition-opacity"
-                        onClick={(e) => {
-                          const rect = (e.target as HTMLImageElement).getBoundingClientRect();
-                          openImageViewer(answer.images as string[], idx, rect);
-                        }}
-                      />
-                    ))}
-                  </div>
-                );
-              }
-              return null;
-            })()}
-            <div className="text-sm text-gray-600 dark:text-gray-300">
-              <span className="font-medium">参考答案: </span>
-              {Array.isArray(currentQuestion.correctAnswer)
-                ? currentQuestion.correctAnswer.join(', ')
-                : typeof currentQuestion.correctAnswer === 'object'
-                  ? (currentQuestion.correctAnswer as any).text
-                  : currentQuestion.correctAnswer}
-            </div>
-            {currentQuestion.explanation && (
-              <div className="text-sm text-gray-600 dark:text-gray-300 mt-2">
-                <span className="font-medium">解析: </span>
-                {currentQuestion.explanation}
-              </div>
-            )}
-            {(result?.aiFeedback || result?.aiExplanation) && (
-              <div className={`mt-4 p-3 rounded-lg border ${
-                result?.gradingMode === 'ai'
-                  ? 'bg-purple-50 dark:bg-purple-900/30 border-purple-200 dark:border-purple-700'
-                  : 'bg-gray-100 dark:bg-gray-700 border-gray-200 dark:border-gray-600'
-              }`}>
-                <div className="flex items-center gap-2 mb-2">
-                  <svg className={`w-4 h-4 ${
-                    result?.gradingMode === 'ai' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-600 dark:text-gray-400'
-                  }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                  </svg>
-                  <span className={`text-sm font-medium ${
-                    result?.gradingMode === 'ai' ? 'text-purple-700 dark:text-purple-400' : 'text-gray-700 dark:text-gray-400'
-                  }`}>
-                    {result?.gradingMode === 'ai' ? 'AI 智能判题解析' : '判题解析'}
-                  </span>
-                </div>
-                {result?.aiExplanation ? (
-                  <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{result.aiExplanation}</div>
-                ) : (
-                  <div className="text-sm text-gray-700 dark:text-gray-300">{result?.aiFeedback}</div>
-                )}
-              </div>
-            )}
-          </div>
+          <GradingResultCard
+            question={currentQuestion}
+            answer={currentAnswer}
+            result={result}
+            isConfirmed={isConfirmed}
+            onOpenImages={openImageViewer}
+          />
         )}
       </div>
     );
@@ -793,6 +831,15 @@ const Practice: React.FC = () => {
                 className="px-4 py-2 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {isSubmitting ? '判题中...' : '提交'}
+              </button>
+            ) : practiceMode === 'sequential' && practiceIndex === practiceQuestions.length - 1 ? (
+              // 顺序练题最后一题答完：结束本轮并写入测试记录
+              <button
+                onClick={handleFinishRound}
+                disabled={isSubmitting}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                完成本轮
               </button>
             ) : (
               <button onClick={handleNextQuestion} disabled={practiceIndex === practiceQuestions.length - 1} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg disabled:opacity-50 dark:bg-gray-700 dark:text-gray-200">下一题</button>

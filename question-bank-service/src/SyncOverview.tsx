@@ -14,6 +14,7 @@ const kinds = [
   ["knowledge", "知识库", "条知识"],
   ["summaries", "总结", "个版本"],
   ["chat", "AI 聊天", "个会话"],
+  ["config", "API 配置", "个配置"],
 ] as const;
 const size = (n: number) =>
   n < 1024
@@ -69,7 +70,7 @@ export default function SyncOverview({ dataDir }: { dataDir: string }) {
           <small>
             {data
               ? `${spaces.length} 个空间 · ${size(rows.reduce((sum, row) => sum + row.bytes, 0))}`
-              : "知识库、总结、AI 聊天"}
+              : "知识库、总结、AI 聊天、API 配置"}
           </small>
         </span>
         <span
@@ -82,7 +83,7 @@ export default function SyncOverview({ dataDir }: { dataDir: string }) {
       {open && (
         <div id="sync-storage-body" className="sync-overview-body">
           <p className="sync-storage-hint">
-            客户端点击手动同步后，知识库、总结和 AI 聊天保存在这台电脑。题库和值班表只读取发布目录，不存入同步空间。
+            客户端点击手动同步后，知识库、总结、AI 聊天和 API 配置保存在这台电脑。API 配置可在顶部同名标签页管理；题库和值班表只读取发布目录。
           </p>
           {error && (
             <p role="alert" className="warning">

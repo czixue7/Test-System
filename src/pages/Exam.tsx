@@ -88,6 +88,8 @@ const Exam: React.FC = () => {
   const { showError } = useToast();
 
   const [isInitialized, setIsInitialized] = useState(false);
+  // 开启「避免重复做题」后，题库里已没有未做过的题
+  const [isBankExhausted, setIsBankExhausted] = useState(false);
   const [examStartTime, setExamStartTime] = useState<number>(0);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
@@ -124,8 +126,18 @@ const Exam: React.FC = () => {
           setIsInitialized(true);
           return;
         }
-        // 无进度，正常开始
-        const shuffledQuestions = shuffleArray(bank.questions);
+        // 无进度，正常开始：按设置跳过已做过的题，并限制每轮题量
+        const { avoidRepeatQuestions, questionsPerRound, doneQuestionIds } = useSettingsStore.getState();
+        const doneSet = new Set(avoidRepeatQuestions ? (doneQuestionIds[bank.id] ?? []) : []);
+        const pool = avoidRepeatQuestions
+          ? bank.questions.filter(q => !doneSet.has(q.id))
+          : [...bank.questions];
+        if (pool.length === 0) {
+          setIsBankExhausted(true);
+          setIsInitialized(true);
+          return;
+        }
+        const shuffledQuestions = shuffleArray(pool).slice(0, questionsPerRound);
         startExam(bank.id, bank.name, shuffledQuestions);
         setExamStartTime(Date.now());
         setElapsedTime(0);
@@ -358,6 +370,11 @@ const Exam: React.FC = () => {
         maxScore,
         useSettingsStore.getState().gradingMode
       );
+      // 记录这些题已考过，开启去重后下一场不再出现
+      useSettingsStore.getState().markQuestionsDone(
+        examState?.bankId || '',
+        questions.map(q => q.id)
+      );
       // 交卷成功，清除已保存的进度
       await clearExamProgress();
       resetExam();
@@ -404,6 +421,31 @@ const Exam: React.FC = () => {
         <div className="text-center p-4">
           <p className="text-gray-500 dark:text-gray-400 mb-4">题库中没有题目</p>
           <button onClick={() => navigate('/')} className="px-4 py-2 bg-blue-500 text-white rounded-lg">返回首页</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isBankExhausted) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-center p-4">
+          <p className="text-gray-500 dark:text-gray-400 mb-4">
+            本题库的题目都已考过，已按设置跳过重复题目
+          </p>
+          <button
+            onClick={() => {
+              useSettingsStore.getState().resetDoneQuestions(bank.id);
+              setIsBankExhausted(false);
+              setIsInitialized(false);
+            }}
+            className="px-4 py-2 bg-blue-500 text-white rounded-lg mr-3"
+          >
+            重置已做记录并重新开始
+          </button>
+          <button onClick={() => navigate('/')} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg">
+            返回首页
+          </button>
         </div>
       </div>
     );

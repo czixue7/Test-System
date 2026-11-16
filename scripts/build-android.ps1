@@ -70,6 +70,17 @@ try {
         if ($Target -ne 'aarch64') { throw 'This app currently packages arm64 only' }
         # Run native compilation outside the JVM (some Windows hosts deny Java child processes).
         & $PSCommandPath -NativeOnly -Target $Target -Profile $Profile
+        # 将最新的前端产物同步到 Android 资源目录；否则 Gradle 会把上一次的旧 dist 打进 APK
+        $distDir = Join-Path $repo 'dist'
+        $assetDir = Join-Path $android 'app/src/main/assets'
+        if (!(Test-Path -LiteralPath (Join-Path $distDir 'index.html'))) { throw 'Frontend dist is missing index.html' }
+        foreach ($name in @('assets', 'banks')) {
+            $stale = Join-Path $assetDir $name
+            if (Test-Path -LiteralPath $stale) { Remove-Item -LiteralPath $stale -Recurse -Force }
+        }
+        New-Item -ItemType Directory -Path $assetDir -Force | Out-Null
+        Copy-Item -Path (Join-Path $distDir '*') -Destination $assetDir -Recurse -Force
+        Write-Host "Synced frontend assets: $distDir -> $assetDir"
         $source = Join-Path $repo "src-tauri/target/aarch64-linux-android/$Profile/libanswer_test_lib.so"
         $nativeHash = Get-Sha256 $source
         $variant = if ($Profile -eq 'release') { 'Release' } else { 'Debug' }

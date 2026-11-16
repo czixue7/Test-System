@@ -10,8 +10,9 @@ plugins {
 val appVersion = (JsonSlurper().parse(file("../../../tauri.conf.json")) as Map<*, *>)["version"] as String
 val appBuild = Regex("""CURRENT_VERSION_HASH\s*=\s*['"](\d+)['"]""")
     .find(file("../../../../src/utils/updater.ts").readText())
-    ?.groupValues?.get(1)?.toInt()
-    ?: error("Missing numeric CURRENT_VERSION_HASH")
+    ?.groupValues?.get(1)
+    ?: error("Missing CURRENT_VERSION_HASH")
+require(appBuild.matches(Regex("\\d{8}"))) { "Build number must use YYYYMMDD" }
 
 android {
     compileSdk = 36
@@ -21,7 +22,7 @@ android {
         applicationId = "com.exam.test_system"
         minSdk = 24
         targetSdk = 36
-        versionCode = appBuild
+        versionCode = appBuild.toInt()
         versionName = appVersion
         
         // 只构建 arm64-v8a 架构

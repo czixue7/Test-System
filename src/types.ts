@@ -227,10 +227,14 @@ export interface DutyDrill {
   name: string;   // 演练名称
 }
 
-// 岗位划分中的一项：岗位名称 → 人员
+// 岗位标签类型：巡检区域 / 做表 / 班内轮休；旧数据没有该字段，按巡检处理
+export type DutyRolePostKind = 'patrol' | 'report' | 'rest';
+
+// 岗位划分中的一项：标签名称 → 人员
 export interface DutyRolePost {
-  name: string;    // 岗位名，如 配电 / 柴发 / 暖通① / 暖通②
-  person: string;  // 该岗位人员
+  name: string;    // 标签名，如 (左)柴发+一层 / 做表 / 休息
+  person: string;  // 该标签人员
+  kind?: DutyRolePostKind;
 }
 
 // 某日期某班组的岗位划分（用于夜班多岗位分工显示）
@@ -239,6 +243,7 @@ export interface DutyRoleAssignment {
   group: string;             // 班组 A/B/C/D
   shiftType: DutyShiftType;  // 表格班次信息；岗位显示按日期和班组匹配，不限制白夜班
   leader?: string;           // 值班长
+  leaderLabel?: string;      // 可统一改写的岗位名；旧表默认“值班长”
   posts: DutyRolePost[];     // 岗位划分
 }
 

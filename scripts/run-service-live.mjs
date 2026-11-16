@@ -34,6 +34,8 @@ try {
   await new Promise(r=>setTimeout(r,5500));
   const traffic=JSON.parse(await readFile(resolve(dir,'traffic.json'),'utf8'));
   if(!traffic.upload || !traffic.download || !traffic.records.some(r=>r.method==='PUT') || !traffic.records.some(r=>r.method==='GET')) throw Error('Live traffic did not persist both directions');
+  if(!traffic.records.every(r=>r.id && r.hasDetail && r.detail?.protocol && r.summary)) throw Error('Packaged service did not persist request details');
+  if(JSON.stringify(traffic).includes(token)) throw Error('Request history exposed the access token');
   console.log(`PASS: isolated test fixture ${dir}`);
 } finally {
   const done = new Promise(r=>service.once('exit',r)); service.kill(); await done;

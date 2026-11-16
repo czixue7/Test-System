@@ -6,7 +6,7 @@ import {
   validateSource,
 } from "../utils/sourceConfig";
 export type { DataSourceEntry, DataSourceKind } from "../utils/sourceConfig";
-export type SyncKind = "banks" | "knowledge" | "summaries" | "chat" | "duty";
+export type SyncKind = "banks" | "knowledge" | "summaries" | "chat" | "duty" | "config";
 export type SyncFlags = Record<SyncKind, boolean>;
 interface DataSourceState {
   sources: DataSourceEntry[];
@@ -47,7 +47,7 @@ export const useDataSourceStore = create<DataSourceState>()(
       url: "",
       token: "",
       space: crypto.randomUUID(),
-      sync: { banks: false, knowledge: false, summaries: false, chat: false, duty: false },
+      sync: { banks: false, knowledge: false, summaries: false, chat: false, duty: false, config: false },
       lastSync: "",
       lastError: "",
       syncing: false,

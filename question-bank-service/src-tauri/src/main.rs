@@ -1,11 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod endpoint;
+mod api_config;
 mod bank_sync;
 mod model;
 mod packages;
 mod server;
+mod request_log;
 mod sync_overview;
 mod tray;
+mod text_sync;
+mod text_history;
 use model::*;
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -21,18 +25,44 @@ struct AppState {
     runtime: tokio::sync::Mutex<Runtime>,
 }
 #[tauri::command]
+async fn get_api_config(space: String, state: State<'_, AppState>) -> Result<Value, String> {
+    let rt = state.runtime.lock().await;
+    let _guard = if let Some(r) = &rt.running { Some(r.shared.sync_lock.lock().await) } else { None };
+    api_config::load(&state.dir, &space)
+}
+#[tauri::command]
+async fn save_api_config(space: String, base_revision: u64, data: Value, state: State<'_, AppState>) -> Result<Value, String> {
+    let rt = state.runtime.lock().await;
+    let _guard = if let Some(r) = &rt.running { Some(r.shared.sync_lock.lock().await) } else { None };
+    let (status, envelope) = api_config::save(&state.dir, &space, base_revision, data)?;
+    Ok(json!({"status":status,"envelope":envelope}))
+}
+#[tauri::command]
 async fn get_state(state: State<'_, AppState>) -> Result<Value, String> {
     let rt = state.runtime.lock().await;
-    let metrics = if let Some(r) = &rt.running {
+    let mut metrics = if let Some(r) = &rt.running {
         r.shared.metrics.lock().map_err(|e| e.to_string())?.clone()
     } else if state.dir.join("traffic.json").exists() {
         read_json(&state.dir.join("traffic.json"))?
     } else {
         server::Metrics::default()
     };
+    // Full previews are fetched only when a record is opened, not on every poll.
+    for record in &mut metrics.records { record.detail = None; }
     Ok(
         json!({"config":rt.config,"running":rt.running.is_some(),"metrics":metrics,"dataDir":state.dir}),
     )
+}
+#[tauri::command]
+async fn get_request_detail(id: String, state: State<'_, AppState>) -> Result<Option<request_log::RequestDetail>, String> {
+    let rt = state.runtime.lock().await;
+    let metrics: server::Metrics = if let Some(r) = &rt.running {
+        r.shared.metrics.lock().map_err(|e| e.to_string())?.clone()
+    } else if state.dir.join("traffic.json").exists() {
+        read_json(&state.dir.join("traffic.json"))?
+    } else { server::Metrics::default() };
+    metrics.records.iter().find(|record| record.id == id).map(|record| record.detail.clone())
+        .ok_or_else(|| "该请求已超出最近 500 条记录范围，请选择其他记录".into())
 }
 #[tauri::command]
 async fn save_config(config: Config, state: State<'_, AppState>) -> Result<(), String> {
@@ -175,10 +205,16 @@ fn main() {
                 }),
             });
             tray::setup(app)?;
+            if let Some(window) = app.get_webview_window("main") {
+                window.set_title(&format!("题库服务台 v{} · {}", env!("CARGO_PKG_VERSION"), env!("APP_BUILD_NUMBER")))?;
+            }
             Ok(())
         })
         .on_window_event(tray::on_window_event)
         .invoke_handler(tauri::generate_handler![
+            get_api_config,
+            save_api_config,
+            get_request_detail,
             get_state,
             save_config,
             set_theme,

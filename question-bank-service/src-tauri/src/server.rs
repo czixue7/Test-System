@@ -1,4 +1,6 @@
 use crate::model::*;
+use crate::request_log::{self, BodyPreview, RequestDetail};
+pub use crate::request_log::Record;
 use axum::{
     body::{to_bytes, Body},
     extract::{ConnectInfo, State},
@@ -31,17 +33,6 @@ pub struct Bucket {
     pub download: u64,
     pub requests: u64,
 }
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Record {
-    pub time: u64,
-    pub method: String,
-    pub path: String,
-    pub status: u16,
-    pub upload: u64,
-    pub download: u64,
-    pub peer: String,
-}
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Metrics {
@@ -53,7 +44,13 @@ pub struct Metrics {
     pub records: Vec<Record>,
 }
 impl Metrics {
-    fn record(&mut self, r: Record) {
+    fn record(&mut self, mut r: Record) {
+        if r.id.is_empty() { r.id = uuid::Uuid::new_v4().to_string(); }
+        if let Some(detail) = &r.detail {
+            r.summary = detail.resource.clone();
+            r.direction = detail.direction.clone();
+            r.has_detail = true;
+        }
         self.upload += r.upload;
         self.download += r.download;
         self.requests += 1;
@@ -82,7 +79,7 @@ pub struct Shared {
     pub config: Config,
     pub data_dir: PathBuf,
     pub metrics: Mutex<Metrics>,
-    sync_lock: tokio::sync::Mutex<()>,
+    pub(crate) sync_lock: tokio::sync::Mutex<()>,
     slots: Semaphore,
 }
 pub struct Running {
@@ -139,11 +136,14 @@ pub async fn start(config: Config, dir: PathBuf) -> Result<Running, String> {
         .map_err(|e| format!("UDP 端口无法监听：{e}"))?;
     // A corrupt history must be reported, not silently overwritten.
     let history_path = dir.join("traffic.json");
-    let metrics = if history_path.exists() {
+    let mut metrics: Metrics = if history_path.exists() {
         read_json(&history_path)?
     } else {
         Metrics::default()
     };
+    for record in &mut metrics.records {
+        if record.id.is_empty() { record.id = uuid::Uuid::new_v4().to_string(); }
+    }
     let shared = Arc::new(Shared {
         config,
         data_dir: dir,
@@ -173,6 +173,7 @@ pub async fn start(config: Config, dir: PathBuf) -> Result<Running, String> {
                 continue;
             }
             let path = request["path"].as_str().unwrap_or("/api/v1/health");
+            let started = std::time::Instant::now();
             let (status, value) = if path == "/api/v1/health" {
                 (200, json!({"service":"question-bank-service","version":1}))
             } else {
@@ -188,6 +189,15 @@ pub async fn start(config: Config, dir: PathBuf) -> Result<Running, String> {
                     upload: sent as u64,
                     download: len as u64,
                     peer: peer.to_string(),
+                    detail: Some(RequestDetail {
+                        protocol: "UDP".into(), direction: "upload".into(),
+                        duration_ms: started.elapsed().as_millis() as u64,
+                        resource: request_log::resource(&udp_state.config, path).0,
+                        request_body: request_log::preview(&buffer[..len], "application/json", &udp_state.config.access_token),
+                        response_body: request_log::preview(&bytes, "application/json", &udp_state.config.access_token),
+                        ..RequestDetail::default()
+                    }),
+                    ..Record::default()
                 });
             }
         }
@@ -271,11 +281,12 @@ fn response(status: u16, value: Value) -> Response<Body> {
     bytes_response(
         status,
         "application/json; charset=utf-8",
-        serde_json::to_vec(&value).unwrap_or_default(),
+        if status == 204 { vec![] } else { serde_json::to_vec(&value).unwrap_or_default() },
     )
 }
 fn bytes_response(status: u16, mime: &str, bytes: Vec<u8>) -> Response<Body> {
-    Response::builder()
+    let preview = request_log::preview(&bytes, mime, "");
+    let mut response = Response::builder()
         .status(status)
         .header("Content-Type", mime)
         .header("Cache-Control", "no-store")
@@ -287,29 +298,43 @@ fn bytes_response(status: u16, mime: &str, bytes: Vec<u8>) -> Response<Body> {
             "Authorization, Content-Type",
         )
         .body(Body::from(bytes))
-        .unwrap()
+        .unwrap();
+    response.extensions_mut().insert(preview);
+    response
 }
 async fn handle(
     State(state): State<Arc<Shared>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     req: Request<Body>,
 ) -> Response<Body> {
+    let started = std::time::Instant::now();
     let method = req.method().to_string();
     let path = req.uri().path().to_owned();
-    if method == "OPTIONS" {
-        return response(204, Value::Null);
-    }
+    let secret = &state.config.access_token;
+    let (resource, local_path) = request_log::resource(&state.config, &path);
+    let mut detail = RequestDetail {
+        protocol: format!("{:?}", req.version()),
+        direction: if ["PUT", "POST", "PATCH"].contains(&method.as_str()) {"download"} else {"upload"}.into(),
+        resource, local_path,
+        query: request_log::query(req.uri().query().unwrap_or(""), secret),
+        request_headers: request_log::headers(req.headers(), secret),
+        request_body: BodyPreview { kind: "unread".into(), text: "请求体未读取".into(), truncated: false },
+        ..RequestDetail::default()
+    };
+    let content_type = req.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("").to_owned();
     let authorized = req
         .headers()
         .get("authorization")
         .and_then(|v| v.to_str().ok())
         .map(|v| v.strip_prefix("Bearer ") == Some(state.config.access_token.as_str()))
         .unwrap_or(false);
-    let Ok(_permit) = state.slots.try_acquire() else {
-        return response(429, json!({"error":"服务繁忙，请稍后重试"}));
-    };
+    let permit = state.slots.try_acquire();
     let mut download = 0;
-    let res = if !authorized {
+    let res = if method == "OPTIONS" {
+        response(204, Value::Null)
+    } else if permit.is_err() {
+        response(429, json!({"error":"服务繁忙，请稍后重试"}))
+    } else if !authorized {
         response(401, json!({"error":"访问密钥无效"}))
     } else {
         match tokio::time::timeout(
@@ -320,6 +345,7 @@ async fn handle(
         {
             Ok(Ok(body)) => {
                 download = body.len() as u64;
+                detail.request_body = request_log::preview(&body, &content_type, secret);
                 match route(&state, &method, &path, &body).await {
                     Ok(r) => r,
                     Err((code, e)) => response(code, json!({"error":e})),
@@ -331,19 +357,50 @@ async fn handle(
     };
     use axum::body::HttpBody;
     let upload = res.body().size_hint().exact().or_else(|| res.headers().get("content-length").and_then(|v|v.to_str().ok()?.parse().ok())).unwrap_or(0);
+    detail.duration_ms = started.elapsed().as_millis() as u64;
+    detail.response_headers = request_log::headers(res.headers(), secret);
+    detail.response_body = res.extensions().get::<BodyPreview>().cloned().unwrap_or(BodyPreview {
+        kind: "binary".into(), text: "流式文件，内容不展开".into(), truncated: false,
+    });
+    detail.response_body.text = request_log::redact_text(&detail.response_body.text, secret);
     state.metrics.lock().unwrap().record(Record {
         time: now(),
         method,
-        path,
+        path: request_log::redact_text(&path, secret),
         status: res.status().as_u16(),
         upload,
         download,
         peer: peer.to_string(),
+        detail: Some(detail),
+        ..Record::default()
     });
     res
 }
 type ApiResult = Result<Response<Body>, (u16, String)>;
 async fn route(state: &Arc<Shared>, method: &str, path: &str, body: &[u8]) -> ApiResult {
+    if let Some(rest) = path.strip_prefix("/api/v1/text-history/") {
+        let _lock = state.sync_lock.lock().await;
+        let mounts=state.config.mounts.clone();let data=state.data_dir.clone();
+        let method=method.to_owned();let rest=rest.to_owned();let body=body.to_vec();
+        let (status,value)=tokio::task::spawn_blocking(move||crate::text_history::history(&mounts,&data,&method,&rest,&body)).await.map_err(|e|(500,e.to_string()))??;
+        return Ok(response(status,value));
+    }
+    if path == "/api/v1/text" {
+        if method != "GET" { return Err((405,"文本目录列表仅支持 GET".into())); }
+        let mounts = state.config.mounts.clone();
+        let value = tokio::task::spawn_blocking(move || crate::text_sync::catalog(&mounts)).await
+            .map_err(|e|(500,e.to_string()))?.map_err(|e|(500,e))?;
+        return Ok(response(200,value));
+    }
+    if let Some(rest) = path.strip_prefix("/api/v1/text/") {
+        let _lock = state.sync_lock.lock().await;
+        let mounts = state.config.mounts.clone();
+        let method = method.to_owned(); let rest = rest.to_owned(); let body = body.to_vec();
+        let data = state.data_dir.clone();
+        let (status,value) = tokio::task::spawn_blocking(move || crate::text_history::save(&mounts,&data,&method,&rest,&body))
+            .await.map_err(|e|(500,e.to_string()))??;
+        return Ok(response(status,value));
+    }
     if let Some(rest) = path.strip_prefix("/api/v1/bank-sync/") {
         let _lock = state.sync_lock.lock().await;
         let (status, value) = crate::bank_sync::route(&state.data_dir, &state.config.mounts, method, rest, body)?;
@@ -362,10 +419,23 @@ async fn route(state: &Arc<Shared>, method: &str, path: &str, body: &[u8]) -> Ap
         if ["banks", "duty"].contains(&kind) {
             return Err((410, "题库和值班表不使用同步存储，请从发布目录手动获取".into()));
         }
-        if !valid_id(space) || !["knowledge", "summaries", "chat"].contains(&kind) {
+        if !valid_id(space) || !["knowledge", "summaries", "chat", "config"].contains(&kind) {
             return Err((400, "同步空间或数据类型无效".into()));
         }
         let _lock = state.sync_lock.lock().await;
+        if kind == "config" {
+            if method == "GET" {
+                return Ok(response(200, crate::api_config::load(&state.data_dir, space).map_err(|e| (500, e))?));
+            }
+            if method == "PUT" {
+                let input: Value = serde_json::from_slice(body).map_err(|_| (400, "JSON 格式无效".into()))?;
+                let revision = input["baseRevision"].as_u64().ok_or((400, "同步版本无效".into()))?;
+                crate::api_config::validate(&input["data"]).map_err(|e| (400, e))?;
+                let (status, next) = crate::api_config::save(&state.data_dir, space, revision, input["data"].clone()).map_err(|e| (500, e))?;
+                return Ok(response(status, next));
+            }
+            return Err((405, "只支持 GET / PUT".into()));
+        }
         let file = state
             .data_dir
             .join("sync")
@@ -522,15 +592,24 @@ fn is_image(p: &Path) -> bool {
 fn allowed(p: &Path) -> bool {
     is_image(p) || ["json", "md", "txt"].contains(&ext(p).as_str())
 }
+fn is_duty_excel(p: &Path) -> bool {
+    ["xlsx", "xls"].contains(&ext(p).as_str())
+        && !p.file_name().unwrap_or_default().to_string_lossy().starts_with("~$")
+}
 fn mount_file_allowed(mount: &Mount, path: &Path) -> bool {
-    if mount.kind == "package" { crate::packages::metadata(path).is_ok() } else { allowed(path) }
+    if crate::text_sync::is_text_mount(mount) { crate::text_sync::allowed(path) }
+    else if mount.kind == "package" { crate::packages::metadata(path).is_ok() }
+    else { allowed(path) || (mount.kind == "duty" && is_duty_excel(path)) }
 }
 fn file_limit(mount: &Mount) -> u64 {
-    if mount.kind == "package" { crate::packages::MAX_PACKAGE } else { MAX_FILE }
+    if crate::text_sync::is_text_mount(mount) { crate::text_sync::MAX_TEXT }
+    else if mount.kind == "package" { crate::packages::MAX_PACKAGE } else { MAX_FILE }
 }
 fn mime(p: &Path) -> &'static str {
     match ext(p).as_str() {
         "json" => "application/json; charset=utf-8",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "xls" => "application/vnd.ms-excel",
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
         "gif" => "image/gif",
@@ -549,7 +628,7 @@ fn encoded(p: &Path) -> String {
 fn file_url(id: &str, relative: &Path) -> String {
     format!("/files/{id}/{}", encoded(relative))
 }
-fn walk(root: &Path, dir: &Path, files: &mut Vec<PathBuf>, depth: usize, package: bool) -> Result<(), String> {
+fn walk(root: &Path, dir: &Path, files: &mut Vec<PathBuf>, depth: usize, mount: &Mount) -> Result<(), String> {
     if depth > 12 {
         return Err("目录层级超过 12 层".into());
     }
@@ -565,8 +644,8 @@ fn walk(root: &Path, dir: &Path, files: &mut Vec<PathBuf>, depth: usize, package
             continue;
         }
         if typ.is_dir() {
-            walk(root, &full, files, depth + 1, package)?;
-        } else if typ.is_file() && (if package {crate::packages::allowed(&full)} else {allowed(&full)}) {
+            walk(root, &full, files, depth + 1, mount)?;
+        } else if typ.is_file() && (if mount.kind == "package" {crate::packages::allowed(&full)} else {mount_file_allowed(mount, &full)}) {
             files.push(full);
             if files.len() > 10000 {
                 return Err("发布目录超过 10000 个文件".into());
@@ -576,12 +655,14 @@ fn walk(root: &Path, dir: &Path, files: &mut Vec<PathBuf>, depth: usize, package
     Ok(())
 }
 pub fn catalog(mounts: &[Mount]) -> Result<Value, String> {
+    let texts = crate::text_sync::catalog(mounts)?;
     let mut banks = vec![];
     let mut duties = vec![];
     let mut knowledge = vec![];
     let mut warnings = vec![];
     let mut packages = vec![];
     for m in mounts.iter().filter(|m| m.enabled) {
+        if crate::text_sync::is_text_mount(m) { continue; }
         let root = match fs::canonicalize(&m.path) {
             Ok(p) => p,
             Err(e) => {
@@ -590,7 +671,7 @@ pub fn catalog(mounts: &[Mount]) -> Result<Value, String> {
             }
         };
         let mut files = vec![];
-        walk(&root, &root, &mut files, 0, m.kind == "package")?;
+        walk(&root, &root, &mut files, 0, m)?;
         files.sort();
         if m.kind == "package" {
             for full in &files {
@@ -606,7 +687,7 @@ pub fn catalog(mounts: &[Mount]) -> Result<Value, String> {
         }
         for full in files
             .iter()
-            .filter(|p| ["json", "md", "txt"].contains(&ext(p).as_str()))
+            .filter(|p| ["json", "md", "txt"].contains(&ext(p).as_str()) || (m.kind == "duty" && is_duty_excel(p)))
         {
             if fs::metadata(full).map_err(|e| e.to_string())?.len() > MAX_FILE {
                 warnings.push(format!("文件过大：{}", full.display()));
@@ -660,7 +741,7 @@ pub fn catalog(mounts: &[Mount]) -> Result<Value, String> {
                     }
                     banks.push(item);
                 }
-                "duty" if data["shifts"].is_array() => duties.push(item),
+                "duty" if data["shifts"].is_array() || is_duty_excel(full) => duties.push(item),
                 "knowledge" => {
                     let content = if data.is_null() {
                         String::from_utf8(bytes).map_err(|_| "知识库文本必须是 UTF-8")?
@@ -676,13 +757,47 @@ pub fn catalog(mounts: &[Mount]) -> Result<Value, String> {
         }
     }
     Ok(
-        json!({"banks":{"systemBanks":[],"userBanks":banks},"duties":{"systemDuties":[],"userDuties":duties},"knowledge":{"items":knowledge},"packages":{"items":packages},"warnings":warnings}),
+        json!({"banks":{"systemBanks":[],"userBanks":banks},"duties":{"systemDuties":[],"userDuties":duties},"knowledge":{"items":knowledge},"packages":{"items":packages},"texts":texts,"warnings":warnings}),
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn text_sync_authenticated_roundtrip_and_concurrent_conflict() {
+        async fn value(response: reqwest::Response) -> Value { serde_json::from_slice(&response.bytes().await.unwrap()).unwrap() }
+        let dir = std::env::temp_dir().join(format!("text-http-{}",uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let sample = std::env::var_os("TEXT_SYNC_SAMPLE_FILE").map(PathBuf::from);
+        let bytes = sample.as_ref().map(|p|fs::read(p).unwrap()).unwrap_or_else(|| "第一章\r\n中文正文\r\n".as_bytes().to_vec());
+        let name = sample.as_ref().and_then(|p|p.file_name()).unwrap_or_else(||std::ffi::OsStr::new("正文.txt")).to_string_lossy().into_owned();
+        fs::write(dir.join(&name),&bytes).unwrap();
+        let socket = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = socket.local_addr().unwrap().port(); drop(socket);
+        let mut config = Config::default(); config.port=port;
+        config.mounts=vec![Mount{id:"novel".into(),name:"小说目录".into(),path:dir.to_string_lossy().into(),kind:"小说".into(),enabled:true}];
+        config.validate().unwrap(); let token=config.access_token.clone();
+        let running=start(config,dir.join("state")).await.unwrap();
+        let client=reqwest::Client::new(); let base=format!("http://127.0.0.1:{port}");
+        let index=value(client.get(format!("{base}/api/v1/text")).bearer_auth(&token).send().await.unwrap()).await;
+        assert_eq!(index["folders"][0]["kind"],"小说");
+        assert_eq!(index["items"][0]["sha"],format!("{:x}",Sha256::digest(&bytes)));
+        let download=index["items"][0]["downloadUrl"].as_str().unwrap();
+        let raw=client.get(format!("{base}{download}")).bearer_auth(&token).send().await.unwrap().bytes().await.unwrap();
+        assert_eq!(raw.as_ref(),bytes.as_slice(),"原始文本下载字节必须相同");
+        let sync=index["items"][0]["syncUrl"].as_str().unwrap();
+        let current=value(client.get(format!("{base}{sync}")).bearer_auth(&token).send().await.unwrap()).await;
+        assert_eq!(current["content"].as_str().unwrap().as_bytes(),bytes);
+        let unauthorized=client.put(format!("{base}{sync}")).header("Content-Type","application/json").body(serde_json::to_vec(&json!({"baseSha":current["sha"],"content":"unauthorized"})).unwrap()).send().await.unwrap();
+        assert_eq!(unauthorized.status().as_u16(),401);
+        let first=client.put(format!("{base}{sync}")).bearer_auth(&token).header("Content-Type","application/json").body(serde_json::to_vec(&json!({"baseSha":current["sha"],"content":"并发更新 A"})).unwrap()).send();
+        let second=client.put(format!("{base}{sync}")).bearer_auth(&token).header("Content-Type","application/json").body(serde_json::to_vec(&json!({"baseSha":current["sha"],"content":"并发更新 B"})).unwrap()).send();
+        let (a,b)=tokio::join!(first,second); let mut codes=[a.unwrap().status().as_u16(),b.unwrap().status().as_u16()]; codes.sort();
+        assert_eq!(codes,[200,409]);
+        let saved=fs::read_to_string(dir.join(&name)).unwrap(); assert!(["并发更新 A","并发更新 B"].contains(&saved.as_str()));
+        running.stop().await.unwrap(); fs::remove_dir_all(&dir).unwrap();
+    }
     #[tokio::test]
     async fn package_updates_and_large_authenticated_downloads() {
         let dir = std::env::temp_dir().join(format!("package-api-{}",uuid::Uuid::new_v4()));
@@ -758,6 +873,7 @@ mod tests {
                 upload: 20,
                 download: 5,
                 peer: "local".into(),
+                ..Record::default()
             });
         }
         assert_eq!(m.upload, 40);
@@ -790,6 +906,102 @@ mod tests {
         let (headers, body) = text.split_once("\r\n\r\n").unwrap();
         let code = headers.split_whitespace().nth(1).unwrap().parse().unwrap();
         (code, serde_json::from_str(body).unwrap_or(json!(body)))
+    }
+    #[tokio::test]
+    async fn request_details_include_file_json_errors_options_and_survive_restart() {
+        let dir = std::env::temp_dir().join(format!("request-detail-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("排班表.xlsx"), b"PK\x03\x04file-bytes").unwrap();
+        let port = (0..30).find_map(|_| {
+            let tcp = std::net::TcpListener::bind("127.0.0.1:0").ok()?;
+            let port = tcp.local_addr().ok()?.port();
+            let _udp = std::net::UdpSocket::bind(("127.0.0.1", port)).ok()?;
+            Some(port)
+        }).unwrap();
+        let mut config = Config::default(); config.port = port;
+        config.mounts.push(Mount { id: "excel".into(), name: "发布排班".into(), kind: "duty".into(), path: dir.to_string_lossy().into_owned(), enabled: true });
+        let running = start(config.clone(), dir.join("state")).await.unwrap();
+        let base = format!("http://127.0.0.1:{port}");
+        let client = reqwest::Client::new();
+        let path = file_url("excel", Path::new("排班表.xlsx"));
+        let res = client.get(format!("{base}{path}?token=hidden-query&offset=0"))
+            .bearer_auth(&config.access_token).header("user-agent", "detail-test").send().await.unwrap();
+        assert_eq!(res.status(),200); let _ = res.bytes().await.unwrap();
+        let payload = json!({"baseRevision":0,"data":{"items":[],"note":"用户上传内容","accessToken":"private-body-key"}});
+        let res = client.put(format!("{base}/api/v1/sync/test/knowledge")).bearer_auth(&config.access_token)
+            .header("content-type", "application/json").body(payload.to_string()).send().await.unwrap();
+        assert_eq!(res.status(),200); let _ = res.bytes().await.unwrap();
+        assert_eq!(client.get(format!("{base}/api/v1/health")).send().await.unwrap().status(),401);
+        assert_eq!(client.request(reqwest::Method::OPTIONS, format!("{base}/api/v1/health")).send().await.unwrap().status(),204);
+        let records = running.shared.metrics.lock().unwrap().records.clone();
+        assert_eq!(records.len(),4);
+        assert!(records.iter().all(|r| !r.id.is_empty() && r.has_detail));
+        let file = records[0].detail.as_ref().unwrap();
+        assert!(file.resource.contains("排班表.xlsx") && file.local_path.as_ref().unwrap().ends_with("排班表.xlsx"));
+        assert_eq!(file.direction,"upload"); assert_eq!(file.response_body.kind,"binary");
+        assert!(file.query.contains("[已隐藏]") && !file.query.contains("hidden-query"));
+        assert_eq!(file.request_headers["authorization"],"[已隐藏]");
+        assert_eq!(file.request_headers["user-agent"],"detail-test");
+        let write = records[1].detail.as_ref().unwrap();
+        assert_eq!(write.direction,"download");
+        assert!(write.request_body.text.contains("用户上传内容"));
+        assert!(!write.request_body.text.contains("private-body-key"));
+        assert!(records[2].detail.as_ref().unwrap().response_body.text.contains("访问密钥无效"));
+        running.stop().await.unwrap();
+        let persisted: Metrics = read_json(&dir.join("state/traffic.json")).unwrap();
+        assert_eq!(persisted.records[0].id,records[0].id);
+        assert_eq!(persisted.records[0].detail.as_ref().unwrap().resource,file.resource);
+        let text = fs::read_to_string(dir.join("state/traffic.json")).unwrap();
+        for secret in [&config.access_token, "private-body-key", "hidden-query"] { assert!(!text.contains(secret)); }
+        fs::remove_dir_all(dir).unwrap();
+    }
+    #[tokio::test]
+    async fn duty_excel_catalog_and_binary_download() {
+        let dir = std::env::temp_dir().join(format!("duty-excel-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let bytes = b"PK\x03\x04\xff\x00excel-binary";
+        fs::write(dir.join("排班表.xlsx"), bytes).unwrap();
+        fs::write(dir.join("旧排班表.xls"), bytes).unwrap();
+        fs::write(dir.join("~$排班表.xlsx"), bytes).unwrap();
+        fs::write(dir.join(".hidden.xlsx"), bytes).unwrap();
+        let mount = Mount { id: "duty".into(), name: "排班表".into(),
+            path: dir.to_string_lossy().into_owned(), kind: "duty".into(), enabled: true };
+        let index = catalog(&[mount.clone()]).unwrap();
+        let items = index["duties"]["userDuties"].as_array().unwrap();
+        assert_eq!(items.len(), 2);
+        assert!(items.iter().all(|item| item["sha"] == format!("{:x}", Sha256::digest(bytes))));
+        let mut disabled = mount.clone(); disabled.enabled = false;
+        assert!(catalog(&[disabled]).unwrap()["duties"]["userDuties"].as_array().unwrap().is_empty());
+        let ordinary = Mount { id: "bank".into(), kind: "bank".into(), ..mount.clone() };
+        assert!(!mount_file_allowed(&ordinary, &dir.join("排班表.xlsx")));
+        assert!(!mount_file_allowed(&mount, &dir.join("~$排班表.xlsx")));
+        let port = (0..30).find_map(|_| {
+            let tcp = std::net::TcpListener::bind("127.0.0.1:0").ok()?;
+            let port = tcp.local_addr().ok()?.port();
+            let _udp = std::net::UdpSocket::bind(("127.0.0.1", port)).ok()?;
+            Some(port)
+        }).unwrap();
+        let mut config = Config::default();
+        config.port = port; config.mounts = vec![mount, ordinary];
+        let running = start(config.clone(), dir.join("state")).await.unwrap();
+        let client = reqwest::Client::new();
+        for item in items {
+            let url = format!("http://127.0.0.1:{port}{}", item["downloadUrl"].as_str().unwrap());
+            assert_eq!(client.get(&url).send().await.unwrap().status(), 401);
+            let response = client.get(&url).bearer_auth(&config.access_token).send().await.unwrap();
+            assert_eq!(response.status(), 200);
+            assert!(response.headers()["content-type"].to_str().unwrap().contains("spreadsheet")
+                || response.headers()["content-type"] == "application/vnd.ms-excel");
+            assert_eq!(response.bytes().await.unwrap().as_ref(), bytes);
+        }
+        for path in ["/files/bank/%E6%8E%92%E7%8F%AD%E8%A1%A8.xlsx", "/api/v1/sync/test/duty"] {
+            let status = client.get(format!("http://127.0.0.1:{port}{path}"))
+                .bearer_auth(&config.access_token).send().await.unwrap().status();
+            assert_eq!(status.as_u16(), if path.starts_with("/files/") {404} else {410});
+        }
+        assert!(!dir.join("state/sync/test/duty.json").exists());
+        running.stop().await.unwrap();
+        fs::remove_dir_all(&dir).unwrap();
     }
     #[tokio::test]
     async fn service_lifecycle_auth_catalog_and_sync_conflict() {
@@ -956,11 +1168,36 @@ mod tests {
         assert!(!dir.join("state/sync/hash-test").exists());
         assert!(!dir.join("state/sync/roundtrip/duty.json").exists());
         assert!(!dir.join("state/sync/roundtrip/banks.json").exists());
+        let api_path = "/api/v1/sync/roundtrip/config";
+        let api_data = json!({"schema":1,"entries":[{"id":"profile","version":"first","ancestors":[],"value":{
+            "name":"接口配置","apiKey":"api-roundtrip-key","apiPassword":"api-roundtrip-password",
+            "apiModel":"test-model","apiEndpoint":"https://example.test","apiProvider":""}}]});
+        assert_eq!(request(port,"GET",api_path,"invalid-key",Value::Null).await.0,401);
+        assert_eq!(request(port,"PUT",api_path,token,json!({"baseRevision":0,"data":api_data})).await.0,200);
+        assert_eq!(request(port,"GET",api_path,token,Value::Null).await.1["data"],api_data);
+        // A local service-desk edit uses the same file and lock as the HTTP client.
+        let mut desk_data = api_data.clone();
+        desk_data["entries"][0]["value"]["apiKey"] = json!("desk-roundtrip-key");
+        desk_data["entries"][0]["value"]["concurrency"] = json!(4);
+        desk_data["entries"][0]["version"] = json!("second");
+        desk_data["entries"][0]["ancestors"] = json!(["first"]);
+        {
+            let _guard = running.shared.sync_lock.lock().await;
+            assert_eq!(crate::api_config::save(&running.shared.data_dir,"roundtrip",1,desk_data.clone()).unwrap().0,200);
+        }
+        let conflict = request(port,"PUT",api_path,token,json!({"baseRevision":1,"data":api_data})).await;
+        assert_eq!(conflict.0,409); assert_eq!(conflict.1["data"],desk_data);
+        assert_eq!(request(port,"PUT",api_path,token,json!({"baseRevision":2,"data":{"schema":1,"entries":[{}]}})).await.0,400);
+        assert_eq!(request(port,"GET",api_path,token,Value::Null).await.1["data"],desk_data);
         running.stop().await.unwrap();
         assert!(tokio::net::TcpStream::connect(("127.0.0.1", port))
             .await
             .is_err());
         let history: Metrics = read_json(&dir.join("state/traffic.json")).unwrap();
+        let history_text = serde_json::to_string(&history).unwrap();
+        for secret in ["api-roundtrip-key", "desk-roundtrip-key", "api-roundtrip-password"] {
+            assert!(!history_text.contains(secret), "API secrets must not enter request history");
+        }
         assert!(history.requests >= 13);
         assert!(history.upload > 0);
         assert!(history.download > 0);
@@ -969,6 +1206,7 @@ mod tests {
             restarted.shared.metrics.lock().unwrap().requests,
             history.requests
         );
+        assert_eq!(request(port,"GET",api_path,token,Value::Null).await.1["data"],desk_data);
         for kind in ["knowledge", "summaries", "chat"] {
             let path=format!("/api/v1/sync/roundtrip/{kind}");
             let result=request(port,"GET",&path,token,Value::Null).await;

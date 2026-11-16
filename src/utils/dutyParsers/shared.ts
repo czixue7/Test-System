@@ -62,16 +62,16 @@ export interface ParsedDateCol {
 
 // 检测某一行是否为日期表头行；返回日期列数组，或 null
 // 支持两种格式：
-//   完整日期：2022/2/1、2022/2/2 ...（旧格式）
+//   完整日期：2022/2/1、2026-10-01、2026-10-01T00:00:00.000Z 等
 //   数字日期：1、2、3 ... 30（新格式）
 export function detectDateHeader(row: any[]): ParsedDateCol[] | null {
   if (!row || row.length === 0) return null;
 
-  // 方式1：完整日期 YYYY/M/D
+  // 方式1：完整日期，兼容斜线、ISO 文本和中文日期。
   const fullDates: ParsedDateCol[] = [];
   for (let c = 0; c < row.length; c++) {
     const s = String(row[c] ?? '').trim();
-    const m = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+    const m = s.match(/^(\d{4})\s*[-/年.]\s*(\d{1,2})\s*[-/月.]\s*(\d{1,2})(?=$|[日T\s])/);
     if (m) {
       fullDates.push({ colIdx: c, day: parseInt(m[3], 10), year: parseInt(m[1], 10), month: parseInt(m[2], 10) });
     } else if (fullDates.length > 0) {
@@ -114,16 +114,13 @@ export function extractGroupFromName(name: string): string | null {
 }
 
 // 从人员名提取姓名
-//   isFullDateFormat=true（旧格式）：取括号前部分作为名字，去空格
-//   isFullDateFormat=false（新格式）：拆分 "-" 取最后一段
+// 完整日期表先去掉括号内班组，两种日期表均支持按 "-" 等分隔符去掉职务前缀。
 export function extractPersonName(name: string, isFullDateFormat: boolean): string {
-  const s = String(name ?? '').trim();
+  let n = String(name ?? '').trim();
   if (isFullDateFormat) {
-    const idx = s.search(/[（(]/);
-    const base = idx >= 0 ? s.slice(0, idx) : s;
-    return base.replace(/\s+/g, '');
+    const idx = n.search(/[（(]/);
+    if (idx >= 0) n = n.slice(0, idx);
   }
-  let n = s;
   if (n.includes('-') || n.includes('—') || n.includes('·')) {
     const parts = n.split(/[-—·]/);
     n = parts[parts.length - 1].trim();

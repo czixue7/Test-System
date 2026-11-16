@@ -121,6 +121,9 @@ draft_836d0cbe_folder/
 # Local one-off scripts (not version controlled)
 _gen_duty_roles.cjs
 
+# Trae HTML share artifacts (temporary preview packages)
+/.trae-html-share-packages/
+
 # Repository rebuild: keep local documentation and business data out of source uploads.
 /docs/
 /Question_bank/

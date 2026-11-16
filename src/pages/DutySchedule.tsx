@@ -1,16 +1,19 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useDutyScheduleStore, buildShifts } from '../store/dutyScheduleStore';
-import { DutyShift, DutyShiftType, DutyRoleAssignment, DutyDrill, JsonDutyScheduleData } from '../types';
+import { useDutyScheduleStore } from '../store/dutyScheduleStore';
+import { DutyShift, DutyShiftType, DutyRoleAssignment, DutyDrill } from '../types';
 import { useSafeArea } from '../hooks/useSafeArea';
 import { useToast } from '../hooks/useToast';
 import { useLongPress } from '../hooks/useLongPress';
+import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import Modal from '../components/Modal';
 import DrillEditModal from './duty/DrillEditModal';
 import RoleEditModal from './duty/RoleEditModal';
+import DutyTagModal, { DutyTagKind, DutyTagPerson, sortDutyTags } from './duty/DutyTagModal';
+import { applyDutyRoleEdits, dutyLeaderLabel, dutyPostKind, postLabel, roleShiftCategory, RoleNameChange } from '../utils/dutyRoleEdits';
 import SwapPersonnelModal from './duty/SwapPersonnelModal';
 import { fetchDutyIndex, checkDutyStatus } from '../utils/dutyScheduleIndex';
-import { fetchRemoteText, rawUrlCandidates } from '../utils/remoteRepo';
+import { downloadPublishedDuty } from '../utils/publishedDuty';
 import { assertSourceAvailable } from '../utils/dataSourceRequest';
 import { parseDutyExcelFile, parseJsonDutyText, isRestShiftText, DutyParseResult } from '../utils/dutyParsers';
 import { generateDutyForecast } from '../utils/dutyForecast';
@@ -169,9 +172,12 @@ const DutySchedule: React.FC = () => {
   const [swapPickTarget, setSwapPickTarget] = useState(false);
   const [swapTargetDate, setSwapTargetDate] = useState<string | null>(null);
   const [roleEditOpen, setRoleEditOpen] = useState(false);
+  // 班组卡片点击后按姓名分组展示的全部标签
+  const [tagModal, setTagModal] = useState<{ title: string; subtitle: string; persons: DutyTagPerson[] } | null>(null);
 
   const longPressHandlers = useLongPress({
     onLongPress: (e, target) => {
+      calendarSwipe.cancel();
       const d = target?.dataset.date;
       if (d) {
         setSwapPickTarget(false);
@@ -210,14 +216,14 @@ const DutySchedule: React.FC = () => {
   };
 
   // 岗位改写：替换 longPressDate 当天的岗位划分
-  const handleSaveRoles = (date: string | null, roles: DutyRoleAssignment[]) => {
+  const handleSaveRoles = (date: string | null, roles: DutyRoleAssignment[], renames: RoleNameChange[]) => {
     if (!currentDuty || !date) return;
     updateDuty(currentDuty.id, {
-      roles: [...(currentDuty.roles || []).filter((r) => r.date !== date), ...roles.map((r) => ({ ...r, date }))]
+      roles: applyDutyRoleEdits(currentDuty.roles || [], date, roles, renames)
     });
     setRoleEditOpen(false);
     setLongPressDate(null);
-    showSuccess('岗位划分已更新');
+    showSuccess(renames.length ? '岗位名称已应用到整张值班表，人员改动已保存' : '岗位划分已更新');
   };
 
   // 人员交换：整体替换班次列表（swapPersonnel 已在弹窗内完成对调）
@@ -328,15 +334,25 @@ const DutySchedule: React.FC = () => {
     return map;
   }, [currentDuty]);
 
-  // 岗位划分查表(date+group → 岗位分配),仅导入岗位表后才存在
+  // 岗位划分查表：优先按「日期 + 班组 + 白/夜班」精确匹配；
+  // 旧数据只有一条时按「日期 + 班组」兜底，保持白夜班都能看到原有岗位划分。
   const rolesByDateGroup = useMemo(() => {
-    const map = new Map<string, DutyRoleAssignment>();
-    if (!currentDuty?.roles) return map;
-    for (const r of currentDuty.roles) {
-      map.set(`${r.date}-${r.group}`, r);
+    const exact = new Map<string, DutyRoleAssignment>();
+    const byGroup = new Map<string, DutyRoleAssignment[]>();
+    for (const role of currentDuty?.roles || []) {
+      exact.set(`${role.date}-${role.group}-${roleShiftCategory(role.shiftType)}`, role);
+      const key = `${role.date}-${role.group}`;
+      byGroup.set(key, [...(byGroup.get(key) || []), role]);
     }
-    return map;
+    return { exact, byGroup };
   }, [currentDuty]);
+
+  const findRole = (date: string, group: string, shiftType: 'white' | 'night') => {
+    const role = rolesByDateGroup.exact.get(`${date}-${group}-${shiftType}`);
+    if (role) return role;
+    const legacy = rolesByDateGroup.byGroup.get(`${date}-${group}`) || [];
+    return legacy.length === 1 ? legacy[0] : undefined;
+  };
 
   // 日历格班组字母(date → 各类别当班班组,白前夜后),提前算好供渲染查表,
   // 避免每次渲染对 42 个格子重复做 Map 统计。
@@ -434,7 +450,13 @@ const DutySchedule: React.FC = () => {
       const added = new Set<string>();
       const members: DutySection['members'] = [];
 
-      // 先加跨班组来援的(shiftTypeCat 匹配且非休,但归属组 ≠ 当班班组)
+      // 本班组正常当班人员优先，跨班组来援人员放在后面。
+      for (const s of bucket.get(onDutyGroup) || []) {
+        if (added.has(s.id)) continue;
+        added.add(s.id);
+        members.push({ shift: s, origin: 'on' });
+      }
+      // 再加跨班组来援的(shiftTypeCat 匹配且非休,但归属组 ≠ 当班班组)
       for (const [g, list] of bucket.entries()) {
         if (g === onDutyGroup) continue;
         for (const s of list) {
@@ -442,12 +464,6 @@ const DutySchedule: React.FC = () => {
           added.add(s.id);
           members.push({ shift: s, origin: 'cross' });
         }
-      }
-      // 再加本班组正常当班的
-      for (const s of bucket.get(onDutyGroup) || []) {
-        if (added.has(s.id)) continue;
-        added.add(s.id);
-        members.push({ shift: s, origin: 'on' });
       }
       // 最后补:当班班组里,休/或其它 shiftType 当班的(标注休或其它)
       for (const s of dayShifts) {
@@ -488,6 +504,12 @@ const DutySchedule: React.FC = () => {
     setViewMonth(now2.getMonth());
     setSelectedDate(formatDate(now2));
   };
+
+  const calendarSwipe = useHorizontalSwipe({
+    onSwipeLeft: goNextMonth,
+    onSwipeRight: goPrevMonth,
+    onMove: longPressHandlers.onPointerCancel,
+  });
 
   const handleSelectDuty = (id: string) => {
     setCurrentDutyId(id);
@@ -630,12 +652,9 @@ const DutySchedule: React.FC = () => {
     try {
       // 优先 Gitee，失败回退 GitHub（Tauri 环境由 Rust 后端抓取，绕过 CORS）
       assertSourceAvailable(duty.sourceId, duty.downloadUrl);
-      const text = await fetchRemoteText(rawUrlCandidates(duty.downloadUrl));
-      let data: JsonDutyScheduleData;
-      try { data = JSON.parse(text); } catch { throw new Error('文件格式无效'); }
-      if (!data.shifts) throw new Error('缺少 shifts 字段');
-
-      const newDuty = { name: data.name || duty.name, description: data.description, shifts: buildShifts(data), drills: data.drills, roles: data.roles, sourceType: duty.source };
+      const schedule = await downloadPublishedDuty(duty);
+      assertSourceAvailable(duty.sourceId, duty.downloadUrl);
+      const newDuty = { ...schedule, sourceType: duty.source };
       const localExist = duties.find(d => d.sourceFilename === duty.filename && d.sourceType === duty.source);
       if (localExist && duty.hasUpdate) {
         // 已被本地编辑（长按改写/人员交换）的记录：整体覆盖会丢失本地改动，改为导入为新记录以保留编辑
@@ -750,7 +769,7 @@ const DutySchedule: React.FC = () => {
         </div>
       </header>
 
-      <div className="max-w-lg mx-auto px-4 pt-3">
+      <div className="max-w-lg mx-auto px-4 pt-1">
         {/* 空状态：未导入任何值班表 */}
         {!currentDuty && (
           <div className="mb-3 bg-gray-100 dark:bg-gray-800 rounded-xl p-6 text-center">
@@ -819,7 +838,10 @@ const DutySchedule: React.FC = () => {
         </div>
 
         {/* 日历网格 */}
-        <div className={`grid grid-cols-7 gap-1.5 mb-4 ${swapPickTarget ? 'relative z-[60]' : ''}`}>
+        <div
+          {...calendarSwipe.handlers}
+          style={{ touchAction: 'pan-y pinch-zoom' }}
+          className={`grid grid-cols-7 gap-1.5 mb-4 ${swapPickTarget ? 'relative z-[60]' : ''}`}>
           {calendarCells.map((cell, i) => {
             if (!cell.date) return <div key={i} className="h-12" />;
             const hasDuty = shiftsByDate.has(cell.date);
@@ -892,25 +914,57 @@ const DutySchedule: React.FC = () => {
                       // 该班组当天对应的演练名称
                       const drills = currentDuty?.drills?.filter(d => d.date === selectedDate && d.group === g) || [];
                       const drillNames = drills.map(d => d.name);
-                      // 按日期和班组读取岗位表信息，白班、夜班均可展示。
-                      const role = g ? rolesByDateGroup.get(`${selectedDate}-${g}`) : undefined;
-                      // 岗位划分(值班长+各岗位)已展示的姓名:下方成员标签不再重复展示
-                      const roleNames = role
-                        ? new Set<string>([
-                            ...(role.leader ? [role.leader] : []),
-                            ...role.posts.map(p => p.person)
-                          ])
-                        : null;
-                      const shownNames = new Set<string>();
-                      const visibleMembers = sec.members.filter(m => {
+                      // 按日期、班组、白/夜班读取岗位表信息；同组白夜班各有一条时不会串用。
+                      const role = findRole(selectedDate, g, sec.shiftType);
+                      // 同一姓名只生成一个卡片标签，其余标签（岗位、休、跨组等）收进点击卡片后的弹窗。
+                      const personMap = new Map<string, DutyTagPerson>();
+                      const addTag = (rawName: string | undefined, label: string, kind: DutyTagKind) => {
+                        const name = (rawName || '').trim();
+                        if (!name) return;
+                        const person = personMap.get(name);
+                        if (person) {
+                          if (!person.tags.some(tag => tag.label === label && tag.kind === kind)) person.tags.push({ label, kind });
+                          return;
+                        }
+                        personMap.set(name, { name, tags: [{ label, kind }] });
+                      };
+                      if (role?.leader) addTag(role.leader, dutyLeaderLabel(role), 'leader');
+                      for (const post of role?.posts || []) {
+                        // 标签类型由岗位表列决定：巡检区域 / 做表 / 休息
+                        addTag(post.person, postLabel(post.name), dutyPostKind(post.name));
+                      }
+                      const sortedMembers = [...sec.members].sort((a, b) => Number((b.shift.originGroup || b.shift.group) === g) - Number((a.shift.originGroup || a.shift.group) === g));
+                      for (const m of sortedMembers) {
                         const name = m.shift.personInCharge || '未命名';
-                        if (roleNames && roleNames.has(name)) return false;
-                        if (shownNames.has(name)) return false;
-                        shownNames.add(name);
-                        return true;
-                      });
+                        const isRest = m.origin === 'rest' || isRestShiftText(m.shift.tasks[0]);
+                        // 来源组:优先取人员交换后记录的 originGroup,无交换时取所在组
+                        const originGroup = m.shift.originGroup || m.shift.group;
+                        // 跨组支援:原 plan 里在别的班组当班(m.origin==='cross'),
+                        // 或人员交换后来源组≠当前当班班组 → 标黄并标明原班组
+                        const isCross = m.origin === 'cross' || (!!m.shift.originGroup && m.shift.originGroup !== g);
+                        // 人员交换调入:弹窗里展示「由几号转到某班」完整信息
+                        const swapped = !!m.shift.originGroup && m.shift.originGroup !== g && !isRest;
+                        // 岗位表已给出休息标签时不再重复标注排班表里的「休」
+                        const hasRestTag = personMap.get(name)?.tags.some(tag => tag.kind === 'rest');
+                        if (isRest && !hasRestTag) addTag(name, '休息', 'rest');
+                        if (swapped) addTag(name, m.shift.originDate ? `由 ${m.shift.originDate} 转到 ${g} 班` : `由 ${originGroup} 转到 ${g} 班`, 'swap');
+                        else if (isCross && originGroup) addTag(name, `${originGroup} 组来援`, 'cross');
+                        if (!isRest && !swapped && !isCross) addTag(name, '当班', 'on');
+                      }
+                      const persons = [...personMap.values()];
+                      const openTags = persons.length > 0
+                        ? () => setTagModal({
+                            title: `${g ? `${g} 班组` : '长白班'} · ${shiftLabel}`,
+                            subtitle: `${selectedDate} · 按姓名分组显示全部标签`,
+                            persons,
+                          })
+                        : undefined;
                       return (
-                        <div key={`${g}-${sec.shiftType}`} style={NO_BLUR} className={`duty-detail-section duty-detail-section--${g || 'L'} p-3`}>
+                        <div
+                          key={`${g}-${sec.shiftType}`}
+                          style={NO_BLUR}
+                          className={`duty-detail-section duty-detail-section--${g || 'L'} p-3`}
+                        >
                           <div className="duty-section-heading">
                             <div className="flex items-center gap-2">
                             <span className={`duty-detail-badge duty-detail-badge--${g || 'L'}`}>
@@ -932,40 +986,34 @@ const DutySchedule: React.FC = () => {
                               ))}
                             </div>
                           )}
-                          {(visibleMembers.length > 0 || (role && (role.leader || role.posts.length > 0))) && (
-                            <div className="duty-people">
-                              {role && <>
-                                {role.leader && <span className="duty-person-chip duty-person-chip--leader">
-                                  <span className="duty-person-role">值班长</span><span className="font-medium">{role.leader}</span>
-                                </span>}
-                                {role.posts.map((post, index) => <span key={`post-${index}`} className="duty-person-chip duty-person-chip--post">
-                                  <span className="duty-person-role">{post.name}</span><span className="font-medium">{post.person}</span>
-                                </span>)}
-                              </>}
-                              {visibleMembers.map(m => {
-                                const isRest = m.origin === 'rest' || isRestShiftText(m.shift.tasks[0]);
-                                // 来源组:优先取人员交换后记录的 originGroup,无交换时取所在组
-                                const originGroup = m.shift.originGroup || m.shift.group;
-                                // 跨组支援:原 plan 里在别的班组当班(m.origin==='cross'),
-                                // 或人员交换后来源组≠当前当班班组 → 标黄并显示「由几号→X班」
-                                const isCross = m.origin === 'cross' || (!!m.shift.originGroup && m.shift.originGroup !== g);
-                                // 人员交换调入:点击名字可查看「由几号转到某班」完整信息
-                                const swapped = !!m.shift.originGroup && m.shift.originGroup !== g && !isRest;
-                                const swapDay = m.shift.originDate ? m.shift.originDate.slice(8) : '';
-                                const name = m.shift.personInCharge || '未命名';
+                          {persons.length > 0 && (
+                            <div
+                              className={`duty-people ${openTags ? 'duty-people--clickable' : ''}`}
+                              onClick={openTags}
+                              role={openTags ? 'button' : undefined}
+                              tabIndex={openTags ? 0 : undefined}
+                              aria-label={openTags ? `${g ? `${g} 班组` : '长白班'}${shiftLabel}人员标签，点击查看全部标签` : undefined}
+                              onKeyDown={openTags ? (event) => {
+                                if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openTags(); }
+                              } : undefined}
+                            >
+                              {persons.map((person) => {
+                                // 姓名在前，标签一律排在人名之后；同类型标签位置固定：巡检 → 做表 → 休息 → 跨组/交换。
+                                // 卡片只显示第一个标签，其余用 +N 收起，点击后弹窗查看全部。
+                                const tags = sortDutyTags(person.tags.filter(tag => tag.kind !== 'on'));
+                                const primary = tags[0] || person.tags[0];
+                                const extra = Math.max(0, tags.length - 1);
+                                const chipClass = primary.kind === 'leader' ? 'duty-person-chip--leader'
+                                  : primary.kind === 'patrol' ? 'duty-person-chip--post'
+                                  : primary.kind === 'report' ? 'duty-person-chip--report'
+                                  : primary.kind === 'rest' ? 'duty-person-chip--rest'
+                                  : primary.kind === 'cross' || primary.kind === 'swap' ? 'duty-person-chip--cross'
+                                  : '';
                                 return (
-                                  <span
-                                    key={m.shift.id}
-                                    onClick={swapped ? () => showInfo(m.shift.originDate ? `该人员由 ${m.shift.originDate} 转到 ${g} 班` : `该人员由 ${originGroup} 转到 ${g} 班`) : undefined}
-                                    style={NO_BLUR}
-                                    className={`duty-person-chip ${swapped ? 'cursor-pointer' : ''} ${isRest ? 'duty-person-chip--rest' : isCross ? 'duty-person-chip--cross' : ''}`}>
-                                    {swapped && (
-                                      <span className="duty-person-role">
-                                        由{swapDay}→{g}班
-                                      </span>
-                                    )}
-                                    <span className={isRest ? 'line-through' : ''}>{name}</span>
-                                    {isRest && <span className="duty-person-role">休</span>}
+                                  <span key={person.name} style={NO_BLUR} className={`duty-person-chip ${chipClass}`}>
+                                    <span className={primary.kind === 'rest' ? 'line-through' : ''}>{person.name}</span>
+                                    {primary.kind !== 'on' && <span className="duty-person-role">{primary.label}</span>}
+                                    {extra > 0 && <span className="duty-person-chip-extra">+{extra}</span>}
                                   </span>
                                 );
                               })}
@@ -1048,13 +1096,13 @@ const DutySchedule: React.FC = () => {
                 <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl space-y-2">
                   <div className="text-sm font-medium text-green-700 dark:text-green-300">✓ 解析成功</div>
                   <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div style={NO_BLUR} className="bg-white dark:bg-gray-800 rounded-lg p-2">
+                    <div style={NO_BLUR} className="col-span-2 min-w-0 bg-white dark:bg-gray-800 rounded-lg p-2">
                       <div className="text-gray-500">值班表名</div>
-                      <div className="font-medium text-gray-800 dark:text-white truncate">{importPreview.schedule.name}</div>
+                      <div className="font-medium text-gray-800 dark:text-white whitespace-normal break-words">{importPreview.schedule.name}</div>
                     </div>
-                    <div style={NO_BLUR} className="bg-white dark:bg-gray-800 rounded-lg p-2">
+                    <div style={NO_BLUR} className="col-span-2 min-w-0 bg-white dark:bg-gray-800 rounded-lg p-2">
                       <div className="text-gray-500">日期范围</div>
-                      <div className="font-medium text-gray-800 dark:text-white truncate">{importPreview.preview.dateRange}</div>
+                      <div className="font-medium text-gray-800 dark:text-white whitespace-normal break-words leading-relaxed">{importPreview.preview.dateRange}</div>
                     </div>
                     <div style={NO_BLUR} className="bg-white dark:bg-gray-800 rounded-lg p-2">
                       <div className="text-gray-500">总人数</div>
@@ -1253,8 +1301,17 @@ const DutySchedule: React.FC = () => {
         open={roleEditOpen}
         date={longPressDate}
         roles={currentDuty?.roles?.filter((r) => r.date === longPressDate) || []}
-        onSave={(roles) => handleSaveRoles(longPressDate, roles)}
+        onSave={(roles, renames) => handleSaveRoles(longPressDate, roles, renames)}
         onClose={() => setRoleEditOpen(false)}
+      />
+
+      {/* 班组卡片：按姓名分组的全部人员标签 */}
+      <DutyTagModal
+        open={tagModal !== null}
+        title={tagModal?.title || ''}
+        subtitle={tagModal?.subtitle}
+        persons={tagModal?.persons || []}
+        onClose={() => setTagModal(null)}
       />
 
       {/* 人员交换：跨日期对调向导 */}

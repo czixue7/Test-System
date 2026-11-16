@@ -1,29 +1,49 @@
 /**
  * 岗位（角色）排班表解析器
- * 支持「夜班角色排班」这类按岗位拆分人员的表格。
+ * 支持「夜班岗位角色排班」这类按标签拆分人员的表格。
  *
  * 典型结构：
  *   R0  标题："C组 · 夜班岗位角色排班表（2026年9月—12月）"
- *   R2  表头：日期 | 星期 | 班组 | 值班长 | 配电 | 柴发 | 暖通① | 暖通② | 规则位
- *   R3+ 数据：9/17 | 周四 | C班 | 徐森 | 廖孝鑫 | 董正午 | 欧武扬 | 祝坤 | 1
+ *   R2  表头：日期 | 班组 | 班次 | 值班长 | (左)柴发+一层 | ... | 做表 | 休息
+ *   R3+ 数据：9/17 | C | 夜 | 徐森 | 祝坤 | ... | 董正午 | 欧武扬、孙言超、廖孝鑫
  *
- * 解析产物：DutyRoleAssignment[]（日期 + 班组 → 值班长 + 岗位划分）。
+ * 解析产物：DutyRoleAssignment[]（日期 + 班组 → 值班长 + 标签划分）。
+ * 标签只有三类：巡检区域（patrol）、做表（report）、休息（rest）；
+ * 旧表里的配电 / 柴发 / 暖通上 / 暖通下 主岗位列不再作为标签。
  * 「规律提取」「附录」等非数据行（日期无法识别）自动跳过。
  */
-import { DutyRolePost, DutyShiftType } from '../../types';
+import { DutyRolePost, DutyRolePostKind, DutyShiftType } from '../../types';
 import { DutySheetParser, SheetParseContext, SheetParseOutput, emptySheetOutput } from './types';
 import { extractGroupFromName, formatDateStr, isRestShiftText, mapShiftTextToType } from './shared';
 
-// 表头保留列（非岗位列）
+// 表头保留列（非标签列）
 const RESERVED_HEADERS = new Set([
   '日期', '星期', '班组', '班次', '班型', '值班长', '规则位', '备注', '说明', '序号'
 ]);
 
-// 找到岗位表表头行：同一行同时出现「配电」「柴发」
+// 旧主岗位列：不再算作标签（巡检只保留区域列）
+const LEGACY_MAIN_POSTS = new Set(['配电', '柴发', '暖通下', '暖通上', '暖通①', '暖通②']);
+
+// 表头 → 标签类型；未命中即巡检区域
+function headerKind(name: string): DutyRolePostKind {
+  if (name === '做表') return 'report';
+  if (name === '休息' || name === '休') return 'rest';
+  return 'patrol';
+}
+
+// 一个单元格里可能写多人（「欧武扬、孙言超、廖孝鑫」）
+function splitPeople(text: string): string[] {
+  return String(text ?? '')
+    .split(/[、,，;；\s/]+/)
+    .map((item) => item.trim())
+    .filter((item) => item && !isRestShiftText(item));
+}
+
+// 找到岗位表表头行：同时含「日期」和「值班长」，避免误判矩阵排班表 / 演练计划表
 function findRoleHeaderRow(rows: any[][]): number {
   for (let r = 0; r < Math.min(10, rows.length); r++) {
     const joined = (rows[r] || []).map((c) => String(c ?? '').trim());
-    if (joined.includes('配电') && joined.includes('柴发')) return r;
+    if (joined.includes('日期') && joined.includes('值班长')) return r;
   }
   return -1;
 }
@@ -57,12 +77,14 @@ function parseRoleSheet(ctx: SheetParseContext): SheetParseOutput {
   const shiftCol = header.findIndex((h) => h === '班次' || h === '班型');
   if (dateCol < 0 || groupCol < 0) return out;
 
-  // 岗位列 = 表头非保留列且非空
-  const postCols: Array<{ col: number; name: string }> = [];
+  // 标签列 = 表头非保留列且非空；去掉「副岗位」前缀，只保留标签本身
+  const postCols: Array<{ col: number; name: string; kind: DutyRolePostKind }> = [];
   for (let c = 0; c < header.length; c++) {
     const h = header[c];
-    if (!h || RESERVED_HEADERS.has(h)) continue;
-    postCols.push({ col: c, name: h });
+    if (!h || RESERVED_HEADERS.has(h) || LEGACY_MAIN_POSTS.has(h)) continue;
+    const name = h.replace(/^副岗位\s*/, '').trim();
+    if (!name) continue;
+    postCols.push({ col: c, name, kind: headerKind(name) });
   }
   if (postCols.length === 0) return out;
 
@@ -100,9 +122,11 @@ function parseRoleSheet(ctx: SheetParseContext): SheetParseOutput {
 
     const posts: DutyRolePost[] = [];
     for (const pc of postCols) {
-      const person = String(row[pc.col] ?? '').trim();
-      if (!person || isRestShiftText(person)) continue;
-      posts.push({ name: pc.name, person });
+      // 休息列一格可写多人，每个休息人员各生成一个标签
+      const people = pc.kind === 'rest'
+        ? splitPeople(String(row[pc.col] ?? ''))
+        : splitPeople(String(row[pc.col] ?? '')).slice(0, 1);
+      for (const person of people) posts.push({ name: pc.name, person, kind: pc.kind });
     }
     if (posts.length === 0 && !leader) continue;
 

@@ -5,7 +5,9 @@
  */
 import { KnowledgeItem, QuestionBank, Question } from '../types';
 import { getStoreValue, setStoreValue, removeStoreValue } from './tauriStore';
-import { apiGradingService } from './apiGradingService';
+import { APIGradingService } from './apiGradingService';
+import { runWithAPIConcurrency } from './apiConcurrency';
+import { apiConcurrency } from '../../shared/apiConfigSync';
 import { useSettingsStore } from '../store/settingsStore';
 import { useKnowledgeStore } from '../store/knowledgeStore';
 import { useQuestionBankStore } from '../store/questionBankStore';
@@ -363,10 +365,8 @@ function chunkRawText(rawText: string, chunkSize = CHUNK_SIZE): string[] {
 }
 
 // 单块 AI 总结
-async function aiSummarizeChunk(index: number, total: number, label: string, chunkText: string): Promise<string> {
-  const config = useSettingsStore.getState();
-  if (!config.apiKey) throw new Error('未配置 API Key');
-  apiGradingService.setConfig({ apiKey: config.apiKey, model: config.apiModel, endpoint: config.apiEndpoint });
+type SummaryRequest = (prompt: string, tokens: number) => Promise<string>;
+async function aiSummarizeChunk(index: number, total: number, label: string, chunkText: string, request: SummaryRequest): Promise<string> {
 
   // 综合总结时声明冲突优先级：知识库为权威来源
   const conflictRule = label === '综合'
@@ -375,15 +375,12 @@ async function aiSummarizeChunk(index: number, total: number, label: string, chu
 
   const prompt = `你是${label}整理助手。请对以下内容（第 ${index}/${total} 部分）进行系统总结：提炼核心知识点、关键数据（如温度范围、冗余等级、计算公式、设备参数、标准要求等必须保留）、操作要点和易错点，输出结构清晰的 Markdown（含小标题与要点列表）。要求：忠实于原文，不遗漏重要信息，不编造原文没有的内容。${conflictRule}\n\n${chunkText}`;
 
-  const result = await apiGradingService.callAPI(prompt, 3000);
+  const result = await request(prompt, 3000);
   return result.trim();
 }
 
 // 合并多块总结为一份完整总结
-async function aiMergeSummaries(type: SummaryType, label: string, parts: string[]): Promise<string> {
-  const config = useSettingsStore.getState();
-  if (!config.apiKey) throw new Error('未配置 API Key');
-  apiGradingService.setConfig({ apiKey: config.apiKey, model: config.apiModel, endpoint: config.apiEndpoint });
+async function aiMergeSummaries(type: SummaryType, label: string, parts: string[], request: SummaryRequest): Promise<string> {
 
   const joined = parts.map((p, i) => `【第 ${i + 1} 部分】\n${p}`).join('\n\n');
   // 综合总结时声明冲突优先级：知识库为权威来源
@@ -392,7 +389,7 @@ async function aiMergeSummaries(type: SummaryType, label: string, parts: string[
     : '';
   const prompt = `以下是"${label}"各部分内容的 AI 总结。请将其整合成一份结构完整、条理清晰的整体知识总结：按主题/分类组织分节（Markdown），去除重复内容，保留全部关键数据和要点，不要遗漏任何部分中的重要信息，不要添加原文没有的内容。${conflictRule}\n\n${joined}`;
 
-  const result = await apiGradingService.callAPI(prompt, 4000);
+  const result = await request(prompt, 4000);
   return result.trim();
 }
 
@@ -403,23 +400,37 @@ async function aiSummarize(type: SummaryType, rawText: string, onProgress?: Summ
   if (chunks.length === 0) {
     return `# ${label}总结\n\n> 生成时间：${new Date().toLocaleString()}\n\n（当前无内容）`;
   }
+  // Freeze this job's profile so switching AI while queued cannot mix providers or keys.
+  const config = useSettingsStore.getState();
+  if (!config.apiKey) throw new Error('未配置 API Key');
+  const limit = apiConcurrency(config.apiConcurrency);
+  const service = new APIGradingService();
+  const api = { apiKey: config.apiKey, model: config.apiModel, endpoint: config.apiEndpoint };
+  service.setConfig(api);
+  const request: SummaryRequest = (prompt, tokens) => runWithAPIConcurrency(api, limit, () => service.callAPI(prompt, tokens));
   // 拆份完成：显示拆份阶段（① 拆份高亮，文字"内容已分为 X 份，即将开始总结..."）
   onProgress?.(0, chunks.length, 'split');
 
   const results: (string | undefined)[] = new Array(chunks.length);
 
-  // 各块相互独立，并发执行；单块失败降级为该块原文，保证整体不缺失
+  // Bounded workers preserve source order; failures retain that chunk's original content.
+  let next = 0;
+  let completed = 0;
   await Promise.all(
-    chunks.map(async (chunk, i) => {
-      try {
-        results[i] = await aiSummarizeChunk(i + 1, chunks.length, label, chunk);
-      } catch (err) {
-        console.warn(`[总结] 第 ${i + 1}/${chunks.length} 块 AI 总结失败，降级为该块原文:`, err);
-        results[i] = chunk;
-      } finally {
-        const done = results.filter(Boolean).length;
-        // 第一个块完成后才切换到逐份总结阶段（② 高亮），确保①拆份阶段完整显示
-        onProgress?.(done, chunks.length, done > 0 ? 'summarize' : 'split');
+    Array.from({ length: Math.min(limit, chunks.length) }, async () => {
+      while (next < chunks.length) {
+        const i = next++;
+        const chunk = chunks[i];
+        try {
+          results[i] = await aiSummarizeChunk(i + 1, chunks.length, label, chunk, request);
+        } catch (err) {
+          console.warn(`[总结] 第 ${i + 1}/${chunks.length} 块 AI 总结失败，降级为该块原文:`, err);
+          results[i] = chunk;
+        } finally {
+          const done = ++completed;
+          // 第一个块完成后才切换到逐份总结阶段（② 高亮），确保①拆份阶段完整显示
+          onProgress?.(done, chunks.length, done > 0 ? 'summarize' : 'split');
+        }
       }
     })
   );
@@ -431,7 +442,7 @@ async function aiSummarize(type: SummaryType, rawText: string, onProgress?: Summ
   } else {
     try {
       onProgress?.(0, parts.length, 'merge');
-      content = await aiMergeSummaries(type, label, parts);
+      content = await aiMergeSummaries(type, label, parts, request);
       onProgress?.(parts.length, parts.length, 'merge');
     } catch (err) {
       console.warn('[总结] 合并总结失败，使用分块总结拼接:', err);

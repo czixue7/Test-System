@@ -210,6 +210,12 @@
   opacity: 0.88;
   margin-top: 4px;
 }
+/* 副标题轮换：柔和淡出淡入，轻微下移避免生硬跳变 */
+.im-hero-sub { transition: opacity 0.32s ease, transform 0.32s ease; }
+.im-hero-sub.im-hero-sub--out { opacity: 0; transform: translateY(4px); }
+@media (prefers-reduced-motion: reduce) {
+  .im-hero-sub { transition: none; }
+}
 [data-theme="immersive"] .im-hero-chip {
   display: inline-flex;
   align-items: center;
@@ -1011,6 +1017,13 @@ table {
   line-height: 1.7;
   word-break: break-word;
 }
+/* 超长文档保护：整篇知识条目渲染后可高达两万多像素，Android WebView 会把整页当成
+   一个绘制层，超过 GPU 纹理上限时就整页空白（只剩背景）。这里让 Markdown 每个顶层块
+   各自成为独立的渲染上下文，屏幕外的块跳过绘制，既避免整页空白，也降低长文滚动开销。 */
+.markdown-body > * {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 48px;
+}
 .markdown-body > *:first-child { margin-top: 0; }
 .markdown-body > *:last-child { margin-bottom: 0; }
 .markdown-body h1,
@@ -1135,6 +1148,23 @@ table {
   border: none;
   border-top: 1px solid var(--color-border);
   margin: 12px 0;
+}
+.markdown-body img {
+  max-width: 100%;
+  height: auto;
+}
+/* 数学公式（KaTeX）：行内跟随字号，块级公式横向可滚动，避免撑破气泡 */
+.markdown-body .katex {
+  font-size: 1.06em;
+}
+.markdown-body .katex-display {
+  margin: 8px 0;
+  padding: 2px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.markdown-body .katex-display > .katex {
+  white-space: normal;
 }
 
 /* ============================================================

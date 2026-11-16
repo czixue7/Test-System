@@ -1,5 +1,5 @@
 /* 月份导航沿用原蓝色：完整年月同行展示，深浅主题分别提供清晰底色。 */
-.duty-month-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0 12px; margin-bottom: 8px; }
+.duty-month-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0; margin-bottom: 4px; }
 .duty-month-title { margin: 0; min-width: 0; color: #1e293b; font-size: 20px; line-height: 36px; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .duty-month-actions, .duty-month-paging { display: flex; align-items: center; flex-shrink: 0; gap: 6px; }
 .duty-month-actions { gap: 10px; }
@@ -141,17 +141,47 @@
 
 /* 岗位人员和休息人员共用一个流式行；只在空间不足时整块换行。 */
 .duty-people { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
-.duty-person-chip { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; padding: 4px 6px; border: 1px solid #e2e8f0; border-radius: 6px; color: #334155; background: #fff; font-size: 12px; line-height: 18px; white-space: nowrap; }
+.duty-person-chip { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; padding: 4px 6px; border: 1px solid #e2e8f0; border-radius: 6px; color: #334155; background: #fff; font-size: 12px; line-height: 18px; white-space: nowrap; max-width: 100%; }
 .duty-person-role { font-size: 11px; color: inherit; }
 .duty-person-chip--leader { color: #4338ca; border-color: #c7d2fe; background: #eef2ff; }
-.duty-person-chip--post { color: #7e22ce; border-color: #e9d5ff; background: #faf5ff; }
+.duty-person-chip--post { color: #7e22ce; border-color: #e9d5ff; background: #faf5ff; white-space: normal; overflow-wrap: anywhere; }
+.duty-person-chip--report { color: #0f766e; border-color: #99f6e4; background: #f0fdfa; }
 .duty-person-chip--rest { color: #5b6472; border-color: #cbd5e1; background: #eef1f5; }
 .duty-person-chip--cross { color: #92400e; border-color: #fbbf24; background: #fffbeb; }
 .dark .duty-person-chip { color: #edf4ff; background: #293f63; border-color: #49648e; }
 .dark .duty-person-chip--leader { color: #dbeafe; background: #28518a; border-color: #60a5fa; }
 .dark .duty-person-chip--post { color: #eee2ff; background: #443967; border-color: #a784d1; }
+.dark .duty-person-chip--report { color: #ccfbf1; background: #1f4a4a; border-color: #5eead4; }
 .dark .duty-person-chip--rest { color: #aebfd9; background: #21314e; border-color: #405676; }
 .dark .duty-person-chip--cross { color: #ffe1a6; background: #53432d; border-color: #b99559; }
+
+/* 只让人员名字区域可点击：卡片标题、演练内容不触发弹窗 */
+.duty-people--clickable { cursor: pointer; border-radius: 8px; padding: 2px; margin: -2px; transition: background-color 0.18s ease, box-shadow 0.18s ease; }
+.duty-people--clickable:hover { background: rgba(96, 165, 250, 0.12); box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.35); }
+.duty-people--clickable:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+.dark .duty-people--clickable:hover { background: rgba(96, 165, 250, 0.18); }
+.duty-person-chip-extra { margin-left: 2px; padding: 0 4px; border-radius: 4px; background: rgba(100, 116, 139, 0.16); font-size: 10px; line-height: 16px; }
+.dark .duty-person-chip-extra { background: rgba(255, 255, 255, 0.16); }
+
+/* 人员标签弹窗：姓名列定宽，标签列统一左对齐 */
+.duty-tag-person { display: grid; grid-template-columns: 4.5em minmax(0, 1fr); align-items: start; gap: 10px; padding: 8px 10px; border-radius: 10px; background: #f2f6fd; }
+.dark .duty-tag-person { background: #1d2b45; }
+.duty-tag-person-name { font-size: 13px; font-weight: 600; line-height: 24px; color: #1e293b; white-space: nowrap; }
+.dark .duty-tag-person-name { color: #f1f5f9; }
+.duty-tag-list { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+/* 标签宽度随文字自适应：过长的岗位名（如「(左)柴发+一层」）不再被省略号截断 */
+.duty-tag { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; min-width: 5.4em; max-width: 100%; min-height: 24px; padding: 2px 6px; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; color: #475569; font-size: 11px; line-height: 18px; text-align: center; white-space: normal; overflow-wrap: anywhere; }
+.duty-tag--leader { color: #4338ca; border-color: #c7d2fe; background: #eef2ff; }
+.duty-tag--patrol { color: #7e22ce; border-color: #e9d5ff; background: #faf5ff; }
+.duty-tag--report { color: #0f766e; border-color: #99f6e4; background: #f0fdfa; }
+.duty-tag--rest { color: #5b6472; border-color: #cbd5e1; background: #eef1f5; }
+.duty-tag--cross, .duty-tag--swap { color: #92400e; border-color: #fbbf24; background: #fffbeb; }
+.dark .duty-tag { color: #edf4ff; background: #293f63; border-color: #49648e; }
+.dark .duty-tag--leader { color: #dbeafe; background: #28518a; border-color: #60a5fa; }
+.dark .duty-tag--patrol { color: #eee2ff; background: #443967; border-color: #a784d1; }
+.dark .duty-tag--report { color: #ccfbf1; background: #1f4a4a; border-color: #5eead4; }
+.dark .duty-tag--rest { color: #aebfd9; background: #21314e; border-color: #405676; }
+.dark .duty-tag--cross, .dark .duty-tag--swap { color: #ffe1a6; background: #53432d; border-color: #b99559; }
 
 .duty-drill { display: block; width: 100%; overflow: hidden; padding: 0; border: 0; background: none; text-align: left; color: #253149; font: inherit; white-space: nowrap; }
 .dark .duty-drill { color: #e2e8f0; }

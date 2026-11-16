@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { useSafeArea } from '../hooks/useSafeArea';
+import { imageThumbnailTransform } from '../utils/imageViewerTransition';
 
 interface ImageViewerProps {
   images: string[];
@@ -32,15 +33,10 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
   const [isClosing, setIsClosing] = useState(false);
   const [transform, setTransform] = useState<Transform>({ scale: 1, translateX: 0, translateY: 0 });
   const [isDragging, setIsDragging] = useState(false);
-
-  // 使用 ref 来存储动画状态，避免频繁渲染
-  const animationRef = useRef<{
-    startRect: DOMRect | null;
-    isAnimating: boolean;
-  }>({
-    startRect: sourceRect,
-    isAnimating: false
-  });
+  const transitionRef = useRef<Animation | null>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeStartedRef = useRef(false);
+  const enteredRef = useRef(false);
 
   // 使用 ref 存储 transform，实现无延迟拖动
   const transformRef = useRef<Transform>({ scale: 1, translateX: 0, translateY: 0 });
@@ -81,30 +77,51 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
 
   // 关闭处理
   const handleClose = useCallback(() => {
+    if (closeStartedRef.current) return;
+    closeStartedRef.current = true;
     log('Closing viewer');
+    const image = imageRef.current;
+    // 保留当前缩放/拖动的视觉位置，从当前位置直接缩回，不先跳回居中。
+    const from = image ? getComputedStyle(image).transform : '';
+    transitionRef.current?.cancel();
+    const to = image && sourceRect ? imageThumbnailTransform(sourceRect, image.naturalWidth, image.naturalHeight, window.innerWidth, window.innerHeight) : null;
+    if (image && to) {
+      transitionRef.current = image.animate([{ transform: from }, { transform: to }], {
+        duration: isAndroid ? 250 : 300,
+        easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
+        fill: 'forwards',
+      });
+    }
     setIsClosing(true);
     setIsVisible(false);
-    setTransform({ scale: 1, translateX: 0, translateY: 0 });
-    transformRef.current = { scale: 1, translateX: 0, translateY: 0 };
 
-    setTimeout(() => {
+    closeTimerRef.current = setTimeout(() => {
       onClose();
     }, isAndroid ? 250 : 300); // 安卓使用更短的动画时间
   }, [sourceRect, onClose]);
 
-  // 初始化动画 - 使用 CSS 类而不是内联样式变化
-  useEffect(() => {
-    log('Initializing animation', { hasSourceRect: !!sourceRect, isAndroid });
-    animationRef.current.startRect = sourceRect;
-
-    // 使用 setTimeout 确保 DOM 已经渲染
-    const timer = setTimeout(() => {
-      setIsVisible(true);
-      log('Animation started');
-    }, 50);
-
-    return () => clearTimeout(timer);
+  const enterFromThumbnail = useCallback(() => {
+    const image = imageRef.current;
+    if (!image || !image.naturalWidth || enteredRef.current || closeStartedRef.current) return;
+    enteredRef.current = true;
+    const from = sourceRect ? imageThumbnailTransform(sourceRect, image.naturalWidth, image.naturalHeight, window.innerWidth, window.innerHeight) : null;
+    if (from) {
+      transitionRef.current = image.animate([
+        { transform: from },
+        { transform: 'translate3d(-50%, -50%, 0) scale(1)' },
+      ], { duration: isAndroid ? 250 : 300, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' });
+    }
+    setIsVisible(true);
   }, [sourceRect]);
+
+  useLayoutEffect(() => {
+    enterFromThumbnail();
+    return () => {
+      transitionRef.current?.cancel();
+      enteredRef.current = false;
+      if (closeTimerRef.current !== null) clearTimeout(closeTimerRef.current);
+    };
+  }, [enterFromThumbnail]);
 
   // 用 ref 持有最新的状态与关闭逻辑，这样下面的事件监听只需注册一次
   const handleCloseRef = useRef(handleClose);
@@ -425,76 +442,23 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
 
   const currentImage = images[currentIndex];
 
-  // 计算动画样式
-  const getAnimationStyles = (): React.CSSProperties => {
-    const startRect = animationRef.current.startRect;
-
-    if (!startRect) {
-      // 没有源位置，使用简单的淡入淡出
-      return {
-        opacity: isVisible ? 1 : 0,
-        transition: isAndroid ? 'opacity 0.2s ease' : 'opacity 0.3s ease',
-      };
-    }
-
-    if (isClosing) {
-      // 关闭时 - 缩回原位置
-      return {
-        position: 'fixed',
-        left: startRect.left,
-        top: startRect.top,
-        width: startRect.width,
-        height: startRect.height,
-        objectFit: 'contain',
-        opacity: isVisible ? 1 : 0,
-        transition: isAndroid
-          ? 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)'
-          : 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        willChange: 'transform, opacity',
-      };
-    }
-
-    if (!isVisible) {
-      // 初始状态 - 在原位置
-      return {
-        position: 'fixed',
-        left: startRect.left,
-        top: startRect.top,
-        width: startRect.width,
-        height: startRect.height,
-        objectFit: 'contain',
-        opacity: 0,
-      };
-    }
-
-    // 打开后 - 居中显示
-    return {
-      position: 'fixed',
-      left: '50%',
-      top: '50%',
-      width: '90vw',
-      height: '90vh',
-      objectFit: 'contain',
-      opacity: 1,
-      transition: isAndroid
-        ? 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)'
-        : 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-      willChange: 'transform, opacity',
-    };
+  // 打开、关闭只动画 transform；图片全程保持清晰，手势变换继续沿用原有实现。
+  const imageTransformStyle: React.CSSProperties = {
+    position: 'fixed',
+    left: '50%',
+    top: '50%',
+    width: '90vw',
+    height: '90vh',
+    objectFit: 'contain',
+    opacity: isVisible || (isClosing && sourceRect) ? 1 : 0,
+    transform: `translate3d(calc(-50% + ${transform.translateX}px), calc(-50% + ${transform.translateY}px), 0) scale(${transform.scale})`,
+    transition: sourceRect
+      ? isAndroid ? 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)' : 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+      : isAndroid ? 'opacity 0.2s ease' : 'opacity 0.3s ease',
+    cursor: isDragging ? 'grabbing' : transform.scale > 1 ? 'grab' : 'default',
+    willChange: 'transform',
+    pointerEvents: 'none',
   };
-
-  const animationStyle = getAnimationStyles();
-
-  // 计算图片变换样式 - 只在非拖动状态下使用
-  const imageTransformStyle: React.CSSProperties = isClosing || !isVisible
-    ? animationStyle
-    : {
-        ...animationStyle,
-        transform: `translate3d(calc(-50% + ${transform.translateX}px), calc(-50% + ${transform.translateY}px), 0) scale(${transform.scale})`,
-        cursor: isDragging ? 'grabbing' : transform.scale > 1 ? 'grab' : 'default',
-        willChange: 'transform',
-        pointerEvents: 'none' as const,
-      };
 
   return (
     <div
@@ -508,6 +472,8 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         touchAction: 'none', // 禁用浏览器触摸行为
         userSelect: 'none', // 禁用选择
         WebkitUserSelect: 'none',
+        backdropFilter: 'none',
+        WebkitBackdropFilter: 'none',
       }}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
@@ -533,7 +499,9 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
           src={currentImage}
           alt=""
           style={imageTransformStyle}
-          className={`${isClosing || !isVisible ? 'opacity-0' : 'opacity-100'} select-none`}
+          className="select-none"
+          onLoad={enterFromThumbnail}
+          onError={() => setIsVisible(true)}
           onClick={(e) => e.stopPropagation()}
           draggable={false}
           onDragStart={(e) => e.preventDefault()} // 禁用拖动

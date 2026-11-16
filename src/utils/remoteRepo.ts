@@ -156,6 +156,7 @@ export async function fetchRemoteJson<T>(
 }
 export async function fetchRemoteBytes(
   candidates: string | string[],
+  tokenOverride?: string,
 ): Promise<ArrayBuffer> {
   const fingerprint = sourcesFingerprint();
   const list = [
@@ -166,7 +167,7 @@ export async function fetchRemoteBytes(
     if (fingerprint !== sourcesFingerprint())
       throw new Error("数据来源已修改，请重新获取");
     try {
-      const token = sourceTokenFor(url);
+      const token = tokenOverride ?? sourceTokenFor(url);
       if (isTauri()) {
         const data = await invoke<ArrayBuffer | number[] | Uint8Array>(
           "fetch_remote_bytes",

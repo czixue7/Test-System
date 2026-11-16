@@ -21,7 +21,8 @@ const mem = new Map<string, string>();
 const { normalizeText, calculateSimilarity, calculateSubjectiveScore, classifySubjective } =
   await import('../src/utils/similarity');
 const { fastPreCheck, extractBatchBlock } = await import('../src/utils/aiGrading');
-const { checkAnswerWithAI } = await import('../src/store/examStore');
+const { checkAnswerWithAI, useExamStore } = await import('../src/store/examStore');
+const { useSettingsStore } = await import('../src/store/settingsStore');
 const {
   getBlankAnswers,
   getMultipleChoiceIds,
@@ -244,9 +245,26 @@ section('C3 端到端（checkAnswerWithAI 固定判题）');
 
 const asyncChecks: Array<[string, () => Promise<void>]> = [
   [
+    '设置为AI但实际固定判题时，保存的判题方式仍为fixed',
+    async () => {
+      const previous = useSettingsStore.getState().gradingMode;
+      try {
+        useSettingsStore.setState({ gradingMode: 'ai' });
+        useExamStore.getState().startExam('grading-fixture', '判题验证', [fourYao as any]);
+        useExamStore.getState().setAnswer(fourYao.id, ['遥测', '遥信', '遥控', '遥调']);
+        await useExamStore.getState().confirmAnswer(fourYao.id, false);
+        eq(useExamStore.getState().getResult(fourYao.id)?.gradingMode, 'fixed');
+      } finally {
+        useSettingsStore.setState({ gradingMode: previous });
+        useExamStore.getState().resetExam();
+      }
+    },
+  ],
+  [
     '四个空全填「遥测」→ 2/8 部分正确（曾 8/8 满分）',
     async () => {
       const r = await checkAnswerWithAI(fourYao as any, ['遥测', '遥测', '遥测', '遥测'], false);
+      eq(r.gradingMode, 'fixed', '实际判题方式');
       eq(r.score, 2, '得分');
       eq(r.isCorrect, 1, 'isCorrect');
       eq(r.blankResults?.map((b) => (b.isCorrect ? '对' : '错')).join(''), '对错错错');

@@ -24,7 +24,7 @@ pub fn overview(dir: &Path) -> Result<Value, String> {
             continue;
         }
         // Old bank/duty archives stay untouched and are excluded from storage.
-        for kind in ["knowledge", "summaries", "chat"] {
+        for kind in ["knowledge", "summaries", "chat", "config"] {
             let file = space.path().join(format!("{kind}.json"));
             let Ok(meta) = fs::symlink_metadata(&file) else {
                 continue;
@@ -43,6 +43,7 @@ pub fn overview(dir: &Path) -> Result<Value, String> {
                             .map(|key| count(key))
                             .sum(),
                         "chat" => count("conversations"),
+                        "config" => data["entries"].as_array().map_or(0, |entries| entries.iter().filter(|entry| entry.get("value").is_some_and(|v| !v.is_null())).count()),
                         _ => 0,
                     };
                     rows.push(json!({"space":id,"kind":kind,"revision":value["revision"].as_u64().unwrap_or(0),"updatedAt":value["updatedAt"].as_u64().unwrap_or(0),"bytes":meta.len(),"records":records}));
@@ -77,6 +78,7 @@ mod tests {
                 3,
             ),
             ("chat", json!({"conversations":[{}]}), 1),
+            ("config", json!({"schema":1,"entries":[{"value":{"apiKey":"overview-secret"}},{"value":null}]}), 1),
         ] {
             write_json(
                 &dir.join("sync/one").join(format!("{kind}.json")),
@@ -100,7 +102,8 @@ mod tests {
         fs::create_dir_all(dir.join("sync/broken")).unwrap();
         fs::write(dir.join("sync/broken/chat.json"), "invalid").unwrap();
         let result = overview(&dir).unwrap();
-        assert_eq!(result["rows"].as_array().unwrap().len(), 3);
+        assert_eq!(result["rows"].as_array().unwrap().len(), 4);
+        assert!(!result.to_string().contains("overview-secret"));
         assert_eq!(result["warnings"].as_array().unwrap().len(), 1);
         assert_eq!(fs::read_to_string(dir.join("sync/legacy/banks/one.json")).unwrap(),"legacy bank");
         assert_eq!(fs::read_to_string(dir.join("sync/legacy/duty.json")).unwrap(),"legacy duty");

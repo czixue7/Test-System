@@ -1,0 +1,45 @@
+.grading-card {
+  --grading-border: #cbd5e1;
+  --grading-accent: #475569;
+  --grading-surface: #f8fafc;
+  --grading-text: #1e293b;
+  --grading-muted: #64748b;
+  --grading-line: #cbd5e1;
+  margin-top: 16px;
+  padding: 16px;
+  border: 2px solid var(--grading-border);
+  border-radius: 12px;
+  background: var(--grading-surface);
+  color: var(--grading-text);
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.grading-card--correct { --grading-border: #16a34a; --grading-accent: #15803d; --grading-surface: #f0fdf4; }
+.grading-card--partial { --grading-border: #d97706; --grading-accent: #b45309; --grading-surface: #fffbeb; }
+.grading-card--wrong { --grading-border: #ef4444; --grading-accent: #dc2626; --grading-surface: #fef2f2; }
+.grading-card-header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 12px; margin-bottom: 12px; }
+.grading-card-status { color: var(--grading-accent); font-size: 16px; font-weight: 600; }
+.grading-card-score { margin-left: auto; color: var(--grading-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.grading-card-blanks { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.grading-card-blank { display: flex; align-items: flex-start; gap: 8px; }
+.grading-card-mark { display: inline-flex; flex: 0 0 24px; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; }
+.grading-card-mark--correct { color: #15803d; background: #16a34a1f; }
+.grading-card-mark--wrong { color: #dc2626; background: #ef44441f; }
+.grading-card-mark--unknown { color: var(--grading-muted); }
+.grading-card-blank-content { min-width: 0; }
+.grading-card-label, .grading-card-reference { color: var(--grading-muted); }
+.grading-card-reference { margin-top: 4px; font-size: 12px; }
+.grading-card-analysis { border-top: 1px solid var(--grading-line); margin-top: 12px; padding-top: 12px; white-space: pre-wrap; }
+.grading-card-analysis p { margin: 0; }
+.grading-card-question-explanation { margin-top: 8px; }
+.grading-card-method { color: var(--grading-muted); margin-top: 12px; font-size: 12px; }
+.grading-card-images { display: grid; gap: 8px; margin-top: 12px; }
+.grading-card-images button { padding: 0; border: 0; background: none; }
+.grading-card-images img { display: block; width: 100%; height: auto; border-radius: 8px; }
+.dark .grading-card { --grading-text: #f1f5f9; --grading-muted: #94a3b8; --grading-line: #475569; --grading-surface: #293344; --grading-accent: #cbd5e1; }
+.dark .grading-card--correct { --grading-border: #15803d; --grading-accent: #4ade80; --grading-surface: #1c3334; }
+.dark .grading-card--partial { --grading-border: #d97706; --grading-accent: #facc15; --grading-surface: #302e2f; }
+.dark .grading-card--wrong { --grading-border: #dc2626; --grading-accent: #f87171; --grading-surface: #32262f; }
+.dark .grading-card-mark--correct { color: #4ade80; background: #16a34a26; }
+.dark .grading-card-mark--wrong { color: #f87171; background: #ef444426; }

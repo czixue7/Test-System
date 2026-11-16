@@ -2,7 +2,10 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
+// KaTeX 样式（数学公式）：只在这里引入，避免 Node 侧的安全测试因为 .css 无法加载而失败
+import 'katex/dist/katex.min.css';
 import './ui-refinements.css';
+import './components/grading-result-card.css';
 import './update-stages.css';
 import './debug-console.css';
 import { useThemeStore } from './store/themeStore';

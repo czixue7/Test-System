@@ -16,9 +16,11 @@ import { mergeById, mergeConversations, dateValue, canonicalJson } from "./dataS
 import { fetchPublicResources } from "./publicResources";
 import { useQuestionBankStore } from "../store/questionBankStore";
 import { useToastStore } from "../components/Toast";
+import { useSettingsStore } from "../store/settingsStore";
+import { validateAPIConfig, mergeAPIConfig } from "../../shared/apiConfigSync";
 
 const syncNames: Record<SyncKind, string> = {
-  banks: "题库", knowledge: "知识库", summaries: "总结", chat: "AI 聊天", duty: "值班表",
+  banks: "题库", knowledge: "知识库", summaries: "总结", chat: "AI 聊天", duty: "值班表", config: "API 配置",
 };
 
 const summaryTypes: SummaryType[] = ["knowledge", "questionBank", "combined"];
@@ -30,6 +32,7 @@ const arrayOf = (value: unknown, test: (v: any) => boolean): value is any[] =>
   value.every((v) => v && typeof v === "object" && test(v));
 function validate(kind: PersonalSyncKind, data: any) {
   if (data === null) return;
+  if (kind === "config") { validateAPIConfig(data); return; }
   let valid = data && typeof data === "object";
   if (kind === "knowledge")
     valid =
@@ -69,6 +72,7 @@ function validate(kind: PersonalSyncKind, data: any) {
   if (!valid) throw new Error(`${syncNames[kind]}同步数据格式无效，未写入本机`);
 }
 async function snapshot(kind: PersonalSyncKind): Promise<any> {
+  if (kind === "config") return useSettingsStore.getState().apiSyncDocument;
   if (kind === "knowledge") {
     const s = useKnowledgeStore.getState();
     return { items: s.items, categories: s.categories };
@@ -83,6 +87,7 @@ async function snapshot(kind: PersonalSyncKind): Promise<any> {
 }
 function merge(kind: PersonalSyncKind, local: any, remote: any): any {
   if (!remote) return local;
+  if (kind === "config") return mergeAPIConfig(local, remote);
   if (kind === "knowledge")
     return {
       items: mergeById<KnowledgeItem>(local.items, remote.items, dateValue),
@@ -105,6 +110,7 @@ function merge(kind: PersonalSyncKind, local: any, remote: any): any {
   };
 }
 async function apply(kind: PersonalSyncKind, value: any) {
+  if (kind === "config") useSettingsStore.getState().applySyncedAPIConfig(value);
   if (kind === "knowledge")
     useKnowledgeStore.setState({
       items: value.items,
@@ -180,7 +186,7 @@ async function performSync(scope: SyncScope) {
   let completed = 0;
   let skipped = 0;
   // Legacy bank flags are ignored: downloads and updates belong to the bank pages.
-  for (const kind of ["knowledge", "summaries", "chat", "duty"] as SyncKind[]) {
+  for (const kind of ["knowledge", "summaries", "chat", "config", "duty"] as SyncKind[]) {
     if (!valid(kind)) continue;
     try {
       if (kind === "banks" && !useQuestionBankStore.getState().isLoaded)

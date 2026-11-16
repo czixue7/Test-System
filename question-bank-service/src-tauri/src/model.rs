@@ -57,8 +57,8 @@ impl Config {
             if !valid_id(&m.id) || !ids.insert(&m.id) {
                 return Err("目录标识重复或无效".into());
             }
-            if !["bank", "knowledge", "duty", "package"].contains(&m.kind.as_str()) {
-                return Err("目录类型无效".into());
+            if m.kind.trim() != m.kind || m.kind.is_empty() || m.kind.chars().count() > 40 || m.kind.chars().any(char::is_control) {
+                return Err("目录类型需为 1～40 个字符，不能包含控制字符或首尾空格".into());
             }
             if m.enabled && !Path::new(&m.path).is_dir() {
                 return Err(format!("目录不存在：{}", m.path));

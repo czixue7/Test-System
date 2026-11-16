@@ -25,15 +25,24 @@ export function compareBuildNumbers(
 ): number {
   if (!a || !b) return a ? 1 : b ? -1 : 0;
   if (/^\d+$/.test(a) && /^\d+$/.test(b)) {
-    const x = BigInt(a),
-      y = BigInt(b);
+    const x = BigInt(dateBuild(a) || a),
+      y = BigInt(dateBuild(b) || b);
     return x > y ? 1 : x < y ? -1 : 0;
   }
   return a > b ? 1 : a < b ? -1 : 0;
 }
+// Published builds use YYYYMMDD. Keep comparisons compatible with the brief
+// YYMMDD format so existing six-digit packages cannot distort update ordering.
+function dateBuild(value: string): string | null {
+  const full = /^\d{6}$/.test(value) ? `20${value}` : value;
+  if (!/^20\d{6}$/.test(full)) return null;
+  const year = +full.slice(0, 4), month = +full.slice(4, 6), day = +full.slice(6, 8);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() + 1 === month && date.getUTCDate() === day ? full : null;
+}
 function normalizeHash(value: unknown): string | null {
   return typeof value === "string" &&
-    /^(?:[a-f0-9]{8}|[a-f0-9]{40}|[a-f0-9]{64})$/i.test(value)
+    (/^(?:[a-f0-9]{8}|[a-f0-9]{40}|[a-f0-9]{64})$/i.test(value) || (/^\d{6}$/.test(value) && dateBuild(value) !== null))
     ? value.toLowerCase()
     : null;
 }

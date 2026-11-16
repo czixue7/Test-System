@@ -4,23 +4,17 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import "./style.css";
 import ServiceSettings from "./ServiceSettings";
 import SyncOverview from "./SyncOverview";
+import APIConfigEditor from "./APIConfigEditor";
 import OverlayScrollbars from "./OverlayScrollbars";
 import type { Config, Mount } from "./types";
+import RequestHistory, { type RecordRow } from "./RequestHistory";
+import MountTypeSelect from "./MountTypeSelect";
 
 type Bucket = {
   time: number;
   upload: number;
   download: number;
   requests: number;
-};
-type RecordRow = {
-  time: number;
-  method: string;
-  path: string;
-  status: number;
-  upload: number;
-  download: number;
-  peer: string;
 };
 type Snapshot = {
   config: Config;
@@ -45,9 +39,13 @@ const bytes = (n: number) =>
         : `${(n / 1073741824).toFixed(2)} GB`;
 const time = (n: number) =>
   new Date(n * 1000).toLocaleString("zh-CN", { hour12: false });
+// §2.1/§3.6：题库与小说目录分别管理；共用连接设置，沿用现有panel、line、accent与间距。
+const isNovelMount = (m: Mount) => ["novel", "小说", "小说目录", "小说写作"].includes(m.kind.trim().toLowerCase());
 const tabs = [
-  ["folders", "发布目录", "01"],
-  ["traffic", "流量与历史", "02"],
+  ["folders", "题库目录", "01"],
+  ["novels", "小说目录", "02"],
+  ["traffic", "流量与历史", "03"],
+  ["config", "API 配置", "04"],
 ] as const;
 function Chart({
   bins,
@@ -258,6 +256,11 @@ function App() {
   };
   const running = snapshot?.running ?? false;
   const locked = running || busy || !desktop;
+  const novelMode = tab === "novels";
+  const directoryTab = tab === "folders" || novelMode;
+  const visibleMounts = (config?.mounts ?? []).filter(m => isNovelMount(m) === novelMode);
+  const visibleIds = new Set(visibleMounts.map(m => m.id));
+  const textFiles = catalog?.texts?.items?.filter((f: {mountId:string}) => visibleIds.has(f.mountId));
   return (
     <div className="shell">
       <div className="app-bar">
@@ -292,7 +295,7 @@ function App() {
               onClick={() => setTab(key)}
             >
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
-                {key === "folders" ? <path d="M3 7V5a1 1 0 0 1 1-1h6l2 3h8a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Z" /> : <><path d="M3 3v18h18M6 15l4-5 4 3 6-8" /></>}
+                {key === "novels" ? <path d="M4 4h6a3 3 0 0 1 3 3v14a4 4 0 0 0-4-2H4V4Zm16 0h-4a3 3 0 0 0-3 3v14a4 4 0 0 1 4-2h3V4Z" /> : key === "folders" ? <path d="M3 7V5a1 1 0 0 1 1-1h6l2 3h8a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Z" /> : key === "config" ? <path d="M15 7a4 4 0 1 1 2 3.5L9 18H5v-4l6.5-6.5M16 6h.01" /> : <><path d="M3 3v18h18M6 15l4-5 4 3 6-8" /></>}
               </svg>
               {label}
             </button>
@@ -322,14 +325,14 @@ function App() {
           </select>
         </div>
       </div>
-      <main className={tab === "folders" ? "publish-workspace" : "traffic-workspace"}>
+      <main className={directoryTab ? "publish-workspace" : "traffic-workspace"}>
         <header>
           <div>
             <h1>{tabs.find((t) => t[0] === tab)?.[1]}{tab === "traffic" && !desktop && <small className="preview-badge">预览</small>}</h1>
-            {tab === "folders" && <p>把电脑里的题库、知识库、值班表和软件包，发布到同一个地址。</p>}
+            {directoryTab && <p>{novelMode ? "单独管理小说作品文件，供星河创作按原文件名双向同步。" : "管理题库、知识库、值班表和软件包；小说文件在独立页签管理。"}</p>}
           </div>
           <div className="actions">
-            {tab === "folders" && <button
+            {directoryTab && <button
               disabled={!config || locked || !dirty}
               onClick={() => run(save)}
             >
@@ -355,7 +358,7 @@ function App() {
             </button>
           </div>
         </header>
-        {!desktop && tab === "folders" && <div className="preview-notice"><span>预览模式</span>目录选择与服务启动请在桌面版中操作，页面主题可直接切换。</div>}
+        {!desktop && directoryTab && <div className="preview-notice"><span>预览模式</span>目录选择与服务启动请在桌面版中操作，页面主题可直接切换。</div>}
         {error && (
           <div className="notice error" role="alert">
             {error}
@@ -366,15 +369,15 @@ function App() {
             {message}
           </div>
         )}
-        {tab === "folders" && (
+        {directoryTab && (
           <div className="publish-grid">
             <div className="publish-main">
             <section className="panel directory-panel">
               <div className="panel-head">
                 <div>
-                  <h2>发布目录</h2>
+                  <h2>{novelMode ? "小说作品目录" : "题库与资料目录"}</h2>
                   <p>
-                    按文件夹发布，客户端仅能读取已启用目录。
+                    {novelMode ? "使用独立小说文件夹。JSON 作品备份或结构化 TXT，支持双向同步与历史保护。" : "按文件夹发布题库与资料；题库、知识库、值班表和软件包只读。"}
                   </p>
                 </div>
                 <button
@@ -390,7 +393,7 @@ function App() {
                               id: crypto.randomUUID(),
                               name: path.split(/[\\/]/).pop() || "新目录",
                               path,
-                              kind: "bank",
+                              kind: novelMode ? "novel" : "bank",
                               enabled: true,
                             },
                           ],
@@ -398,30 +401,32 @@ function App() {
                     })
                   }
                 >
-                  ＋ 添加文件夹
+                  ＋ {novelMode ? "添加小说文件夹" : "添加文件夹"}
                 </button>
               </div>
-              <div className="catalog-strip" aria-label="已发布内容">
-                <span><strong>{catalog?.banks.userBanks.length ?? (config?.mounts.length ? "—" : 0)}</strong> 题库</span>
-                <span><strong>{catalog?.knowledge.items.length ?? (config?.mounts.length ? "—" : 0)}</strong> 知识条目</span>
-                <span><strong>{catalog?.duties.userDuties.length ?? (config?.mounts.length ? "—" : 0)}</strong> 值班表</span>
-                <span><strong>{catalog?.packages?.items.length ?? (config?.mounts.length ? "—" : 0)}</strong> 软件包</span>
+              <div className="catalog-strip" aria-label={novelMode ? "小说目录内容" : "已发布内容"}>
+                {novelMode ? <><span><strong>{textFiles?.filter((f:{path:string})=>/\.json$/i.test(f.path)).length ?? (visibleMounts.length ? "—" : 0)}</strong> JSON 作品备份</span><span><strong>{textFiles?.filter((f:{path:string})=>/\.txt$/i.test(f.path)).length ?? (visibleMounts.length ? "—" : 0)}</strong> TXT 作品</span><span><strong>{visibleMounts.length}</strong> 小说文件夹</span></> : <>
+                <span><strong>{catalog?.banks.userBanks.length ?? (visibleMounts.length ? "—" : 0)}</strong> 题库</span>
+                <span><strong>{catalog?.knowledge.items.length ?? (visibleMounts.length ? "—" : 0)}</strong> 知识条目</span>
+                <span><strong>{catalog?.duties.userDuties.length ?? (visibleMounts.length ? "—" : 0)}</strong> 值班表</span>
+                <span><strong>{catalog?.packages?.items.length ?? (visibleMounts.length ? "—" : 0)}</strong> 软件包</span>
+                <span><strong>{textFiles?.length ?? (visibleMounts.length ? "—" : 0)}</strong> 文本文件</span></>}
               </div>
-              <div className="directory-content" tabIndex={0} aria-label="发布目录列表">
-              {!config?.mounts.length ? (
+              <div className="directory-content" tabIndex={0} aria-label={novelMode ? "小说目录列表" : "题库目录列表"}>
+              {!visibleMounts.length ? (
                 <div className="empty">
                   <span className="empty-icon" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4"><path d="M3 7V5a1 1 0 0 1 1-1h5l3 3h8a1 1 0 0 1 1 1v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" /><path d="M12 10v6m-3-3h6" /></svg></span>
                   <div>
-                  <h3>选择第一个发布目录</h3>
+                  <h3>{novelMode ? "选择第一个小说目录" : "选择第一个题库或资料目录"}</h3>
                   <p>
-                    添加文件夹后，题库、知识库、值班表和软件包会在这里集中管理。
+                    {novelMode ? "把星河创作的 JSON 作品备份或 TXT 放入独立文件夹，在此添加后即可连接同步。" : "题库、知识库、值班表和软件包在这里管理，不与小说目录混排。"}
                   </p>
-                  <div className="format-labels"><span>JSON 题库</span><span>Markdown / TXT</span><span>值班表</span><span>软件包</span></div>
+                  <div className="format-labels">{novelMode ? <><span>JSON 作品备份</span><span>结构化 TXT</span><span>SHA-256 校验</span></> : <><span>JSON 题库</span><span>Markdown / TXT</span><span>值班表</span><span>软件包</span></>}</div>
                   </div>
                 </div>
               ) : (
                 <div className="mount-list">
-                  {config.mounts.map((m) => (
+                  {visibleMounts.map((m) => (
                     <div className="mount-row" key={m.id}>
                       <input
                         type="checkbox"
@@ -464,23 +469,13 @@ function App() {
                           </button>
                         </div>
                       </div>
-                      <select
-                        aria-label="数据类型"
-                        value={m.kind}
-                        disabled={locked}
-                        onChange={(e) => mount(m.id, { kind: e.target.value })}
-                      >
-                        <option value="bank">题库</option>
-                        <option value="knowledge">知识库</option>
-                        <option value="duty">值班表</option>
-                        <option value="package">软件包</option>
-                      </select>
+                      <MountTypeSelect value={m.kind} disabled={locked} onChange={kind => mount(m.id, { kind })} />
                       <button
                         className="quiet"
                         disabled={locked}
                         onClick={() =>
                           update({
-                            mounts: config.mounts.filter((x) => x.id !== m.id),
+                            mounts: config!.mounts.filter((x) => x.id !== m.id),
                           })
                         }
                       >
@@ -493,7 +488,7 @@ function App() {
               </div>
               <footer>
                 <span>
-                  {config?.mounts.filter((m) => m.enabled).length ?? 0}{" "}
+                  {visibleMounts.filter((m) => m.enabled).length ?? 0}{" "}
                   个目录已启用
                 </span>
                 <button
@@ -509,7 +504,8 @@ function App() {
               </footer>
               <div className="directory-notes">
                 {catalog?.warnings?.length > 0 && <details className="catalog-warnings"><summary>目录检查提示 · {catalog.warnings.length} 项</summary>{catalog.warnings.map((w: string, i: number) => <p className="warning" key={i}>{w}</p>)}</details>}
-                <details className="help"><summary>目录准备说明</summary><p>题库与值班表使用 JSON；题库图片放在同级 image 文件夹。知识库支持 JSON、Markdown 和 UTF-8 TXT。软件包名称需包含版本号与构建号，例如 Answer_Test_v0.4.4_build20261021_arm64.apk 或 Answer_Test_v0.4.4_build20261021_x64.exe。发布目录只读，客户端同步备份单独存放。</p></details>
+                {catalog?.texts?.warnings?.length > 0 && <details className="catalog-warnings"><summary>文本目录提示 · {catalog.texts.warnings.length} 项</summary>{catalog.texts.warnings.map((w: string, i: number) => <p className="warning" key={i}>{w}</p>)}</details>}
+                <details className="help"><summary>{novelMode ? "小说文件准备说明" : "目录准备说明"}</summary><p>{novelMode ? "小说目录与题库目录分别选择独立文件夹。JSON 使用星河创作导出的作品备份，TXT 支持结构化文本和带章节标题的正文，文件名可任意；UTF-8，单文件最多8 MiB。客户端选择文件后持续绑定同一作品，上传回原路径，以SHA-256拦截并发覆盖，空内容被拒绝，覆盖前保留文件历史。" : <>题库使用 JSON，图片放在同级 image 文件夹。值班表支持 Excel（.xlsx / .xls）和 JSON，目录标签请选择“值班表”；客户端手动获取后解析，不写入同步存储。知识库支持 JSON、Markdown 和 UTF-8 TXT。软件包名称需包含版本号与构建号，例如 Answer_Test_v0.4.4_build20261021_arm64.apk 或 Answer_Test_v0.4.4_build20261021_x64.exe。题库、知识库、值班表和软件包目录只读。文本及自定义类型支持 UTF-8 文本双向同步（每个文件最多 8 MiB）；自定义名称例如“小说”“文档”，其他软件可通过 /api/v1/text 接口接入。同名文件按 SHA-256 检测冲突。个人内容同步单独存放。</>}</p></details>
               </div>
             </section>
             </div>
@@ -527,10 +523,11 @@ function App() {
                 }
               />
             )}
-            <SyncOverview dataDir={snapshot?.dataDir ?? ''} />
+            {novelMode ? <section className="panel"><h2>连接星河创作</h2><p>在小说软件的“跨设备文本同步”填写这里的服务地址与访问密钥，测试连接后刷新 JSON/TXT 列表，选择作品文件。</p><p>首次新建绑定作品，之后同步同一作品。题库目录不参与小说文件列表。</p></section> : <SyncOverview dataDir={snapshot?.dataDir ?? ''} />}
             </div>
           </div>
         )}
+        <div hidden={tab !== "config"}><APIConfigEditor enabled={desktop} /></div>
         {tab === "traffic" && (
           <>
             <section className="panel trend-panel">
@@ -581,45 +578,7 @@ function App() {
                 <option value="download">下载 · 接收客户端数据</option>
               </select>
               </div>
-              <div className="table-wrap" tabIndex={0} aria-label="最近请求列表">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>时间</th>
-                      <th>请求</th>
-                      <th>状态</th>
-                      <th className="up" title="发送给客户端">上传 ↑</th>
-                      <th className="down" title="接收客户端数据">下载 ↓</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...(snapshot?.metrics.records ?? [])]
-                      .reverse()
-                      .filter(r => direction === "all" || (direction === "download" ? r.method === "PUT" : r.method !== "PUT"))
-                      .map((r, i) => (
-                        <tr key={i}>
-                          <td>{time(r.time)}</td>
-                          <td>
-                            <div className="request-line">
-                            <span className={`request-direction ${r.method === "PUT" ? "down" : "up"}`} title={r.method === "PUT" ? "接收客户端数据" : "发送给客户端"}>{r.method === "PUT" ? "↓ 下载" : "↑ 上传"}</span>
-                            <code>
-                              {r.method} {r.path}
-                            </code>
-                            </div>
-                            <small>{r.peer}</small>
-                          </td>
-                          <td className={r.status >= 400 ? "warning" : ""}>
-                            {r.status}
-                          </td>
-                          <td className="up transfer-cell">{bytes(r.upload)}</td>
-                          <td className="down transfer-cell">{bytes(r.download)}</td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-                {!snapshot?.metrics.records.length && <p className="empty-small">暂无请求，客户端连接后自动显示。</p>}
-                {!!snapshot?.metrics.records.length && !snapshot.metrics.records.some(r => direction === "all" || (direction === "download" ? r.method === "PUT" : r.method !== "PUT")) && <p className="empty-small">当前方向没有请求记录。</p>}
-              </div>
+              <RequestHistory records={snapshot?.metrics.records ?? []} direction={direction} />
             </section>
           </>
         )}

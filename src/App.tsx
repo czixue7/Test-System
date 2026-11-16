@@ -6,6 +6,7 @@ import { useDutyScheduleStore } from './store/dutyScheduleStore';
 import { autoLoadLastModel } from './utils/aiGrading';
 import Toast from './components/Toast';
 import DebugConsole from './components/DebugConsole';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const Home = lazy(() => import('./pages/Home'));
 const Profile = lazy(() => import('./pages/Profile'));
@@ -76,10 +77,13 @@ const App: React.FC = () => {
       <DebugConsole />
       <BrowserRouter
         future={{
-          v7_startTransition: true,
+          // 关闭 transition 包裹：页面 chunk 加载期间先显示加载态，
+          // 否则懒加载失败/变慢时点击导航会“没有任何反应”
+          v7_startTransition: false,
           v7_relativeSplatPath: true,
         }}
       >
+        <ErrorBoundary>
         <Suspense fallback={
           <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
             <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
@@ -99,8 +103,20 @@ const App: React.FC = () => {
             <Route path="/duty" element={<DutySchedule />} />
             <Route path="/placeholder" element={<KnowledgeBase />} />
             <Route path="/knowledge-item/:id" element={<KnowledgeItemView />} />
+            {/* 兜底路由：地址不匹配时也给提示，避免整页空白看不出原因 */}
+            <Route path="*" element={
+              <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col items-center justify-center px-6">
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">页面不存在或地址有误</p>
+                <button
+                  onClick={() => { window.location.href = '/'; }}
+                  className="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg">
+                  返回首页
+                </button>
+              </div>
+            } />
           </Routes>
         </Suspense>
+        </ErrorBoundary>
       </BrowserRouter>
     </>
   );

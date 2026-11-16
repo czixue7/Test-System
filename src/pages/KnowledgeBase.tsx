@@ -23,7 +23,7 @@ import { applyConversions, NoteConvertSettings } from '../utils/noteConverter';
 import { useNoteStore } from '../store/noteStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { apiGradingService } from '../utils/apiGradingService';
-import MarkdownView from '../components/MarkdownView';
+import SafeMarkdownView from '../components/SafeMarkdownView';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Modal from '../components/Modal';
 import { KnowledgeSearchSource, KnowledgeItem } from '../types';
@@ -158,7 +158,7 @@ const ItemSubList: React.FC<{ items: KnowledgeItem[]; onDelete: (item: Knowledge
       {items.map((item) => (
         <div key={item.id} className="group flex items-center pr-2">
           <button
-            onClick={() => navigate(`/knowledge-item/${item.id}`)}
+            onClick={() => navigate(`/knowledge-item/${encodeURIComponent(item.id)}`)}
             className="flex-1 min-w-0 text-left px-3 py-2 text-xs text-gray-600 dark:text-gray-300 hover:text-blue-500 dark:hover:text-blue-400 truncate">
             {item.title || (item.content || '').slice(0, 20)}
           </button>
@@ -167,12 +167,29 @@ const ItemSubList: React.FC<{ items: KnowledgeItem[]; onDelete: (item: Knowledge
               e.stopPropagation();
               onDelete(item);
             }}
-            className="opacity-0 group-hover:opacity-100 px-1.5 py-1 text-gray-400 hover:text-red-500 text-[11px]">删</button>
+            aria-label="删除"
+            className="flex-shrink-0 px-1.5 py-1 text-gray-400 hover:text-red-500">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M19 7l-.867 12.142A2 2 0 0 1 16.138 21H7.862a2 2 0 0 1-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3M4 7h16" />
+            </svg>
+          </button>
         </div>
       ))}
     </div>
   );
 };
+
+/**
+ * 对话气泡对齐：用户提问靠右；AI 回答默认靠左，
+ * 文段过长（约占满气泡宽度）时改为居中，让左右外边距一致；
+ * 流式输出过程中不切换，避免气泡边生成边左右跳动。
+ */
+function getBubbleRowClass(role: string, content: string, streaming: boolean): string {
+  if (role === 'user') return 'flex justify-end';
+  if (streaming) return 'flex justify-start';
+  const compact = (content || '').replace(/\s+/g, '');
+  return compact.length > 30 ? 'flex justify-center' : 'flex justify-start';
+}
 
 const KnowledgeBase: React.FC = () => {
   const navigate = useNavigate();
@@ -863,7 +880,12 @@ const KnowledgeBase: React.FC = () => {
                             }
                             deleteCategory(cat);
                           }}
-                          className="opacity-0 group-hover:opacity-100 px-2 py-1 text-gray-400 hover:text-red-500 text-xs">删</button>
+                          aria-label="删除分类"
+                          className="flex-shrink-0 px-2 py-1 text-gray-400 hover:text-red-500">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M19 7l-.867 12.142A2 2 0 0 1 16.138 21H7.862a2 2 0 0 1-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3M4 7h16" />
+                          </svg>
+                        </button>
                       </div>
                       <Collapse open={expanded}>
                         <ItemSubList items={catItems} onDelete={requestDeleteItem} />
@@ -924,14 +946,14 @@ const KnowledgeBase: React.FC = () => {
         {/* 对话记录 */}
         {hasMessages && (
           <div className="mt-4 space-y-3">
-            {messages.map((m) => (
-              <div key={m.id} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
+            {messages.map((m, index) => (
+              <div key={m.id} className={getBubbleRowClass(m.role, m.content, searching && index === messages.length - 1)}>
                 <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed break-words
                   ${m.role === 'user'
                     ? 'bg-blue-500 text-white rounded-br-sm whitespace-pre-wrap'
                     : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-100 dark:border-gray-700 rounded-bl-sm'}`}>
                   {m.role === 'assistant' && m.content ? (
-                    <MarkdownView content={m.content} />
+                    <SafeMarkdownView content={m.content} />
                   ) : (
                     m.content
                   )}
@@ -1099,7 +1121,7 @@ const KnowledgeBase: React.FC = () => {
                   </div>
                 </div>
               ) : summaryContent ? (
-                <MarkdownView content={summaryContent} className="text-gray-700 dark:text-gray-200" />
+                <SafeMarkdownView content={summaryContent} className="text-gray-700 dark:text-gray-200" />
               ) : (
                 <div className="text-center py-8 text-sm text-gray-500 dark:text-gray-400">{summaryEmptyAfterDeletion ? '总结版本已全部删除。需要时点击“重新生成”。' : '准备中...'}</div>
               )}

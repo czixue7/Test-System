@@ -170,7 +170,7 @@ export const checkAnswerWithAI = async (
   question: Question,
   answer: string | string[],
   useAI: boolean = true
-): Promise<{ isCorrect: 0 | 1 | 2; score: number; aiFeedback?: string; aiExplanation?: string; blankResults?: BlankResult[] }> => {
+): Promise<{ isCorrect: 0 | 1 | 2; score: number; aiFeedback?: string; aiExplanation?: string; blankResults?: BlankResult[]; gradingMode?: QuestionResult['gradingMode'] }> => {
   if (question.type === 'single-choice') {
     const isCorrectBool = answer === question.correctAnswer;
     return { isCorrect: isCorrectBool ? 2 : 0, score: isCorrectBool ? question.score : 0 };
@@ -251,6 +251,7 @@ export const checkAnswerWithAI = async (
           score: aiResult.score,
           aiFeedback: aiResult.feedback,
           aiExplanation: aiResult.explanation,
+          gradingMode: aiResult.gradingMode,
           blankResults: aiResult.blankResults
         };
       }
@@ -258,7 +259,7 @@ export const checkAnswerWithAI = async (
 
     // AI 未启用：checkAnswer 的结果已包含逐空明细与一致的三态判定，直接复用。
     // （旧实现在这里重新拼了一遍 blankResults，且乱序分支同样不消费命中的标准答案。）
-    return checkAnswer(question, answer);
+    return { ...checkAnswer(question, answer), gradingMode: useAI && gradingMode === 'ai' ? 'ai-fallback' : 'fixed' };
   }
 
   if (question.type === 'subjective') {
@@ -271,7 +272,8 @@ export const checkAnswerWithAI = async (
           isCorrect: aiResult.isCorrect,
           score: aiResult.score,
           aiFeedback: aiResult.feedback,
-          aiExplanation: aiResult.explanation
+          aiExplanation: aiResult.explanation,
+          gradingMode: aiResult.gradingMode
         };
       }
     }
@@ -283,7 +285,7 @@ export const checkAnswerWithAI = async (
     );
     // isCorrect 与得分绑定：只有拿到满分才算「正确」（见 similarity.classifySubjective），
     // 避免出现「标记全对但没满分」的矛盾记录污染正确率统计。
-    return { isCorrect: classifySubjective(result.score, question.score), score: result.score };
+    return { isCorrect: classifySubjective(result.score, question.score), score: result.score, gradingMode: useAI && gradingMode === 'ai' ? 'ai-fallback' : 'fixed' };
   }
 
   return { isCorrect: 0, score: 0 };
@@ -345,11 +347,11 @@ export const useExamStore = create<ExamStore>((set, get) => ({
         answer: answer ?? '',
         isConfirmed: true,
         isCorrect: 0,
-        score: 0
+        score: 0,
+        gradingMode: 'fixed'
       };
     } else {
-      const { isCorrect, score, aiFeedback, aiExplanation, blankResults } = await checkAnswerWithAI(question, answer, useAI);
-      const gradingMode = useSettingsStore.getState().gradingMode;
+      const { isCorrect, score, aiFeedback, aiExplanation, blankResults, gradingMode } = await checkAnswerWithAI(question, answer, useAI);
       result = {
         answer,
         isConfirmed: true,
@@ -357,7 +359,7 @@ export const useExamStore = create<ExamStore>((set, get) => ({
         score,
         aiFeedback,
         aiExplanation,
-        gradingMode: gradingMode === 'ai' ? 'ai' : 'fixed',
+        gradingMode: gradingMode ?? 'fixed',
         blankResults
       };
     }

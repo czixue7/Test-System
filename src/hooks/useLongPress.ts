@@ -35,6 +35,8 @@ export function useLongPress({
   }, []);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLElement>) => {
+    // 双指缩放时不为第二根手指启动日期长按。
+    if (!e.isPrimary) return;
     // 鼠标只响应左键
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     longPressFiredRef.current = false;

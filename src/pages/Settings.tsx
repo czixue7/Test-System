@@ -1,7 +1,8 @@
 import Collapse from '../components/Collapse';
-import React, { useState } from 'react';
+import ConfirmModal from '../components/ConfirmModal';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useSettingsStore } from '../store/settingsStore';
+import { normalizeQuestionsPerRound, QUESTIONS_PER_ROUND_MAX, QUESTIONS_PER_ROUND_MIN, useSettingsStore } from '../store/settingsStore';
 import AIProfileSettings from '../components/AIProfileSettings';
 import DataSourceSettings from '../components/DataSourceSettings';
 import { useToast } from '../hooks/useToast';
@@ -20,9 +21,42 @@ const Settings: React.FC = () => {
     setGradingProvider,
     vconsoleEnabled,
     setVconsoleEnabled,
+    questionsPerRound,
+    setQuestionsPerRound,
+    avoidRepeatQuestions,
+    setAvoidRepeatQuestions,
+    doneQuestionIds,
+    resetDoneQuestions,
   } = useSettingsStore();
   const [gradingExpanded, setGradingExpanded] = useState(false);
   const [providerExpanded, setProviderExpanded] = useState(false);
+  // 题量输入框用本地字符串，失焦/回车时再收敛，避免输入过程被反复取整
+  const [questionsPerRoundInput, setQuestionsPerRoundInput] = useState(String(questionsPerRound));
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const doneCount = Object.values(doneQuestionIds).reduce((sum, ids) => sum + ids.length, 0);
+
+  useEffect(() => {
+    setQuestionsPerRoundInput(String(questionsPerRound));
+  }, [questionsPerRound]);
+
+  const commitQuestionsPerRound = () => {
+    const parsed = Number(questionsPerRoundInput);
+    if (!questionsPerRoundInput.trim() || !Number.isFinite(parsed)) {
+      setQuestionsPerRoundInput(String(questionsPerRound));
+      return;
+    }
+    const next = normalizeQuestionsPerRound(parsed);
+    setQuestionsPerRound(next);
+    setQuestionsPerRoundInput(String(next));
+    showSuccess(`每轮题量已设为 ${next} 题`, 2500);
+  };
+
+  const handleResetDone = () => {
+    resetDoneQuestions();
+    setShowResetConfirm(false);
+    showSuccess('已清除全部已做题目记录', 2500);
+  };
+
   const getGradingModeLabel = () => {
     return gradingMode === 'fixed' ? '固定判断' : 'AI判断';
   };
@@ -79,6 +113,79 @@ const Settings: React.FC = () => {
         style={{ paddingTop: safeArea.contentTop }}
       >
         <DataSourceSettings />
+
+        {/* 练题设置：顺序练题与模拟考试共用 */}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md overflow-hidden">
+          <div className="px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-200">每轮题量</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={QUESTIONS_PER_ROUND_MIN}
+                  max={QUESTIONS_PER_ROUND_MAX}
+                  value={questionsPerRoundInput}
+                  onChange={(e) => setQuestionsPerRoundInput(e.target.value)}
+                  onBlur={commitQuestionsPerRound}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                  }}
+                  className="w-16 px-2 py-1 text-center text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
+                <span className="text-xs text-gray-500 dark:text-gray-400">题</span>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              顺序练题和模拟考试默认每轮 20 题，可设置 {QUESTIONS_PER_ROUND_MIN}-{QUESTIONS_PER_ROUND_MAX} 题
+            </p>
+          </div>
+
+          <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-600">
+            <div className="flex items-center justify-between">
+              <div className="flex-1 pr-3">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-200">避免重复做题</span>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  做过的题自动记录，下一轮不再出现
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={avoidRepeatQuestions}
+                  onChange={(e) => {
+                    setAvoidRepeatQuestions(e.target.checked);
+                    showSuccess(e.target.checked ? '已开启避免重复做题' : '已关闭避免重复做题', 2500);
+                  }}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+          </div>
+
+          <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-600">
+            <div className="flex items-center justify-between">
+              <div className="flex-1 pr-3">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-200">已做题目记录</span>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  已记录 {doneCount} 题，清除后可重新刷这些题
+                </p>
+              </div>
+              <button
+                onClick={() => setShowResetConfirm(true)}
+                disabled={doneCount === 0}
+                className="px-3 py-1.5 text-xs rounded-lg bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                清除记录
+              </button>
+            </div>
+          </div>
+        </div>
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md overflow-hidden">
           <div
             onClick={handleToggleGrading}
@@ -258,6 +365,16 @@ const Settings: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {showResetConfirm && (
+        <ConfirmModal
+          message={`确定清除全部已做题目记录吗？清除后已做过的 ${doneCount} 题会重新出现在练题和考试中。`}
+          type="warning"
+          confirmText="清除"
+          onConfirm={handleResetDone}
+          onCancel={() => setShowResetConfirm(false)}
+        />
+      )}
 
     </div>
   );

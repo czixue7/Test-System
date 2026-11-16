@@ -17,6 +17,7 @@ const options: [SyncKind, string, string, string][] = [
   ["knowledge", "知识库", "同步知识库内容", "知识条目与分类"],
   ["summaries", "总结", "同步总结内容", "各类总结的历史版本"],
   ["chat", "AI 聊天", "同步 AI 聊天内容", "会话与消息，不含 API 密钥"],
+  ["config", "API 配置", "同步 API 配置（包含 Key）", "与服务台双向同步配置、完整 Key 和接口密码；冲突保留副本"],
   ["duty", "值班表", "获取公共值班表", "仅获取服务台发布的值班表，不上传本机排班"],
 ];
 const symbol = { gitee: "G", github: "GH", service: "PC" };
@@ -401,14 +402,14 @@ export default function DataSourceSettings() {
             <span className="ds-subtitle">
               {active
                 ? `${active.name} · 仅手动同步 · ${state.lastSync ? `最近 ${new Date(state.lastSync).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "尚未同步"}`
-                : "知识库 · 总结 · AI 聊天；值班表只获取发布内容"}
+                : "知识库 · 总结 · AI 聊天 · API 配置；值班表只获取发布内容"}
             </span>
           </span>
           <Chevron open={syncExpanded} />
         </button>
         <Collapse open={syncExpanded}>
           <div className="ds-body" id={`${id}-sync`}>
-            <p className="ds-note">仅手动执行。题库和值班表只获取发布目录，不上传到同步空间；知识库、总结、AI 聊天按空间 ID 合并。启动、资料缺失和恢复网络均不会自动同步。</p>
+            <p className="ds-note">仅手动执行。题库和值班表只获取发布目录；其他内容按空间 ID 合并。API 配置选项包含完整 Key 和接口密码，仅在可信服务上启用。启动、资料缺失和恢复网络均不会自动同步。</p>
             <div className="ds-sync-list" role="group" aria-label="软件更新设置">
               <label className="ds-sync-row">
                 <span><span className="ds-sync-name">软件更新</span><span className="ds-sync-hint">允许从已启用来源检查和下载软件更新，不影响题库获取</span></span>

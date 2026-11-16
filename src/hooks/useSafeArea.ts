@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 export interface SafeAreaInsets {
   top: number;
@@ -194,14 +194,12 @@ const computeSafeArea = (): SafeAreaInsets => {
   // 第1优先级：CSS env()（最准确）
   const cssEnv = readFromCSSEnv();
   if (cssEnv && (cssEnv.top > 0 || cssEnv.bottom > 0 || cssEnv.left > 0 || cssEnv.right > 0)) {
-    console.log('[useSafeArea] Using CSS env values:', cssEnv);
     return cssEnv;
   }
 
   // 第2优先级：screen 差值估算
   const screenEstimate = estimateFromScreenDiff();
   if (screenEstimate && (screenEstimate.top > 10 || screenEstimate.bottom > 10)) {
-    console.log('[useSafeArea] Using screen diff estimate:', screenEstimate);
     return screenEstimate;
   }
 
@@ -209,10 +207,8 @@ const computeSafeArea = (): SafeAreaInsets => {
   let defaults: SafeAreaInsets;
   if (isIOS()) {
     defaults = getIOSDefaults();
-    console.log('[useSafeArea] Using iOS defaults:', defaults);
   } else if (isAndroid()) {
     defaults = getAndroidDefaults();
-    console.log('[useSafeArea] Using Android defaults:', defaults);
   } else {
     defaults = { top: 0, bottom: 0, left: 0, right: 0 };
   }
@@ -223,6 +219,7 @@ const computeSafeArea = (): SafeAreaInsets => {
 /** Fixed 36px page toolbar plus the shared 12px content gap. */
 export function useSafeArea(): SafeAreaInsets & { contentTop: number } {
   const [safeArea, setSafeArea] = useState<SafeAreaInsets>(() => computeSafeArea());
+  const frameRef = useRef(0);
 
   const updateSafeArea = useCallback(() => {
     const insets = computeSafeArea();
@@ -241,6 +238,15 @@ export function useSafeArea(): SafeAreaInsets & { contentTop: number } {
     });
   }, []);
 
+  // 视口尺寸确认后会连续触发 resize，合并到下一帧只重算一次，避免反复读取样式
+  const scheduleUpdate = useCallback(() => {
+    if (frameRef.current) return;
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = 0;
+      updateSafeArea();
+    });
+  }, [updateSafeArea]);
+
   useEffect(() => {
     // 初始计算
     updateSafeArea();
@@ -254,7 +260,7 @@ export function useSafeArea(): SafeAreaInsets & { contentTop: number } {
     ];
 
     // 监听各种变化事件
-    const handleResize = () => updateSafeArea();
+    const handleResize = () => scheduleUpdate();
     const handleOrientationChange = () => {
       // 方向变化后延迟重新计算（等待布局稳定）
       setTimeout(updateSafeArea, 200);
@@ -277,6 +283,7 @@ export function useSafeArea(): SafeAreaInsets & { contentTop: number } {
 
     return () => {
       timers.forEach(clearTimeout);
+      if (frameRef.current) cancelAnimationFrame(frameRef.current);
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('orientationchange', handleOrientationChange);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -284,7 +291,7 @@ export function useSafeArea(): SafeAreaInsets & { contentTop: number } {
         window.visualViewport.removeEventListener('resize', handleResize);
       }
     };
-  }, [updateSafeArea]);
+  }, [updateSafeArea, scheduleUpdate]);
 
   return { ...safeArea, contentTop: safeArea.top + 36 + 12 };
 }

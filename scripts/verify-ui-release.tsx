@@ -9,6 +9,37 @@ import UpdateControl from '../src/components/UpdateControl';
 import DebugConsoleTrigger from '../src/components/DebugConsoleTrigger';
 import { createUpdateStage, resolveUpdateStage } from '../src/utils/updateStages';
 import { getUpdateStageAction } from '../src/utils/updateActions';
+import GradingResultCard from '../src/components/GradingResultCard';
+import { getGradedBlankResults } from '../src/utils/practiceGrading';
+import type { Question, QuestionResult } from '../src/types';
+import { imageThumbnailTransform } from '../src/utils/imageViewerTransition';
+
+assert.equal(imageThumbnailTransform({ left: 24, top: 100, width: 240, height: 120 }, 1000, 500, 1000, 800), 'translate3d(calc(-50% + -356px), calc(-50% + -240px), 0) scale(0.26666666666666666, 0.26666666666666666)');
+assert.equal(imageThumbnailTransform({ left: 20, top: 30, width: 50, height: 100 }, 500, 1000, 400, 800), 'translate3d(calc(-50% + -155px), calc(-50% + -320px), 0) scale(0.1388888888888889, 0.1388888888888889)');
+assert.equal(imageThumbnailTransform({ left: 0, top: 0, width: 0, height: 100 }, 100, 100, 400, 800), null);
+
+const fillQuestion: Question = { id: 'card-fill', type: 'fill-in-blank', question: '填空', correctAnswer: ['供配电', '制冷', '网络'], score: 3, category: '', difficulty: 'easy' };
+const semanticResult: QuestionResult = { isCorrect: 1, score: 2, gradingMode: 'ai', blankResults: [
+  { userAnswer: '配电系统', correctAnswer: '供配电', isCorrect: true },
+  { userAnswer: '制冷', correctAnswer: '制冷', isCorrect: true },
+  { userAnswer: '<script>123</script>', correctAnswer: '网络', isCorrect: false },
+] };
+const semanticRows = getGradedBlankResults(fillQuestion, ['配电系统', '制冷', '<script>123</script>'], semanticResult);
+assert.equal(semanticRows[0].isCorrect, true, 'AI semantic judgment must not be replaced by exact matching');
+assert.equal(getGradedBlankResults(fillQuestion, ['供配电'], { isCorrect: 1, score: 1, gradingMode: 'ai' })[0].isCorrect, null, 'missing AI detail must remain unknown');
+const duplicateQuestion = { ...fillQuestion, allowDisorder: true };
+assert.deepEqual(getGradedBlankResults(duplicateQuestion, ['供配电', '供配电', '网络'], { isCorrect: 1, score: 2, gradingMode: 'fixed' }).map(row => row.isCorrect), [true, false, true], 'legacy fixed records must still consume disorder matches');
+const card = (result: QuestionResult, question = fillQuestion) => renderToStaticMarkup(<GradingResultCard question={question} result={result} answer={result.blankResults?.map(row => row.userAnswer)} isConfirmed onOpenImages={() => {}} />);
+const partialCard = card(semanticResult);
+assert(partialCard.includes('grading-card--partial') && partialCard.includes('得分: 2/3') && partialCard.includes('AI智能判题'));
+assert(partialCard.includes('2个空正确，1个空错误') && partialCard.includes('参考答案: 网络'));
+assert(!partialCard.includes('<script>') && partialCard.includes('&lt;script&gt;'));
+const fixedCard = card({ ...semanticResult, isCorrect: 2, score: 3, gradingMode: 'fixed', blankResults: fillQuestion.correctAnswer instanceof Array ? fillQuestion.correctAnswer.map(text => ({ userAnswer: text, correctAnswer: text, isCorrect: true })) : [] });
+assert(fixedCard.includes('grading-card--correct') && fixedCard.includes('答案完全正确') && fixedCard.includes('固定规则判题'));
+const fallbackCard = card({ ...semanticResult, isCorrect: 0, score: 0, gradingMode: 'ai-fallback', aiExplanation: '【AI降级判题模式】\n请求失败，使用固定规则' });
+assert(fallbackCard.includes('grading-card--wrong') && fallbackCard.includes('固定规则判题（AI降级）') && (fallbackCard.match(/【AI降级判题模式】/g) || []).length === 1);
+const imageCard = card({ isCorrect: 0, score: 0, gradingMode: 'fixed' }, { ...fillQuestion, type: 'subjective', correctAnswer: { text: '图解答案', images: ['data:image/png;base64,AA=='] }, explanation: '题目原解析' });
+assert(imageCard.includes('放大参考答案图片1') && imageCard.includes('图解答案') && imageCard.includes('题目原解析'));
 
 const forbidden = ['duty-preview/', '../preview/', 'duty-page-preview:', 'PreviewPageSwitcher', '阶段预览', '阶段演示', '播放更新流程演示', '示例请求', '示例日志', '深色预览', '浅色预览', '未连接更新服务'];
 const trigger = renderToStaticMarkup(<DebugConsoleTrigger visible errors={0} onOpen={() => {}} />);

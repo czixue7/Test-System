@@ -1,12 +1,13 @@
 import { useQuestionBankStore } from "../store/questionBankStore";
-import { buildShifts, useDutyScheduleStore } from "../store/dutyScheduleStore";
-import type { BankIndexItem, DutyIndexItem, DutySchedule, JsonDutyScheduleData, QuestionBank } from "../types";
+import { useDutyScheduleStore } from "../store/dutyScheduleStore";
+import type { BankIndexItem, DutyIndexItem, DutySchedule, QuestionBank } from "../types";
 import { sourceRequest, resolveSourceResource } from "./dataSourceRequest";
 import { contentHash } from "./questionBankSync";
 import { canonicalJson } from "./dataSyncMerge";
 import { convertJsonToBank, validateJsonBank } from "./jsonImporter";
 import { hydrateSourceBank } from "./dataSourceAssets";
 import { getStoreValue, setStoreValue } from "./tauriStore";
+import { downloadPublishedDuty } from "./publishedDuty";
 
 /** Public catalog downloads never send local resources or a personal space ID. */
 export async function fetchPublicResources(
@@ -45,23 +46,20 @@ export async function fetchPublicResources(
     if (old?.sourceSha === item.sha && (!bank || canonicalJson((old as QuestionBank).images ?? []) === canonicalJson((item as BankIndexItem).images ?? []))) continue;
     const before = old ? canonicalJson(old) : "";
     const url = resolveSourceResource(item.downloadUrl, config.url);
-    const { data: raw } = await request<string>(url, true);
-    if (await contentHash(raw) !== item.sha) throw new Error("公共资源完整性校验失败，请重新获取");
-    const data = JSON.parse(raw);
     let incoming: QuestionBank | DutySchedule;
     if (bank) {
+      const { data: raw } = await request<string>(url, true);
+      if (await contentHash(raw) !== item.sha) throw new Error("公共资源完整性校验失败，请重新获取");
+      const data = JSON.parse(raw);
       const result = validateJsonBank(data);
       if (!result.valid) throw new Error(result.error || "题库格式无效");
       const hydrated = await hydrateSourceBank(data, url,
         (item as BankIndexItem).imagePath ? resolveSourceResource((item as BankIndexItem).imagePath!, config.url) : undefined);
       incoming = { ...convertJsonToBank(hydrated), images: (item as BankIndexItem).images };
     } else {
-      const duty = data as JsonDutyScheduleData;
-      if (!duty || !Array.isArray(duty.shifts) || !duty.shifts.every(s => s && typeof s.date === "string"))
-        throw new Error("值班表格式无效，缺少有效班次");
+      const duty = await downloadPublishedDuty({ ...item, downloadUrl: url }, config.token);
       const now = new Date().toISOString();
-      incoming = { id: crypto.randomUUID(), name: duty.name || item.name, description: duty.description,
-        shifts: buildShifts(duty), drills: duty.drills, roles: duty.roles, createdAt: now, updatedAt: now };
+      incoming = { ...duty, id: crypto.randomUUID(), createdAt: now, updatedAt: now };
     }
     if (!enabled()) return count;
     const edited = old && (!baselines[old.id] || await contentHash(before) !== baselines[old.id]);

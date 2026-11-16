@@ -4,8 +4,9 @@ import { AIProfile, useSettingsStore } from '../store/settingsStore';
 import { APIGradingService } from '../utils/apiGradingService';
 import { useToast } from '../hooks/useToast';
 import ConfirmDialog from './ConfirmDialog';
+import { apiConcurrency, MAX_API_CONCURRENCY, validAPIConcurrency } from '../../shared/apiConfigSync';
 
-const blank = { name: '', apiEndpoint: '', apiKey: '', apiModel: '', apiProvider: '', apiPassword: '' };
+const blank = { name: '', apiEndpoint: '', apiKey: '', apiModel: '', apiProvider: '', apiPassword: '', concurrency: 2 as number | string };
 const inputClass = 'w-full h-10 px-3 rounded-lg bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500';
 
 const AIProfileSettings: React.FC = () => {
@@ -22,11 +23,12 @@ const AIProfileSettings: React.FC = () => {
 
   const edit = (profile?: AIProfile) => {
     setEditing(profile?.id ?? 'new');
-    setDraft(profile ? { ...profile } : { ...blank });
+    setDraft(profile ? { ...profile, concurrency: apiConcurrency(profile.concurrency) } : { ...blank });
     setResult(null);
   };
   const validated = () => {
-    const data = { ...draft, name: draft.name.trim(), apiEndpoint: draft.apiEndpoint.trim(), apiKey: draft.apiKey.trim(), apiModel: draft.apiModel.trim() };
+    const data = { ...draft, concurrency: Number(draft.concurrency), name: draft.name.trim(), apiEndpoint: draft.apiEndpoint.trim(), apiKey: draft.apiKey.trim(), apiModel: draft.apiModel.trim() };
+    if (!validAPIConcurrency(data.concurrency)) { showError(`并发限制请输入 1–${MAX_API_CONCURRENCY} 的整数`); return null; }
     if (!data.name || !data.apiEndpoint || !data.apiKey || !data.apiModel) {
       showError('请填写配置名称、API 地址、Key 和模型名称');
       return null;
@@ -118,6 +120,10 @@ const AIProfileSettings: React.FC = () => {
                   <input required disabled={testing} type={key === 'apiKey' ? 'password' : key === 'apiEndpoint' ? 'url' : 'text'} autoComplete="off" value={draft[key]} onChange={event => { setDraft({ ...draft, [key]: event.target.value }); setResult(null); }} placeholder={placeholder} className={`${inputClass} mt-1 disabled:opacity-50`} />
                 </label>
               ))}
+              <label className="block text-xs text-gray-600 dark:text-gray-300">并发限制
+                <input aria-label="并发限制" required disabled={testing} type="number" min={1} max={MAX_API_CONCURRENCY} step={1} value={draft.concurrency} onChange={event => setDraft({ ...draft, concurrency: event.target.value })} className={`${inputClass} mt-1 disabled:opacity-50`} />
+                <span className="block mt-1 text-xs text-gray-500 dark:text-gray-400">知识总结同时发出的请求数，默认 2。</span>
+              </label>
               <div className="flex gap-2">
                 <button type="submit" disabled={testing} className="flex-1 h-10 rounded-lg bg-blue-500 text-white text-sm disabled:opacity-50">保存配置</button>
                 <button type="button" disabled={testing} onClick={test} className="flex-1 h-10 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm disabled:opacity-50">{testing ? '测试中…' : '测试连接'}</button>
