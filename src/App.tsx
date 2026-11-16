@@ -7,6 +7,8 @@ import { autoLoadLastModel } from './utils/aiGrading';
 import Toast from './components/Toast';
 import DebugConsole from './components/DebugConsole';
 import ErrorBoundary from './components/ErrorBoundary';
+import AboutDialog from './components/AboutDialog';
+import { useUpdaterStore } from './store/updaterStore';
 
 const Home = lazy(() => import('./pages/Home'));
 const Profile = lazy(() => import('./pages/Profile'));
@@ -27,6 +29,10 @@ const App: React.FC = () => {
   const { loadRecords } = useRecordStore();
   const { loadDuties } = useDutyScheduleStore();
   const [initializing, setInitializing] = useState(true);
+  const [autoUpdateOpen, setAutoUpdateOpen] = useState(false);
+  const checkForUpdate = useUpdaterStore(state => state.checkForUpdate);
+  const updateInfo = useUpdaterStore(state => state.updateInfo);
+  const promptedRef = React.useRef('');
 
   useEffect(() => {
     const init = async () => {
@@ -59,6 +65,23 @@ const App: React.FC = () => {
     };
     init();
   }, [loadBanks, loadRecords, loadDuties]);
+
+  // 进入应用后自动检测一次更新，有可用更新才弹出「关于」弹窗
+  useEffect(() => {
+    if (initializing) return;
+    const timer = setTimeout(() => {
+      void checkForUpdate();
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [initializing, checkForUpdate]);
+
+  useEffect(() => {
+    if (!updateInfo?.hasUpdate) return;
+    const key = `${updateInfo.latestVersion}-${updateInfo.versionHash || ''}`;
+    if (promptedRef.current === key) return;
+    promptedRef.current = key;
+    setAutoUpdateOpen(true);
+  }, [updateInfo]);
 
   if (initializing) {
     return (
@@ -118,6 +141,7 @@ const App: React.FC = () => {
         </Suspense>
         </ErrorBoundary>
       </BrowserRouter>
+      <AboutDialog open={autoUpdateOpen} onClose={() => setAutoUpdateOpen(false)} autoExpand />
     </>
   );
 };

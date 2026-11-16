@@ -78,7 +78,7 @@ const currentVersion = '0.4.4';
  * 当前版本哈希（每次构建时更新）
  * 用于区分同一版本的不同构建
  */
-export const CURRENT_VERSION_HASH = '20261116'; // 北京时间 YYYYMMDD；同日构建沿用，跨日期更新
+export const CURRENT_VERSION_HASH = '20261117'; // 北京时间 YYYYMMDD；同日构建沿用，跨日期更新
 
 /**
  * 检查当前系统架构

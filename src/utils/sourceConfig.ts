@@ -7,7 +7,19 @@ export interface DataSourceEntry {
   token: string;
   enabled: boolean;
 }
+/** 内置电脑服务来源，安装包与在线内容都可直接使用。 */
+export const builtinSources = (): DataSourceEntry[] => [
+  {
+    id: "builtin-service",
+    name: "内置服务",
+    kind: "service",
+    url: "https://api.h2bb62d03.nyat.app:13547",
+    token: "1234567812345678",
+    enabled: true,
+  },
+];
 export const defaultSources = (): DataSourceEntry[] => [
+  ...builtinSources(),
   {
     id: "default-gitee",
     name: "Gitee",

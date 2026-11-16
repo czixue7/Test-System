@@ -15,7 +15,7 @@ import { DutyParseResult, DutySheetParser, SheetParseContext } from './types';
 import { drillTableParser, parseDrillSheet } from './drillTableParser';
 import { roleTableParser } from './roleTableParser';
 import { matrixTableParser } from './matrixTableParser';
-import { fillFullYear } from '../dutyForecast';
+import { continueDutyRoles, fillFullYear } from '../dutyForecast';
 
 // 顺序即优先级
 export const sheetParsers: DutySheetParser[] = [
@@ -119,6 +119,8 @@ export async function parseDutyExcelFile(file: File): Promise<DutyParseResult> {
           if (!minDateStr || s.date < minDateStr) minDateStr = s.date;
           if (!maxDateStr || s.date > maxDateStr) maxDateStr = s.date;
         }
+        // 岗位划分同步延续到推算出的未来夜班，避免出现有班次却没有做表/休息
+        allRoles.push(...continueDutyRoles(allRoles, fullYearShifts));
       }
     } catch (err) {
       console.warn('[dutyParser] 全年排班推算失败，保留原始排班:', err);

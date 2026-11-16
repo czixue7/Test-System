@@ -585,18 +585,20 @@ const DutySchedule: React.FC = () => {
       return;
     }
     try {
-      const result = generateDutyForecast(currentDuty.shifts, forecastEndDate);
+      const result = generateDutyForecast(currentDuty.shifts, forecastEndDate, currentDuty.roles || []);
       if (result.shifts.length === 0) {
         showInfo('当前排班已覆盖到截止日期，无需推算');
         closeForecastModal();
         return;
       }
-      // 生成独立记录：原有排班 + 推算的未来排班
+      // 生成独立记录：原有排班 + 推算的未来排班，岗位划分同样延续到推算区间
       const mergedShifts = [...currentDuty.shifts, ...result.shifts];
+      const mergedRoles = [...(currentDuty.roles || []), ...result.roles];
       const id = importDuty({
         name: `${currentDuty.name}（推算至${result.endDate}）`,
         description: `推算：${result.fromDate} ~ ${result.endDate}，新增 ${result.totalDays} 天 / ${result.shifts.length} 条班次`,
-        shifts: mergedShifts
+        shifts: mergedShifts,
+        roles: mergedRoles
       });
       setCurrentDutyId(id);
       localStorage.setItem(STORAGE_KEY_CURRENT_DUTY, id);

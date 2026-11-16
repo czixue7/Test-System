@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import {
   DataSourceEntry,
+  builtinSources,
   defaultSources,
   validateSource,
 } from "../utils/sourceConfig";
@@ -157,6 +158,11 @@ export const useDataSourceStore = create<DataSourceState>()(
                 typeof s.url === "string",
             )
           : [...defaultSources()];
+        // 内置来源固定补齐：旧版本存有来源列表时也要带上，用户删除后下次启动恢复。
+        for (const builtin of builtinSources()) {
+          if (!sources.some((s) => s.id === builtin.id))
+            sources.unshift(builtin);
+        }
         let id = state.syncSourceId ?? null;
         if (!Array.isArray(state.sources) && state.url) {
           id = "legacy-service";

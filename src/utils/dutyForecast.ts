@@ -3,7 +3,8 @@
  * 根据已有排班，排除调休班次，判断各班组基准轮转规律（白→夜→休→休，4 天周期），
  * 自动循环生成未来/全年排班。
  */
-import { DutyShift, DutyShiftType } from '../types';
+import { DutyRoleAssignment, DutyRolePost, DutyShift, DutyShiftType } from '../types';
+import { dutyPostKind, roleShiftCategory } from './dutyRoleEdits';
 
 // 日期字符串 → 绝对天数（UTC，避免时区影响）
 function dateToDayNumber(dateStr: string): number {
@@ -120,18 +121,143 @@ function generateDay(model: ForecastModel, dn: number, seqRef: { n: number }): D
 
 export interface ForecastResult {
   shifts: DutyShift[];
+  roles: DutyRoleAssignment[]; // 延续岗位划分（做表 / 休息 / 巡检轮换）
   fromDate: string;   // 推算起始日期（最后一天 + 1）
   endDate: string;    // 推算截止日期
   totalDays: number;  // 推算天数
   groups: string[];   // 参与推算的班组
 }
 
+// 岗位划分的延续模型：全部从已有岗位表反推，不写死人员姓名。
+interface RoleModel {
+  group: string;
+  leader?: string;
+  leaderLabel?: string;
+  patrolNames: string[];   // 巡检列顺序
+  patrolLast: string[];    // 最后一个班次各巡检列的人员
+  reportCycle: string[];   // 做表人员轮换顺序
+  reportLast: string;      // 最后一个班次的做表人员
+  restSets: string[][];    // 观察到的两组轮休名单
+  restLast: string[];      // 最后一个班次的轮休人员
+}
+
+const postText = (name: string) => (name || '').replace(/^副岗位\s*/, '').trim();
+const setKey = (people: string[]) => [...people].sort().join('|');
+const byDate = (a: DutyRoleAssignment, b: DutyRoleAssignment) => a.date.localeCompare(b.date);
+
+// 从已有岗位划分里提取每个班组（白/夜分开）的轮换规律
+function buildRoleModels(roles: DutyRoleAssignment[]): RoleModel[] {
+  const byGroup = new Map<string, DutyRoleAssignment[]>();
+  for (const role of roles) {
+    const key = `${role.group}|${roleShiftCategory(role.shiftType)}`;
+    byGroup.set(key, [...(byGroup.get(key) || []), role]);
+  }
+
+  const models: RoleModel[] = [];
+  for (const list of byGroup.values()) {
+    const sorted = [...list].sort(byDate);
+    const last = sorted[sorted.length - 1];
+
+    const patrolPosts = last.posts.filter((p) => dutyPostKind(p.name) === 'patrol');
+    const reportCycle: string[] = [];
+    for (const role of sorted) {
+      for (const post of role.posts) {
+        if (dutyPostKind(post.name) !== 'report' || !post.person) continue;
+        if (!reportCycle.includes(post.person)) reportCycle.push(post.person);
+      }
+    }
+
+    // 轮休名单只有两组，从最近几行里取，避免把历史临时调整当成规律
+    const restSets: string[][] = [];
+    for (const role of [...sorted].reverse()) {
+      const rest = role.posts.filter((p) => dutyPostKind(p.name) === 'rest').map((p) => p.person);
+      if (rest.length && !restSets.some((s) => setKey(s) === setKey(rest))) restSets.push(rest);
+      if (restSets.length === 2) break;
+    }
+
+    if (!patrolPosts.length || reportCycle.length === 0) continue;
+    models.push({
+      group: last.group,
+      leader: last.leader,
+      leaderLabel: last.leaderLabel,
+      patrolNames: patrolPosts.map((p) => postText(p.name)),
+      patrolLast: patrolPosts.map((p) => p.person),
+      reportCycle,
+      reportLast: last.posts.find((p) => dutyPostKind(p.name) === 'report')?.person || '',
+      restSets,
+      restLast: last.posts.filter((p) => dutyPostKind(p.name) === 'rest').map((p) => p.person),
+    });
+  }
+  return models;
+}
+
+// 按规律为未来的夜班生成岗位划分：做表顺延一人、轮休换到另一组、巡检区域整体左移一位
+function forecastRoles(models: RoleModel[], forecastShifts: DutyShift[]): DutyRoleAssignment[] {
+  const nights = new Map<string, string[]>();
+  for (const shift of forecastShifts) {
+    if (shift.shiftType !== 'night' || !shift.group) continue;
+    const list = nights.get(shift.group) || [];
+    if (!list.includes(shift.date)) list.push(shift.date);
+    nights.set(shift.group, list);
+  }
+
+  const out: DutyRoleAssignment[] = [];
+  for (const model of models) {
+    const dates = (nights.get(model.group) || []).sort();
+    if (!dates.length) continue;
+
+    let patrol = [...model.patrolLast];
+    let rest = [...model.restLast];
+    let reportIndex = model.reportCycle.indexOf(model.reportLast);
+
+    for (const date of dates) {
+      reportIndex = (reportIndex + 1) % model.reportCycle.length;
+      const report = model.reportCycle[reportIndex];
+
+      if (model.restSets.length > 1) {
+        const other = model.restSets.find((s) => setKey(s) !== setKey(rest));
+        if (other) rest = [...other];
+      }
+      patrol = [...patrol.slice(1), patrol[0]];
+
+      const posts: DutyRolePost[] = [
+        ...model.patrolNames.map((name, i) => ({ name, person: patrol[i] || '', kind: 'patrol' as const })),
+        { name: '做表', person: report, kind: 'report' as const },
+        ...rest.map((person) => ({ name: '休息', person, kind: 'rest' as const })),
+      ].filter((post) => post.person);
+
+      out.push({
+        date,
+        group: model.group,
+        shiftType: 'night',
+        leader: model.leader,
+        leaderLabel: model.leaderLabel,
+        posts,
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * 按已有岗位划分的规律，为「最后一个岗位划分日期之后」的夜班生成岗位划分。
+ * 导入 Excel 补全全年班次时使用，避免出现有班次却没有做表/休息的情况。
+ */
+export function continueDutyRoles(roles: DutyRoleAssignment[], futureShifts: DutyShift[]): DutyRoleAssignment[] {
+  if (!roles.length) return [];
+  const lastRoleDate = roles.reduce((max, role) => (role.date > max ? role.date : max), roles[0].date);
+  const laterShifts = futureShifts.filter((shift) => shift.date > lastRoleDate);
+  if (!laterShifts.length) return [];
+  return forecastRoles(buildRoleModels(roles), laterShifts);
+}
+
 /**
  * 根据已有排班推算未来排班
  * @param shifts 已有排班（含班组 group 字段）
  * @param endDate 推算截止日期（YYYY-MM-DD）
+ * @param roles 已有岗位划分，用于延续做表 / 轮休 / 巡检轮换
  */
-export function generateDutyForecast(shifts: DutyShift[], endDate: string): ForecastResult {
+export function generateDutyForecast(shifts: DutyShift[], endDate: string, roles: DutyRoleAssignment[] = []): ForecastResult {
   const model = buildModel(shifts);
 
   const validDays = shifts.map(s => dateToDayNumber(s.date)).filter(d => !isNaN(d));
@@ -140,7 +266,7 @@ export function generateDutyForecast(shifts: DutyShift[], endDate: string): Fore
   const endDay = dateToDayNumber(endDate);
   if (isNaN(endDay)) throw new Error('截止日期无效');
   if (endDay <= lastDay) {
-    return { shifts: [], fromDate: '', endDate, totalDays: 0, groups: model.groups };
+    return { shifts: [], roles: [], fromDate: '', endDate, totalDays: 0, groups: model.groups };
   }
 
   const forecast: DutyShift[] = [];
@@ -151,6 +277,7 @@ export function generateDutyForecast(shifts: DutyShift[], endDate: string): Fore
 
   return {
     shifts: forecast,
+    roles: forecastRoles(buildRoleModels(roles), forecast),
     fromDate: dayNumberToDate(lastDay + 1),
     endDate,
     totalDays: endDay - lastDay,

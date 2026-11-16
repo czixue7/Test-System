@@ -3,23 +3,16 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useThemeStore, Theme, ThemeStyle } from '../store/themeStore';
 import { useSafeArea } from '../hooks/useSafeArea';
 import Modal from '../components/Modal';
-import AboutUpdatePanel from '../components/AboutUpdatePanel';
-import AboutAppCard from '../components/AboutAppCard';
-import { CURRENT_VERSION_HASH } from '../utils/updater';
-import { useUpdaterStore } from '../store/updaterStore';
+import AboutDialog from '../components/AboutDialog';
 
 const Profile: React.FC = () => {
   const navigate = useNavigate();
   const [showAboutModal, setShowAboutModal] = useState(false);
-  const [updatePanelStarted, setUpdatePanelStarted] = useState(false);
   const [showThemeModal, setShowThemeModal] = useState(false);
   const { theme, setTheme, themeStyle } = useThemeStore();
   const safeArea = useSafeArea();
-  const updateActive = useUpdaterStore(state => state.checkingUpdate || state.downloadStatus !== 'idle');
-  const showUpdatePanel = updatePanelStarted || updateActive;
 
   const openAboutModal = () => {
-    setUpdatePanelStarted(false);
     setShowAboutModal(true);
   };
   const openThemeModal = () => {
@@ -35,7 +28,6 @@ const Profile: React.FC = () => {
     }
   };
 
-  const currentVersion = '0.4.4';
 
   const themeModeLabel = theme === 'system' ? '跟随系统' : theme === 'light' ? '浅色' : '深色';
   const themeStyleLabel = themeStyle === 'immersive' ? '沉浸式' : '经典';
@@ -180,15 +172,7 @@ const Profile: React.FC = () => {
         </div>
       </nav>
 
-      <Modal open={showAboutModal} onClose={() => closeModal('about')} className="about-dialog w-full max-w-sm" containerClassName="about-overlay">
-        <div className="about-body text-center">
-          <AboutAppCard version={currentVersion} build={CURRENT_VERSION_HASH} compact={showUpdatePanel} />
-          <AboutUpdatePanel expanded={showUpdatePanel} onExpand={() => setUpdatePanelStarted(true)} />
-        </div>
-        <div className="about-actions">
-          <button type="button" onClick={() => closeModal('about')} className="w-full py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg font-medium hover:from-blue-600 hover:to-blue-700 transition-colors">确定</button>
-        </div>
-      </Modal>
+      <AboutDialog open={showAboutModal} onClose={() => closeModal('about')} />
 
       <Modal open={showThemeModal} onClose={() => closeModal('theme')} className="rounded-2xl p-5 w-full max-w-sm">
             <div className="text-center mb-4">
