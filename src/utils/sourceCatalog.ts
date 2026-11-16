@@ -71,7 +71,7 @@ async function fromRepository(
       return items;
     };
     const results = await Promise.allSettled([
-      discover('Question_bank/public/banks'),
+      discover('banks'),
       discover('Question_bank/private/Question'),
     ]);
     if (results.every(result => result.status === 'rejected')) throw new Error(`${source.name} 无法获取题库`);

@@ -8,6 +8,7 @@ interface Release {
   version: string;
   hash: string | null;
   assets: ReleaseAsset[];
+  notes: string;
   entry: DataSourceEntry;
 }
 export function compareVersions(a: string, b: string): number {
@@ -92,7 +93,13 @@ function parseReleases(data: any, entry: DataSourceEntry): Release[] {
             : [];
         },
       );
-      return { version, hash, assets, entry };
+      return { version, hash, assets, notes: String(
+        gitee
+          ? item.release?.description ?? item.tag?.message ?? ""
+          : entry.kind === "service"
+            ? item.notes ?? item.body ?? item.message ?? ""
+            : item.body ?? "",
+      ).trim(), entry };
     })
     .filter((release) => /^\d+(?:\.\d+){1,3}$/.test(release.version)
       && (entry.kind !== "service" || release.hash !== null)
@@ -130,9 +137,14 @@ export async function configuredRelease() {
         r.hash === primary.hash,
     )
     .flatMap((r) => r.assets);
+  // 首选来源可能不提供发布说明（如电脑服务），此时取同一版本与构建的其他来源。
+  const notes = primary.notes || releases.find(r =>
+    r !== primary && compareVersions(r.version, primary.version) === 0 && r.hash === primary.hash && r.notes,
+  )?.notes || "";
   return {
     latest_version: primary.version,
     version_hash: primary.hash,
+    notes,
     assets: primary.assets,
     fallback_assets,
     source: primary.entry.kind,

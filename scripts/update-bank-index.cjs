@@ -3,7 +3,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
-const publicBanksRoot = path.join(root, 'Question_bank', 'public', 'banks');
+const publicBanksRoot = path.join(root, 'banks');
 const indexPath = path.join(root, 'bank-index.json');
 const previous = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
 const digest = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
@@ -12,7 +12,7 @@ const matches = (bytes, hash) => hash === digest(bytes) || hash === blobHash(byt
 function assertPublicPath(file) {
   const relative = path.relative(publicBanksRoot, fs.realpathSync(file));
   if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-    throw new Error('公开题库索引仅允许读取 Question_bank/public/banks 内的文件');
+    throw new Error('公开题库索引仅允许读取 banks 内的文件');
   }
 }
 function walk(directory) {

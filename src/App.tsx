@@ -7,7 +7,7 @@ import { autoLoadLastModel } from './utils/aiGrading';
 import Toast from './components/Toast';
 import DebugConsole from './components/DebugConsole';
 import ErrorBoundary from './components/ErrorBoundary';
-import AboutDialog from './components/AboutDialog';
+import UpdateDialog from './components/UpdateDialog';
 import { useUpdaterStore } from './store/updaterStore';
 
 const Home = lazy(() => import('./pages/Home'));
@@ -66,7 +66,7 @@ const App: React.FC = () => {
     init();
   }, [loadBanks, loadRecords, loadDuties]);
 
-  // 进入应用后自动检测一次更新，有可用更新才弹出「关于」弹窗
+  // 进入应用后自动检测一次更新，有可用更新才弹出更新弹窗
   useEffect(() => {
     if (initializing) return;
     const timer = setTimeout(() => {
@@ -141,7 +141,7 @@ const App: React.FC = () => {
         </Suspense>
         </ErrorBoundary>
       </BrowserRouter>
-      <AboutDialog open={autoUpdateOpen} onClose={() => setAutoUpdateOpen(false)} autoExpand />
+      <UpdateDialog open={autoUpdateOpen} onClose={() => setAutoUpdateOpen(false)} />
     </>
   );
 };

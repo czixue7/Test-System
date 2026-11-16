@@ -20,6 +20,8 @@ export interface UpdateInfo {
   /** 仅使用已启用且版本和构建均相同的备用来源 */
   fallbackDownloadUrl?: string;
   versionHash?: string;
+  /** 发布说明（已移除构建号注释） */
+  releaseNotes?: string;
   /** 实际采用的发布源 */
   source?: 'gitee' | 'github' | 'service';
   sourceId?: string;
@@ -72,7 +74,7 @@ export function calculateVersionHash(version: string, buildInfo?: string): strin
   return Math.abs(hash).toString(16).substring(0, 8);
 }
 
-const currentVersion = '0.4.4';
+export const CURRENT_VERSION = '0.4.4';
 
 /**
  * 当前版本哈希（每次构建时更新）
@@ -147,7 +149,7 @@ export function isArm64Supported(): boolean {
  */
 export async function checkUpdate(): Promise<UpdateInfo> {
   console.log('[Updater] 开始检查更新...');
-  console.log(`[Updater] 当前版本: ${currentVersion}, 当前哈希: ${CURRENT_VERSION_HASH}`);
+  console.log(`[Updater] 当前版本: ${CURRENT_VERSION}, 当前哈希: ${CURRENT_VERSION_HASH}`);
 
   try {
     const result = await configuredRelease();
@@ -166,14 +168,14 @@ export async function checkUpdate(): Promise<UpdateInfo> {
       });
     }
 
-    const versionCompare = compareVersions(latestVersion, currentVersion);
+    const versionCompare = compareVersions(latestVersion, CURRENT_VERSION);
 
     let hasUpdate = false;
     let updateReason = '';
 
     if (versionCompare > 0) {
       hasUpdate = true;
-      updateReason = `版本号更新 (${currentVersion} -> ${latestVersion})`;
+      updateReason = `版本号更新 (${CURRENT_VERSION} -> ${latestVersion})`;
     } else if (versionCompare === 0) {
       // 版本号相同：再比对构建号（构建时间戳），数值更大表示更新的构建
       const buildCompare = compareBuildNumbers(latestHash, CURRENT_VERSION_HASH);
@@ -203,6 +205,7 @@ export async function checkUpdate(): Promise<UpdateInfo> {
           assetName: asset.name,
           fallbackDownloadUrl: fallbackAsset?.browser_download_url,
           versionHash: latestHash || undefined,
+          releaseNotes: String(result.notes || '').replace(/<!--[\s\S]*?-->/g, '').trim() || undefined,
           source: sourceLabel,
           sourceId: result.sourceId,
           sourceName: result.sourceName,
@@ -231,7 +234,7 @@ export async function checkUpdate(): Promise<UpdateInfo> {
     console.error('[Updater] 检查更新失败:', error);
     return {
       hasUpdate: false,
-      latestVersion: currentVersion,
+      latestVersion: CURRENT_VERSION,
       message: detail,
       error: true
     };

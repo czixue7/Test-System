@@ -111,7 +111,8 @@ export function checkBankStatus(
 ): BankStatus {
   const remote: BankIndexItem = { name: bankName, filename, sha: remoteSha, downloadUrl: '', images: remoteImages, ...metadata };
   const existingBank = findLocalBank(remote, localBanks);
-  const isBuiltIn = existingBank ? isBuiltInBank(existingBank.id) : source === 'system' && isBuiltInBankFile(filename);
+  // 题库不再随安装包内置，只有历史版本写入的内置记录才标记为内置
+  const isBuiltIn = existingBank ? isBuiltInBank(existingBank.id) : false;
 
   if (!existingBank) {
     return { exists: false, hasUpdate: false, hasImageUpdate: false, isBuiltIn, missingImages: [], changedImages: [] };
@@ -220,25 +221,6 @@ export function checkBankUpdate(bank: QuestionBank, index: BankIndex | null): Ba
     missingImages,
     changedImages
   };
-}
-
-/**
- * 判断是否为内置题库文件
- */
-function isBuiltInBankFile(filename: string): boolean {
-  const builtInFiles = [
-    '第一周考题.json',
-    '第二周考题.json',
-    '第三周考题.json',
-    '第四周考题.json',
-    '第五周考题.json',
-    '第六周考题.json',
-    '第七周考题.json',
-    '第八周考题.json',
-    '第九周考题.json',
-    '第十周考题.json',
-  ];
-  return builtInFiles.includes(filename);
 }
 
 /**

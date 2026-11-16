@@ -114,7 +114,7 @@ await source.persist.rehydrate(); assert.equal(source.getState().updatesEnabled,
 console.log('✓ 软件更新类型按地址识别平台；开关持久化、阻止更新请求及下载，不影响题库获取；在途结果失效');
 
 const manifest = JSON.parse(fs.readFileSync('bank-index.json','utf8'));
-assert(manifest.systemBanks.every((item:any) => decodeURIComponent(item.downloadUrl).includes('/Question_bank/public/banks/')));
+assert(manifest.systemBanks.every((item:any) => decodeURIComponent(item.downloadUrl).includes('/main/banks/')));
 assert(manifest.userBanks.every((item:any) => decodeURIComponent(item.downloadUrl).includes('/Question_bank/private/')));
 for (const item of [...manifest.systemBanks,...manifest.userBanks]) {
   assert(item.bankId && bankTimestamp(item.updatedAt));
@@ -133,8 +133,8 @@ globalThis.fetch = (async(input:any)=>{
   directoryCalls.push(directory);
   const dir=(name:string)=>({name,path:`${directory}/${name}`,type:'dir'});
   const file=(name:string)=>({name,type:'file',sha:base.sha,download_url:`https://gitee.com/zixue7/Test-System/raw/main/${directory}/${name}`});
-  if(directory==='Question_bank/public/banks')return Response.json([dir('内置目录')]);
-  if(directory==='Question_bank/public/banks/内置目录')return Response.json([file('内置.json')]);
+  if(directory==='banks')return Response.json([dir('内置目录')]);
+  if(directory==='banks/内置目录')return Response.json([file('内置.json')]);
   if(directory==='Question_bank/private/Question')return Response.json([dir('分类')]);
   if(directory==='Question_bank/private/Question/分类')return Response.json([dir('私人目录')]);
   if(directory==='Question_bank/private/Question/分类/私人目录')return Response.json([file('私人.json')]);
@@ -142,7 +142,7 @@ globalThis.fetch = (async(input:any)=>{
 }) as typeof fetch;
 const discovered=await fetchConfiguredIndex('bank');
 assert.equal(discovered.systemBanks.length,1);assert.equal(discovered.userBanks.length,1);
-assert(discovered.systemBanks[0].downloadUrl.includes('Question_bank/public/banks/'));
+assert(discovered.systemBanks[0].downloadUrl.includes('banks/内置目录/内置.json'));
 assert(discovered.userBanks[0].downloadUrl.includes('Question_bank/private/Question/'));
-assert(directoryCalls.every(path=>path.startsWith('Question_bank/public/banks')||path.startsWith('Question_bank/private/Question')));
+assert(directoryCalls.every(path=>path.startsWith('banks')||path.startsWith('Question_bank/private/Question')));
 console.log('✓ 公开/私人题库索引及图片均使用新路径；索引缺失时按新目录递归发现并正确分类');
