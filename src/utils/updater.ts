@@ -74,7 +74,7 @@ export function calculateVersionHash(version: string, buildInfo?: string): strin
   return Math.abs(hash).toString(16).substring(0, 8);
 }
 
-export const CURRENT_VERSION = '0.4.4';
+export const CURRENT_VERSION = '0.4.5';
 
 /**
  * 当前版本哈希（每次构建时更新）

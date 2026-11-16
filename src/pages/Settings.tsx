@@ -2,13 +2,20 @@ import Collapse from '../components/Collapse';
 import ConfirmModal from '../components/ConfirmModal';
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { normalizeQuestionsPerRound, QUESTIONS_PER_ROUND_MAX, QUESTIONS_PER_ROUND_MIN, useSettingsStore } from '../store/settingsStore';
+import { normalizeQuestionsPerRound, QUESTIONS_PER_ROUND_MAX, QUESTIONS_PER_ROUND_MIN, DefaultHomePage, useSettingsStore } from '../store/settingsStore';
 import AIProfileSettings from '../components/AIProfileSettings';
 import DataSourceSettings from '../components/DataSourceSettings';
 import { useToast } from '../hooks/useToast';
 import { GradingProvider } from '../types';
 import { initVConsole, destroyVConsole } from '../utils/vconsoleManager';
 import { useSafeArea } from '../hooks/useSafeArea';
+
+// 可选的开屏默认主页（对应路由：首页 /、值班表 /duty、知识库 /placeholder）
+const DEFAULT_HOME_OPTIONS: Array<{ value: DefaultHomePage; label: string }> = [
+  { value: 'home', label: '首页' },
+  { value: 'duty', label: '值班表' },
+  { value: 'knowledge', label: '知识库' },
+];
 
 const Settings: React.FC = () => {
   const navigate = useNavigate();
@@ -21,6 +28,8 @@ const Settings: React.FC = () => {
     setGradingProvider,
     vconsoleEnabled,
     setVconsoleEnabled,
+    defaultHome,
+    setDefaultHome,
     questionsPerRound,
     setQuestionsPerRound,
     avoidRepeatQuestions,
@@ -112,6 +121,45 @@ const Settings: React.FC = () => {
         className="max-w-lg mx-auto px-4 py-4 space-y-3"
         style={{ paddingTop: safeArea.contentTop }}
       >
+        {/* 默认主页：只影响应用启动后首先进入的页面，不改变底部导航 */}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md overflow-hidden">
+          <div className="px-4 py-3">
+            <div className="flex items-center gap-3">
+              <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+              </svg>
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-200">默认主页</span>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              打开应用后首先显示的页面，重新打开应用时生效
+            </p>
+          </div>
+          <div className="px-4 pb-3 grid grid-cols-3 gap-2">
+            {DEFAULT_HOME_OPTIONS.map((option) => {
+              const active = defaultHome === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => {
+                    if (active) return;
+                    setDefaultHome(option.value);
+                    showSuccess(`默认主页已设为${option.label}`, 2500);
+                  }}
+                  className={`px-2 py-2.5 rounded-xl text-sm font-medium border-2 transition-colors ${
+                    active
+                      ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-500 text-blue-600 dark:text-blue-300'
+                      : 'bg-gray-50 dark:bg-gray-700 border-transparent text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <DataSourceSettings />
 
         {/* 练题设置：顺序练题与模拟考试共用 */}

@@ -27,6 +27,40 @@ export const roleShiftCategory = (shiftType: DutyShiftType): RoleShiftCategory =
 export const roleShiftLabel = (category: RoleShiftCategory) => category === 'night' ? '夜班' : '白班';
 export const roleGroupLabel = (group: string) => group ? `${group} 组` : '长白班';
 
+// 固定人员行顺序：以每个「班组 + 白/夜班」最后一条岗位划分的人员顺序为基准，
+// 轮换改变的只是人员身上的标签（巡检区域 / 做表 / 休息），人员位置不随日期跳动。
+export function normalizeRolePersonOrder(roles: DutyRoleAssignment[]): DutyRoleAssignment[] {
+  const groups = new Map<string, DutyRoleAssignment[]>();
+  for (const role of roles) {
+    const key = `${role.group}|${roleShiftCategory(role.shiftType)}`;
+    groups.set(key, [...(groups.get(key) || []), role]);
+  }
+
+  const orders = new Map<string, Map<string, number>>();
+  for (const [key, list] of groups) {
+    const sorted = [...list].sort((a, b) => a.date.localeCompare(b.date));
+    const reference = sorted[sorted.length - 1];
+    const order = new Map<string, number>();
+    const remember = (person: string) => {
+      const name = (person || '').trim();
+      if (name && !order.has(name)) order.set(name, order.size);
+    };
+    // 基准顺序先取巡检区域，再补齐该组出现过的其他人员，保证每人都能定位。
+    sortRolePosts(reference.posts).forEach(post => remember(post.person));
+    sorted.forEach(role => role.posts.forEach(post => remember(post.person)));
+    orders.set(key, order);
+  }
+
+  return roles.map(role => {
+    const order = orders.get(`${role.group}|${roleShiftCategory(role.shiftType)}`);
+    if (!order) return role;
+    const rank = (person: string) => order.get((person || '').trim()) ?? Number.MAX_SAFE_INTEGER;
+    const posts = [...role.posts].sort((a, b) => rank(a.person) - rank(b.person));
+    // 顺序未变时复用原对象，避免无意义的重新渲染。
+    return posts.every((post, index) => post === role.posts[index]) ? role : { ...role, posts };
+  });
+}
+
 export type RoleDraft = Omit<DutyRoleAssignment, 'posts'> & {
   uid: string;
   leaderLabel: string;

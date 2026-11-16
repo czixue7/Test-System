@@ -9,6 +9,7 @@ import DebugConsole from './components/DebugConsole';
 import ErrorBoundary from './components/ErrorBoundary';
 import UpdateDialog from './components/UpdateDialog';
 import { useUpdaterStore } from './store/updaterStore';
+import { useSettingsStore } from './store/settingsStore';
 
 const Home = lazy(() => import('./pages/Home'));
 const Profile = lazy(() => import('./pages/Profile'));
@@ -24,7 +25,21 @@ const DutySchedule = lazy(() => import('./pages/DutySchedule'));
 const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase'));
 const KnowledgeItemView = lazy(() => import('./pages/KnowledgeItemView'));
 
+// 开屏默认主页：只在应用启动、且地址为根路径时替换一次。
+// 之后的页面跳转（例如点击底部「首页」）仍按用户操作执行，不会被反复重定向。
+let defaultLandingApplied = false;
+const applyDefaultLanding = () => {
+  if (defaultLandingApplied) return;
+  defaultLandingApplied = true;
+  if (window.location.pathname !== '/') return;
+  const page = useSettingsStore.getState().defaultHome;
+  if (page === 'duty') window.history.replaceState(null, '', '/duty');
+  else if (page === 'knowledge') window.history.replaceState(null, '', '/placeholder');
+};
+
 const App: React.FC = () => {
+  // 在路由挂载前应用一次默认主页设置（StrictMode 重复渲染由内部标记拦住）
+  applyDefaultLanding();
   const { loadBanks } = useQuestionBankStore();
   const { loadRecords } = useRecordStore();
   const { loadDuties } = useDutyScheduleStore();

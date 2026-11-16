@@ -6,6 +6,9 @@ import { APIProfile, APIConfigDocument, emptyAPIConfig, editAPIConfig, mergeAPIC
 
 export type GradingMode = 'fixed' | 'ai';
 
+/** 开屏默认主页：应用启动后首先进入的页面 */
+export type DefaultHomePage = 'home' | 'duty' | 'knowledge';
+
 export type AIProfile = APIProfile;
 
 /** 每轮出题数量的允许区间 */
@@ -43,6 +46,8 @@ interface SettingsState {
   apiPassword: string;
   apiConcurrency: number;
   vconsoleEnabled: boolean;
+  // ===== 开屏默认主页（首页 / 值班表 / 知识库） =====
+  defaultHome: DefaultHomePage;
   // ===== 练题出题设置（顺序练题 / 模拟考试共用） =====
   questionsPerRound: number;
   avoidRepeatQuestions: boolean;
@@ -60,6 +65,7 @@ interface SettingsState {
   setApiProvider: (provider: string) => void;
   setApiPassword: (password: string) => void;
   setVconsoleEnabled: (enabled: boolean) => void;
+  setDefaultHome: (page: DefaultHomePage) => void;
   resetApiConfig: () => void;
 }
 
@@ -111,6 +117,7 @@ export const useSettingsStore = create<SettingsState>()(
       apiPassword: '',
       apiConcurrency: 2,
       vconsoleEnabled: false,
+      defaultHome: 'home',
       questionsPerRound: DEFAULT_QUESTIONS_PER_ROUND,
       avoidRepeatQuestions: true,
       doneQuestionIds: {},
@@ -137,6 +144,7 @@ export const useSettingsStore = create<SettingsState>()(
       setApiProvider: (provider) => set({ apiProvider: provider }),
       setApiPassword: (password) => set({ apiPassword: password }),
       setVconsoleEnabled: (enabled) => set({ vconsoleEnabled: enabled }),
+      setDefaultHome: (page) => set({ defaultHome: page }),
       resetApiConfig: () => set(state => ({
         aiProfiles: [],
         apiSyncDocument: editAPIConfig(state.apiSyncDocument, []),

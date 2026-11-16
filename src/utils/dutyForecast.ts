@@ -191,7 +191,9 @@ function buildRoleModels(roles: DutyRoleAssignment[]): RoleModel[] {
   return models;
 }
 
-// 按规律为未来的夜班生成岗位划分：做表顺延一人、轮休换到另一组、巡检区域整体左移一位
+// 按规律为未来的夜班生成岗位划分：做表顺延一人、轮休换到另一组、巡检区域整体左移一位。
+// 输出的岗位始终按「最后一个班次的人员顺序」排列：轮换的是巡检区域标签，
+// 人员行位置保持固定，避免名单在表格里逐日跳动。
 function forecastRoles(models: RoleModel[], forecastShifts: DutyShift[]): DutyRoleAssignment[] {
   const nights = new Map<string, string[]>();
   for (const shift of forecastShifts) {
@@ -209,6 +211,10 @@ function forecastRoles(models: RoleModel[], forecastShifts: DutyShift[]): DutyRo
     let patrol = [...model.patrolLast];
     let rest = [...model.restLast];
     let reportIndex = model.reportCycle.indexOf(model.reportLast);
+    const personOrder = new Map<string, number>();
+    model.patrolLast.forEach((person, index) => {
+      if (person && !personOrder.has(person)) personOrder.set(person, index);
+    });
 
     for (const date of dates) {
       reportIndex = (reportIndex + 1) % model.reportCycle.length;
@@ -224,7 +230,8 @@ function forecastRoles(models: RoleModel[], forecastShifts: DutyShift[]): DutyRo
         ...model.patrolNames.map((name, i) => ({ name, person: patrol[i] || '', kind: 'patrol' as const })),
         { name: '做表', person: report, kind: 'report' as const },
         ...rest.map((person) => ({ name: '休息', person, kind: 'rest' as const })),
-      ].filter((post) => post.person);
+      ].filter((post) => post.person).sort((a, b) =>
+        (personOrder.get(a.person) ?? Number.MAX_SAFE_INTEGER) - (personOrder.get(b.person) ?? Number.MAX_SAFE_INTEGER));
 
       out.push({
         date,

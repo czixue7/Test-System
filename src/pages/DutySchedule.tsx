@@ -10,7 +10,7 @@ import Modal from '../components/Modal';
 import DrillEditModal from './duty/DrillEditModal';
 import RoleEditModal from './duty/RoleEditModal';
 import DutyTagModal, { DutyTagKind, DutyTagPerson, sortDutyTags } from './duty/DutyTagModal';
-import { applyDutyRoleEdits, dutyLeaderLabel, dutyPostKind, postLabel, roleShiftCategory, RoleNameChange } from '../utils/dutyRoleEdits';
+import { applyDutyRoleEdits, dutyLeaderLabel, dutyPostKind, normalizeRolePersonOrder, postLabel, roleShiftCategory, RoleNameChange } from '../utils/dutyRoleEdits';
 import SwapPersonnelModal from './duty/SwapPersonnelModal';
 import { fetchDutyIndex, checkDutyStatus } from '../utils/dutyScheduleIndex';
 import { downloadPublishedDuty } from '../utils/publishedDuty';
@@ -334,18 +334,25 @@ const DutySchedule: React.FC = () => {
     return map;
   }, [currentDuty]);
 
+  // 岗位划分固定人员顺序：轮换只改变人员身上的巡检区域 / 做表 / 休息标签，
+  // 人员行位置不随日期跳动（无岗位表时原样返回）。
+  const fixedOrderRoles = useMemo(
+    () => normalizeRolePersonOrder(currentDuty?.roles || []),
+    [currentDuty]
+  );
+
   // 岗位划分查表：优先按「日期 + 班组 + 白/夜班」精确匹配；
   // 旧数据只有一条时按「日期 + 班组」兜底，保持白夜班都能看到原有岗位划分。
   const rolesByDateGroup = useMemo(() => {
     const exact = new Map<string, DutyRoleAssignment>();
     const byGroup = new Map<string, DutyRoleAssignment[]>();
-    for (const role of currentDuty?.roles || []) {
+    for (const role of fixedOrderRoles) {
       exact.set(`${role.date}-${role.group}-${roleShiftCategory(role.shiftType)}`, role);
       const key = `${role.date}-${role.group}`;
       byGroup.set(key, [...(byGroup.get(key) || []), role]);
     }
     return { exact, byGroup };
-  }, [currentDuty]);
+  }, [fixedOrderRoles]);
 
   const findRole = (date: string, group: string, shiftType: 'white' | 'night') => {
     const role = rolesByDateGroup.exact.get(`${date}-${group}-${shiftType}`);
@@ -1302,7 +1309,7 @@ const DutySchedule: React.FC = () => {
       <RoleEditModal
         open={roleEditOpen}
         date={longPressDate}
-        roles={currentDuty?.roles?.filter((r) => r.date === longPressDate) || []}
+        roles={fixedOrderRoles.filter((r) => r.date === longPressDate)}
         onSave={(roles, renames) => handleSaveRoles(longPressDate, roles, renames)}
         onClose={() => setRoleEditOpen(false)}
       />
