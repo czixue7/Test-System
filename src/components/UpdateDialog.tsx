@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import Modal from './Modal';
+import UpdateLogPanel from './UpdateLogPanel';
 import { useUpdaterStore } from '../store/updaterStore';
 import { CURRENT_VERSION, CURRENT_VERSION_HASH } from '../utils/updater';
 import { resolveUpdateStage } from '../utils/updateStages';
@@ -12,7 +13,7 @@ interface UpdateDialogProps {
 
 /**
  * 启动时检测到新版本后弹出的更新弹窗。
- * 与「关于」弹窗相互独立：上方盒子只写更新信息，不显示应用图标、功能简介和仓库链接。
+ * 上半部分只保留进度条与过程详情（阶段名称、四步流程等由底部按钮和进度体现），尽量压缩高度。
  */
 const UpdateDialog: React.FC<UpdateDialogProps> = ({ open, onClose }) => {
   const updater = useUpdaterStore();
@@ -25,40 +26,57 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ open, onClose }) => {
   const percentage = Number.isFinite(updater.downloadProgress.percentage)
     ? Math.max(0, Math.min(100, updater.downloadProgress.percentage))
     : 0;
+  // 非下载阶段按阶段含义给固定进度：已下载/已就绪为 100%，其余为 0%。
+  const finished = !!updater.downloadedFilePath || ['ready', 'permission', 'installing', 'latest'].includes(stage.phase);
+  const progress = downloading ? percentage : finished ? 100 : 0;
   const action = getUpdateStageAction(stage, !!updater.downloadedFilePath);
   const callbacks = { check: updater.checkForUpdate, download: updater.startDownload, install: updater.installUpdate };
   const run = (callback: () => Promise<void>) => {
     void callback().catch(error => updater.addLog(`更新操作失败: ${String(error)}`));
   };
-  const notes = info?.releaseNotes || info?.message || '暂无更新说明。';
   const primary = action ?? { kind: 'download' as const, label: `下载中 ${Math.round(percentage)}%`, disabled: true };
+  // 没有更新说明时不占用空间，也避免把「当前已是最新版本」这类状态文案当成说明展示。
+  const notes = info?.releaseNotes?.trim();
+  // 右侧显示已下载/总大小；没有总大小时退回百分比
+  const { downloaded, total } = updater.downloadProgress;
+  const sizeLabel = total > 0
+    ? `${(downloaded / 1048576).toFixed(1)}/${(total / 1048576).toFixed(1)}MB`
+    : `${Math.round(progress)}%`;
+  const versionLine = `当前 ${CURRENT_VERSION}（${CURRENT_VERSION_HASH}）${info?.latestVersion ? ` → 最新 ${info.latestVersion}${info.versionHash ? `（${info.versionHash}）` : ''}` : ''}`;
 
   return (
     <Modal open={open} onClose={onClose} className="update-dialog w-full max-w-sm" containerClassName="update-overlay">
       <div className="update-info-box">
-        <div className="update-info-heading">
-          <div>
-            <p className="update-info-eyebrow">软件更新</p>
-            <h2>{stage.title}</h2>
+        {notes && (
+          <div className="update-info-notes-block">
+            <p className="update-info-notes-title">更新说明</p>
+            <div className="update-info-notes" role="region" aria-label="更新说明">{notes}</div>
           </div>
-          {info?.latestVersion && <span className="update-info-version">v{info.latestVersion}</span>}
+        )}
+        <div className="update-progress-strip">
+          <div
+            className="update-progress-bar"
+            role="progressbar"
+            aria-label="更新进度"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(progress)}
+          >
+            <span style={{ transform: `scaleX(${progress / 100})` }} />
+          </div>
+          <span className="update-progress-value">{sizeLabel}</span>
+          {updater.logs.length > 0 ? (
+            <details className="update-progress-logs">
+              <summary>
+                <span className="update-progress-versions">{versionLine}</span>
+                <span aria-hidden="true">⌄</span>
+              </summary>
+              <UpdateLogPanel logs={updater.logs} />
+            </details>
+          ) : (
+            <p className="update-progress-versions">{versionLine}</p>
+          )}
         </div>
-        <p className="update-info-versions">
-          当前 {CURRENT_VERSION}（{CURRENT_VERSION_HASH}）
-          {info?.latestVersion && <> → 最新 {info.latestVersion}{info.versionHash ? `（${info.versionHash}）` : ''}</>}
-        </p>
-        <div className="update-info-notes" role="region" aria-label="更新说明">{notes}</div>
-        {downloading && (
-          <div className="update-info-progress">
-            <div className="update-info-progress-track" role="progressbar" aria-label="更新包下载进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percentage)}>
-              <span style={{ transform: `scaleX(${percentage / 100})` }} />
-            </div>
-            <p>{stage.detail}</p>
-          </div>
-        )}
-        {!downloading && ['ready', 'permission', 'installing', 'error'].includes(stage.phase) && (
-          <p className={`update-info-status update-info-status--${stage.tone}`}>{stage.detail}</p>
-        )}
       </div>
       <div className="update-dialog-actions">
         <button type="button" className="update-dialog-later" onClick={onClose}>{downloading ? '后台下载' : '稍后更新'}</button>
