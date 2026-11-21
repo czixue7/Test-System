@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuestionBankStore } from '../store/questionBankStore';
 import { useThemeStore } from '../store/themeStore';
 import { isBuiltInBank } from '../utils/builtInBanks';
@@ -188,6 +188,15 @@ const Home: React.FC = () => {
   };
 
   const isImmersive = themeStyle === 'immersive';
+  const preDrillEntry = (
+    <Link to="/pre-drill" className="mt-4 flex w-full items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-left shadow-sm transition-colors hover:border-teal-500 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-teal-400">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300">
+        <svg aria-hidden="true" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M9 7h6M6 10v7h12v-7M12 7v10"/><rect x="3" y="4" width="6" height="6" rx="1"/><rect x="15" y="4" width="6" height="6" rx="1"/><path d="m9 20 3-3 3 3"/></svg>
+      </span>
+      <span className="flex-1"><span className="block text-sm font-semibold text-gray-800 dark:text-gray-100">预演练</span><span className="block text-xs text-gray-500 dark:text-gray-400">查看水系统架构与模拟设备操作</span></span>
+      <span aria-hidden="true" className="text-gray-500 dark:text-gray-400">→</span>
+    </Link>
+  );
 
   // ===== 沉浸式布局（区别于经典布局：Hero 大卡 + 统计横幅 + 模式网格 + 浮动导航） =====
   const immersiveView = (
@@ -318,6 +327,7 @@ const Home: React.FC = () => {
             </button>
           </div>
         )}
+        {preDrillEntry}
       </div>
 
       {/* 底部导航（沉浸式由 CSS 呈现为浮动胶囊） */}
@@ -445,6 +455,8 @@ const Home: React.FC = () => {
             </div>
           </div>
         )}
+
+        {preDrillEntry}
 
         <div className="mt-8 grid grid-cols-3 gap-3">
           <div className="bg-white rounded-xl p-3 text-center shadow-sm dark:bg-gray-800">

@@ -24,6 +24,7 @@ const ManageBanks = lazy(() => import('./pages/ManageBanks'));
 const DutySchedule = lazy(() => import('./pages/DutySchedule'));
 const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase'));
 const KnowledgeItemView = lazy(() => import('./pages/KnowledgeItemView'));
+const PreDrill = lazy(() => import('./pages/PreDrill'));
 
 // 开屏默认主页：只在应用启动、且地址为根路径时替换一次。
 // 之后的页面跳转（例如点击底部「首页」）仍按用户操作执行，不会被反复重定向。
@@ -141,6 +142,7 @@ const App: React.FC = () => {
             <Route path="/duty" element={<DutySchedule />} />
             <Route path="/placeholder" element={<KnowledgeBase />} />
             <Route path="/knowledge-item/:id" element={<KnowledgeItemView />} />
+            <Route path="/pre-drill" element={<PreDrill />} />
             {/* 兜底路由：地址不匹配时也给提示，避免整页空白看不出原因 */}
             <Route path="*" element={
               <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col items-center justify-center px-6">
