@@ -5,6 +5,7 @@ import {
   checkUpdate as doCheckUpdate,
   downloadApk,
   cancelApkDownload,
+  canInstallApk,
   installApk,
   isTauri,
   isAndroid,
@@ -19,6 +20,26 @@ export type DownloadStatus = 'idle' | 'downloading' | 'downloaded' | 'installing
  */
 let downloadGeneration = 0;
 let activeDownload: { id: string; controller: AbortController; promise: Promise<string> } | null = null;
+/** 正在跳转「未知来源应用」授权页，避免重复点击叠加多个设置页。 */
+let permissionPrompting = false;
+/** 系统安装器接管后不会回调结果，超时后恢复为可再次点击。 */
+const INSTALL_RESPONSE_TIMEOUT = 15000;
+
+/** 回到前台时触发回调；非浏览器环境（如测试）返回空清理函数。 */
+function watchAppResume(onResume: () => void): () => void {
+  const doc = typeof document !== 'undefined' ? document : null;
+  const win = typeof window !== 'undefined' ? window : null;
+  if (!doc && !win) return () => {};
+  const handler = () => {
+    if (!doc || doc.visibilityState === 'visible') onResume();
+  };
+  doc?.addEventListener?.('visibilitychange', handler);
+  win?.addEventListener?.('focus', handler);
+  return () => {
+    doc?.removeEventListener?.('visibilitychange', handler);
+    win?.removeEventListener?.('focus', handler);
+  };
+}
 
 const updateKey = (info: UpdateInfo | null) => info ? `${info.latestVersion}-${info.versionHash || 'release'}` : '';
 
@@ -197,12 +218,52 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
       return;
     }
 
-    set({ downloadStatus: 'installing' });
+    if (get().downloadStatus === 'installing') {
+      addLog('安装器正在启动，请稍候');
+      return;
+    }
+    if (permissionPrompting) {
+      addLog('正在等待安装权限授权，请返回应用后再试');
+      return;
+    }
+
     addLog(isAndroid() ? '开始安装 APK...' : '正在打开下载文件...');
     addLog(`文件路径: ${downloadedFilePath}`);
 
+    // Android 每次点击安装都先确认「未知来源应用」权限：
+    // 未授权时只跳转设置，不进入安装中状态，返回后可直接再次点击安装。
+    if (isAndroid() && !(await canInstallApk())) {
+      permissionPrompting = true;
+      addLog('需要允许安装未知来源应用，已打开系统设置');
+      addLog('请在设置中允许后返回应用，再次点击「安装更新」');
+      try {
+        // 原生安装命令在无权限时只负责打开授权页。
+        await installApk(downloadedFilePath);
+      } catch (error) {
+        addLog(`打开安装权限设置失败: ${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        permissionPrompting = false;
+      }
+      set({ downloadStatus: 'downloaded' });
+      return;
+    }
+
+    set({ downloadStatus: 'installing' });
+    // 安装器接管或停留在系统界面时，回到应用即恢复为可再次安装。
+    const stopWatching = watchAppResume(() => {
+      if (get().downloadStatus !== 'installing') return;
+      addLog('已返回应用，安装包仍保留，可再次点击安装');
+      set({ downloadStatus: 'downloaded' });
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
     try {
-      const result = await installApk(downloadedFilePath);
+      const result = await Promise.race([
+        installApk(downloadedFilePath),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('安装器响应超时')), INSTALL_RESPONSE_TIMEOUT);
+        }),
+      ]);
       addLog(`安装结果: ${result}`);
 
       if (result === 'REQUEST_INSTALL_PERMISSION') {
@@ -218,9 +279,12 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
         addLog(`文件位置: ${downloadedFilePath}`);
       }
     } catch (error) {
-      addLog(`❌ 安装失败: ${error instanceof Error ? error.message : '未知错误'}`);
-      addLog('请手动到下载目录中找到安装包并更新');
+      const detail = error instanceof Error ? error.message : '未知错误';
+      addLog(`❌ 安装失败: ${detail}`);
+      addLog(detail.includes('超时') ? '安装器未响应，安装包已保留，可重试安装' : '安装包已保留，可直接重试安装');
     } finally {
+      if (timer) clearTimeout(timer);
+      stopWatching();
       // 原生侧无法回传「用户是否真的装完」，因此无论拉起安装器、
       // 跳转权限设置还是失败，都统一回到「点击安装」，避免按钮卡在
       // 「正在启动安装...」这类无法收敛的中间态。

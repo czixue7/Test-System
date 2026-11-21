@@ -25,15 +25,30 @@ export function compareBuildNumbers(
   b: string | null,
 ): number {
   if (!a || !b) return a ? 1 : b ? -1 : 0;
-  if (/^\d+$/.test(a) && /^\d+$/.test(b)) {
-    const x = BigInt(dateBuild(a) || a),
-      y = BigInt(dateBuild(b) || b);
-    return x > y ? 1 : x < y ? -1 : 0;
+  const left = buildKey(a),
+    right = buildKey(b);
+  if (left && right) {
+    if (left.base !== right.base) return left.base > right.base ? 1 : -1;
+    return left.letter === right.letter ? 0 : left.letter > right.letter ? 1 : -1;
   }
   return a > b ? 1 : a < b ? -1 : 0;
 }
-// Published builds use YYYYMMDD. Keep comparisons compatible with the brief
-// YYMMDD format so existing six-digit packages cannot distort update ordering.
+/**
+ * 构建号 = 北京时间日期 + 可选字母后缀（A 最小、Z 最大）。
+ * 无字母视为小于 A，例如 20261121 < 20261121A < 20261121Z < 20261122。
+ * 兼容旧六位日期与任意纯数字构建号。
+ */
+function buildKey(value: string): { base: bigint; letter: number } | null {
+  const match = /^(\d+)([A-Za-z])?$/.exec(value.trim());
+  if (!match) return null;
+  return {
+    base: BigInt(dateBuild(match[1]) || match[1]),
+    letter: match[2] ? match[2].toUpperCase().charCodeAt(0) : 0,
+  };
+}
+// Published builds use YYYYMMDD, optionally followed by an A-Z suffix.
+// Keep comparisons compatible with the brief YYMMDD format and arbitrary
+// numeric service builds so existing packages cannot distort update ordering.
 function dateBuild(value: string): string | null {
   const full = /^\d{6}$/.test(value) ? `20${value}` : value;
   if (!/^20\d{6}$/.test(full)) return null;
@@ -42,14 +57,18 @@ function dateBuild(value: string): string | null {
   return date.getUTCFullYear() === year && date.getUTCMonth() + 1 === month && date.getUTCDate() === day ? full : null;
 }
 function normalizeHash(value: unknown): string | null {
-  return typeof value === "string" &&
-    (/^(?:[a-f0-9]{8}|[a-f0-9]{40}|[a-f0-9]{64})$/i.test(value) || (/^\d{6}$/.test(value) && dateBuild(value) !== null))
+  if (typeof value !== "string") return null;
+  const dated = /^(\d{6,8})([A-Za-z]?)$/.exec(value);
+  if (dated && dateBuild(dated[1]) !== null) {
+    return `${dated[1]}${dated[2].toUpperCase()}`;
+  }
+  return /^(?:[a-f0-9]{8}|[a-f0-9]{40}|[a-f0-9]{64})$/i.test(value)
     ? value.toLowerCase()
     : null;
 }
 const hashOf = (body: unknown): string | null =>
   typeof body === "string"
-    ? normalizeHash(body.match(/hash[:\s]+([a-f0-9]+)/i)?.[1])
+    ? normalizeHash(body.match(/hash[:\s]+([a-z0-9]+)/i)?.[1])
     : null;
 function parseReleases(data: any, entry: DataSourceEntry): Release[] {
   const list: any[] =
@@ -70,7 +89,9 @@ function parseReleases(data: any, entry: DataSourceEntry): Release[] {
       const hash = gitee
         ? hashOf(item.release?.description) || hashOf(item.tag?.message)
         : typeof item.versionHash === "string"
-          ? entry.kind === "service" && /^\d{1,20}$/.test(item.versionHash) ? item.versionHash : normalizeHash(item.versionHash)
+          ? entry.kind === "service" && /^\d{1,20}[A-Za-z]?$/.test(item.versionHash)
+            ? item.versionHash.toUpperCase()
+            : normalizeHash(item.versionHash)
           : hashOf(item.body);
       const raw = gitee ? item.release?.attach_files : item.assets;
       const assets: ReleaseAsset[] = (Array.isArray(raw) ? raw : []).flatMap(
@@ -107,6 +128,9 @@ function parseReleases(data: any, entry: DataSourceEntry): Release[] {
 }
 const newer = (a: Release, b: Release) =>
   compareVersions(a.version, b.version) || compareBuildNumbers(a.hash, b.hash);
+// 版本与构建完全一致时优先从 Gitee 下载；其余情况仍按版本/构建与来源顺序。
+const preferGiteeOnTie = (best: Release, current: Release) =>
+  best.entry.kind === "gitee" || current.entry.kind !== "gitee" ? best : current;
 export async function configuredRelease() {
   if (!useDataSourceStore.getState().updatesEnabled) throw new Error("软件更新已关闭，请在设置中开启后重试");
   const entries = enabledSources(),
@@ -125,9 +149,12 @@ export async function configuredRelease() {
   );
   if (!releases.length)
     throw new Error("所有启用的数据来源均未获取到有效更新信息");
-  const primary = releases.reduce((best, current) =>
-    newer(current, best) > 0 ? current : best,
-  );
+  const primary = releases.reduce((best, current) => {
+    const order = newer(current, best);
+    if (order > 0) return current;
+    if (order < 0) return best;
+    return preferGiteeOnTie(best, current);
+  });
   const fallback_assets = releases
     .filter(
       (r) =>

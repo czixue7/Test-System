@@ -80,7 +80,7 @@ export const CURRENT_VERSION = '0.4.5';
  * 当前版本哈希（每次构建时更新）
  * 用于区分同一版本的不同构建
  */
-export const CURRENT_VERSION_HASH = '20261121'; // 北京时间 YYYYMMDD；同日构建沿用，跨日期更新
+export const CURRENT_VERSION_HASH = '20261121A'; // 北京时间 YYYYMMDD，可在同日追加 A-Z（如 20261121A，A 最小、Z 最大）用于更小范围更新
 
 /**
  * 检查当前系统架构
@@ -311,6 +311,20 @@ export async function downloadApk(
 
 export async function cancelApkDownload(downloadId: string): Promise<void> {
   await invoke('cancel_apk_download', { downloadId });
+}
+
+/**
+ * 检查当前是否已具备安装 APK 的权限。
+ * Android 8.0+ 每次安装前都要重新确认；查询失败时交由原生安装器再次校验。
+ */
+export async function canInstallApk(): Promise<boolean> {
+  if (!isAndroid()) return true;
+  try {
+    return await invoke<boolean>('can_install_apk');
+  } catch (error) {
+    console.warn('[Updater] 查询安装权限失败，交由系统安装器校验', error);
+    return true;
+  }
 }
 
 /**

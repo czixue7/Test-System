@@ -8,11 +8,14 @@ plugins {
 }
 
 val appVersion = (JsonSlurper().parse(file("../../../tauri.conf.json")) as Map<*, *>)["version"] as String
-val appBuild = Regex("""CURRENT_VERSION_HASH\s*=\s*['"](\d+)['"]""")
+val appBuild = Regex("""CURRENT_VERSION_HASH\s*=\s*['"](\d{8}[A-Z]?)['"]""")
     .find(file("../../../../src/utils/updater.ts").readText())
     ?.groupValues?.get(1)
     ?: error("Missing CURRENT_VERSION_HASH")
-require(appBuild.matches(Regex("\\d{8}"))) { "Build number must use YYYYMMDD" }
+require(appBuild.matches(Regex("\\d{8}[A-Z]?"))) { "Build number must use YYYYMMDD or YYYYMMDD + A-Z" }
+// 构建号末尾字母参与 versionCode：同日 A-Z 依次增大，同时保证次日无字母构建仍更大。
+val appVersionCode = appBuild.take(8).toInt() * 100 + (appBuild.getOrNull(8)?.let { it - 'A' + 1 } ?: 0)
+require(appVersionCode < 2_100_000_000) { "Build number exceeds Android versionCode range" }
 
 android {
     compileSdk = 36
@@ -22,7 +25,7 @@ android {
         applicationId = "com.exam.test_system"
         minSdk = 24
         targetSdk = 36
-        versionCode = appBuild.toInt()
+        versionCode = appVersionCode
         versionName = appVersion
         
         // 只构建 arm64-v8a 架构

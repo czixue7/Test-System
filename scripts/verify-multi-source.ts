@@ -215,7 +215,11 @@ assert.equal(
 );
 githubHash = "20261020";
 store.getState().moveSource("default-github", -1);
-assert.equal((await checkUpdate()).sourceId, "default-github");
+assert.equal(
+  (await checkUpdate()).sourceId,
+  "default-gitee",
+  "同版本同构建时始终优先 Gitee，不受来源顺序影响",
+);
 store.getState().setSourceEnabled("default-gitee", false);
 requests = [];
 const githubOnly = await checkUpdate();
@@ -233,7 +237,7 @@ assert(
   "只允许内置服务自身的探测请求，不能再回退到已删除/停用的仓库",
 );
 console.log(
-  "✓ 更新按启用条目和顺序取源；停用/删除无回退请求；旧下载信息不能继续发起请求",
+  "✓ 同版本同构建优先 Gitee，其余按版本/构建与启用顺序取源；停用/删除或换序不违背该优先规则",
 );
 
 // Deleting while an index request is pending invalidates its eventual result.

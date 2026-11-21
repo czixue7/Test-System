@@ -22,11 +22,11 @@ pub fn metadata(path: &Path) -> Result<Value, String> {
     let found = version_re.captures(&stem).ok_or("缺少版本号，例如 v0.4.4")?;
     let version = found.get(1).unwrap();
     let tail = &stem[version.end()..];
-    let build_re = BUILD.get_or_init(|| Regex::new(r"(?i)(?:^|[_\s+()\[\]-])(?:build|构建|b)[_\s-]*(\d{1,20})(?:$|[_\s+()\[\]-])").unwrap());
-    let bare_re = BARE_BUILD.get_or_init(|| Regex::new(r"(?:^|[_\s+()\[\]-])(\d{6,20})(?:$|[_\s+()\[\]-])").unwrap());
+    let build_re = BUILD.get_or_init(|| Regex::new(r"(?i)(?:^|[_\s+()\[\]-])(?:build|构建|b)[_\s-]*(\d{1,20}[A-Za-z]?)(?:$|[_\s+()\[\]-])").unwrap());
+    let bare_re = BARE_BUILD.get_or_init(|| Regex::new(r"(?:^|[_\s+()\[\]-])(\d{6,20}[A-Za-z]?)(?:$|[_\s+()\[\]-])").unwrap());
     let build = build_re.captures(tail).or_else(|| bare_re.captures(tail))
-        .and_then(|c| c.get(1).map(|v| v.as_str().to_owned()))
-        .ok_or("缺少构建号，例如 build20261021")?;
+        .and_then(|c| c.get(1).map(|v| v.as_str().to_ascii_uppercase()))
+        .ok_or("缺少构建号，例如 build20261021 或 build20261021A")?;
     // Reject pre-release names rather than accidentally publishing as stable.
     let lower = stem.to_ascii_lowercase();
     if lower.split(|c: char| !c.is_ascii_alphanumeric()).any(|v| ["alpha", "beta", "rc", "debug"].iter().any(|prefix| v == *prefix || v.strip_prefix(prefix).is_some_and(|tail| !tail.is_empty() && tail.bytes().all(|b| b.is_ascii_digit())))) {
@@ -69,6 +69,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         for (filename, version, build) in [
             ("Answer_Test_v0.4.4_build20261021_arm64.apk","0.4.4","20261021"),
+            ("Answer_Test_v0.4.4_build20261021B_arm64.apk","0.4.4","20261021B"),
             ("Answer_Test_v0.4.4_2026102101_x64.exe","0.4.4","2026102101"),
             ("Answer_Test_v0.4.5+build9_windows.zip","0.4.5","9"),
         ] {

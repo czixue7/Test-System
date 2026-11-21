@@ -317,6 +317,31 @@ async fn download_apk_file(
 }
 
 #[tauri::command]
+async fn can_install_apk(app: tauri::AppHandle) -> Result<bool, String> {
+    #[cfg(target_os = "android")]
+    {
+        let installer = app
+            .try_state::<AndroidInstaller>()
+            .ok_or_else(|| "Android 安装插件未初始化".to_string())?;
+        let result: serde_json::Value = installer
+            .0
+            .run_mobile_plugin::<serde_json::Value>("canInstall", serde_json::json!({}))
+            .map_err(|e| e.to_string())?;
+        Ok(result
+            .get("allowed")
+            .and_then(|v: &serde_json::Value| v.as_bool())
+            .unwrap_or(true))
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        // 桌面端只是打开下载目录，不需要「未知来源应用」权限。
+        let _ = app;
+        Ok(true)
+    }
+}
+
+#[tauri::command]
 async fn install_apk(app: tauri::AppHandle, apk_path: String) -> Result<String, String> {
     log::info!("install_apk: 开始安装 APK, path={}", apk_path);
 
@@ -431,6 +456,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             download_apk,
             cancel_apk_download,
+            can_install_apk,
             install_apk,
             download_and_install_apk,
             fetch_remote_text,

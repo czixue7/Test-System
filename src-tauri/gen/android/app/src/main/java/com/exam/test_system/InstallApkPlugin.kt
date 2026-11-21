@@ -19,6 +19,18 @@ import java.io.File
 @TauriPlugin
 class InstallApkPlugin(private val activity: Activity) : Plugin(activity) {
     @Command
+    fun canInstall(invoke: Invoke) {
+        try {
+            // 每次点击安装前都要重新确认，用户可能刚从系统设置返回。
+            val allowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+                activity.packageManager.canRequestPackageInstalls()
+            invoke.resolve(JSObject().put("allowed", allowed))
+        } catch (ex: Exception) {
+            invoke.reject(ex.message)
+        }
+    }
+
+    @Command
     fun install(invoke: Invoke) {
         try {
             val apkPath = invoke.parseArgs(String::class.java)

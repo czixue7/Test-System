@@ -88,3 +88,32 @@ const newer = await checkUpdate();
 assert.equal(newer.source, 'github');
 assert.equal(newer.fallbackDownloadUrl, undefined);
 console.log('✓ 同版本同构建优先 Gitee；旧版本/不同构建不能作备用源；更高构建优先');
+
+// Android 每次点击安装前都要重新确认「未知来源应用」权限。
+let installInvocations = 0;
+let canInstallAllowed = false;
+const installInternals = {
+  transformCallback: () => ++callbackId,
+  invoke: (command: string) => {
+    if (command === 'can_install_apk') return Promise.resolve(canInstallAllowed);
+    if (command === 'install_apk') {
+      installInvocations++;
+      return Promise.resolve(canInstallAllowed ? 'INSTALL_INTENT_SENT' : 'REQUEST_INSTALL_PERMISSION');
+    }
+    throw new Error(command);
+  },
+};
+(globalThis as any).window = { __TAURI_INTERNALS__: installInternals };
+useUpdaterStore.setState({ downloadedFilePath: '/cache/app.apk', downloadStatus: 'downloaded', logs: [] });
+await useUpdaterStore.getState().installUpdate();
+assert.equal(useUpdaterStore.getState().downloadStatus, 'downloaded', '未授权时不得停在安装中');
+assert.match(useUpdaterStore.getState().logs.join('\n'), /需要允许安装未知来源应用/);
+assert.equal(installInvocations, 1, '未授权时只跳转权限设置，不拉起安装器');
+canInstallAllowed = true;
+installInvocations = 0;
+useUpdaterStore.setState({ downloadStatus: 'downloaded', logs: [] });
+await useUpdaterStore.getState().installUpdate();
+assert.equal(useUpdaterStore.getState().downloadStatus, 'downloaded', '安装器启动后恢复为可再次点击');
+assert.match(useUpdaterStore.getState().logs.join('\n'), /系统安装器已启动/);
+assert.equal(installInvocations, 1, '授权后再次确认权限并拉起安装器');
+console.log('✓ Android 安装前逐次确认权限；未授权只跳转设置，返回后仍可点击安装');
