@@ -315,6 +315,18 @@
 .dark .update-info-notes-title { color: #94a3b8; }
 .update-info-notes { flex: 1 1 auto; min-height: 48px; max-height: 30vh; max-height: 30dvh; overflow-y: auto; overscroll-behavior: contain; padding: 10px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; color: #334155; font-size: 12px; line-height: 19px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .dark .update-info-notes { border-color: #334155; background: #0f1b2e; color: #cbd5e1; }
+/* 更新说明按 Markdown 渲染：取消父容器的 pre-wrap，并压缩标题/列表间距以适应小弹窗 */
+.update-info-notes .markdown-body { white-space: normal; color: inherit; font-size: inherit; line-height: inherit; }
+.update-info-notes .markdown-body h1,
+.update-info-notes .markdown-body h2,
+.update-info-notes .markdown-body h3,
+.update-info-notes .markdown-body h4 { margin: 8px 0 4px; padding: 0; border: 0; font-size: 12.5px; }
+.update-info-notes .markdown-body > :first-child { margin-top: 0; }
+.update-info-notes .markdown-body p { margin: 4px 0; }
+.update-info-notes .markdown-body ul,
+.update-info-notes .markdown-body ol { margin: 4px 0; padding-left: 18px; }
+.update-info-notes .markdown-body li { margin: 2px 0; }
+.update-info-notes .markdown-body table { font-size: 11px; }
 .update-dialog-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; flex-shrink: 0; }
 .update-dialog-later, .update-dialog-primary { height: 42px; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 140ms ease, opacity 140ms ease; }
 .update-dialog-later { border: 1px solid #cbd5e1; background: transparent; color: #475569; }

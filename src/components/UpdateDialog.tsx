@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import Modal from './Modal';
+import MarkdownView from './MarkdownView';
 import UpdateLogPanel from './UpdateLogPanel';
 import { useUpdaterStore } from '../store/updaterStore';
 import { CURRENT_VERSION, CURRENT_VERSION_HASH } from '../utils/updater';
@@ -50,7 +51,9 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ open, onClose }) => {
         {notes && (
           <div className="update-info-notes-block">
             <p className="update-info-notes-title">更新说明</p>
-            <div className="update-info-notes" role="region" aria-label="更新说明">{notes}</div>
+            <div className="update-info-notes" role="region" aria-label="更新说明">
+              <MarkdownView content={notes} />
+            </div>
           </div>
         )}
         <div className="update-progress-strip">
