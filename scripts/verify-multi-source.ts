@@ -42,7 +42,7 @@ const { useUpdaterStore } = await import("../src/store/updaterStore");
 
 assert.deepEqual(
   store.getState().sources.map((s) => s.kind),
-  ["gitee", "github", "service"],
+  ["service", "gitee", "github", "service"],
 );
 assert.equal(store.getState().url, "https://old.test/bank");
 assert.equal(store.getState().sync.chat, true);
@@ -53,10 +53,11 @@ for (const entry of store.getState().sources)
   store.getState().deleteSource(entry.id);
 await store.persist.rehydrate();
 assert.deepEqual(
-  store.getState().sources,
-  [],
-  "Deleted defaults must stay deleted after reload",
+  store.getState().sources.map((s) => s.id),
+  ["builtin-service"],
+  "内置服务不可永久删除，重载后自动补回",
 );
+store.getState().deleteSource("builtin-service");
 let requests: { url: string; auth: string | null }[] = [];
 globalThis.fetch = (async (url: string, init?: RequestInit) => {
   requests.push({ url, auth: new Headers(init?.headers).get("Authorization") });
@@ -72,7 +73,7 @@ assert.deepEqual(
 );
 assert.equal(requests.length, 0);
 console.log(
-  "✓ 旧单链接迁移；删除当前同步来源停止同步；空来源重载后保持为空且无隐藏请求",
+  "✓ 旧单链接迁移；删除当前同步来源停止同步；内置服务重载后自动补回，无来源时不发隐藏请求",
 );
 
 for (const entry of defaultSources()) store.getState().saveSource(entry);
@@ -165,9 +166,9 @@ assert.equal(
   "Default mirror pair deduplicates; independent repositories and services remain distinct",
 );
 assert.equal(new Set(banks.userBanks.map((b) => b.filename)).size, 4);
-assert.equal(banks.userBanks[0].sourceId, "default-gitee");
+assert.equal(banks.userBanks[0].sourceId, "builtin-service");
 const duties = await fetchConfiguredIndex("duty");
-assert.equal(duties.userDuties.length, 4);
+assert.equal(duties.userDuties.length, 5);
 assert.equal(
   sourceTokenFor("https://service.test/two/images/1.png"),
   "second-token-123456789",
@@ -191,7 +192,11 @@ assert(
 assert(
   requests
     .filter((r) => !r.url.startsWith("https://service.test/"))
-    .every((r) => r.auth === null),
+    .every((r) =>
+      r.url.startsWith("https://api.h2bb62d03.nyat.app:13547")
+        ? r.auth === "Bearer 1234567812345678"
+        : r.auth === null,
+    ),
 );
 console.log(
   "✓ 多来源题库/值班表合并、镜像去重、同名隔离；非同步来源图片使用自己的密钥",
@@ -223,12 +228,16 @@ await useUpdaterStore.getState().startDownload();
 assert.match(useUpdaterStore.getState().logs.at(-1)!, /重新检查更新/);
 assert.equal(requests.length, 0);
 assert.equal((await checkUpdate()).error, true);
-assert.equal(requests.length, 0);
+assert(
+  requests.every((r) => r.url.startsWith("https://api.h2bb62d03.nyat.app:13547")),
+  "只允许内置服务自身的探测请求，不能再回退到已删除/停用的仓库",
+);
 console.log(
   "✓ 更新按启用条目和顺序取源；停用/删除无回退请求；旧下载信息不能继续发起请求",
 );
 
 // Deleting while an index request is pending invalidates its eventual result.
+store.getState().deleteSource("builtin-service");
 store.getState().saveSource({
   id: "pending",
   name: "Pending",
@@ -252,7 +261,7 @@ store.getState().saveSource(defaultSources()[0]);
 requests = [];
 globalThis.fetch = (async (url: string) => {
   requests.push({ url, auth: null });
-  store.getState().deleteSource("default-gitee");
+  store.getState().deleteSource("builtin-service");
   throw new Error("Offline");
 }) as any;
 await assert.rejects(

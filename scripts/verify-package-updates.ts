@@ -11,7 +11,7 @@ const {useUpdaterStore}=await import('../src/store/updaterStore');
 for(const source of store.getState().sources)store.getState().deleteSource(source.id);
 store.getState().saveSource({id:'packages',kind:'service',name:'软件包',url:'https://packages.test/prefix',token:'package-test-token-1234',enabled:true});
 let releases:any[]=[
-  {version:'0.4.4',versionHash:'2026102101',assets:[{name:'app_v0.4.4_build2026102101_arm64.apk',browser_download_url:'/files/p/app.apk'}]},
+  {version:'0.4.5',versionHash:'2026102101',assets:[{name:'app_v0.4.5_build2026102101_arm64.apk',browser_download_url:'/files/p/app.apk'}]},
   {version:'0.5.0',versionHash:'9',assets:[{name:'app_v0.5.0_build9_x64.exe',browser_download_url:'/files/p/app.exe'}]},
 ];
 globalThis.fetch=(async(url:any,init:any)=>{
@@ -20,7 +20,7 @@ globalThis.fetch=(async(url:any,init:any)=>{
   return Response.json(releases);
 }) as any;
 let result=await configuredRelease();
-assert.equal(result.latest_version,'0.4.4');assert.equal(result.version_hash,'2026102101');
+assert.equal(result.latest_version,'0.4.5');assert.equal(result.version_hash,'2026102101');
 assert.equal(result.assets[0].browser_download_url,'https://packages.test/prefix/files/p/app.apk');
 assert.equal((await checkUpdate()).hasUpdate,true);
 nav('Windows NT 10.0; Win64; x64','Win32');
@@ -56,11 +56,11 @@ assert(compareBuildNumbers('9','10')<0);
 nav('Android arm64','Linux aarch64');
 store.getState().deleteSource('packages');
 store.getState().saveSource({id:'github-build',kind:'github',name:'GitHub',url:'https://github.com/test/repo',token:'',enabled:true});
-globalThis.fetch=(async()=>Response.json([{tag_name:'v0.4.4',body:'hash:261021',assets:[{name:'Answer_Test_v0.4.4_build261021_arm64.apk',browser_download_url:'https://example.test/app.apk'}]}])) as any;
+globalThis.fetch=(async()=>Response.json([{tag_name:'v0.4.5',body:'hash:261021',assets:[{name:'Answer_Test_v0.4.5_build261021_arm64.apk',browser_download_url:'https://example.test/app.apk'}]}])) as any;
 assert.equal((await configuredRelease()).version_hash,'261021');
 assert.equal((await checkUpdate()).hasUpdate,false);
-globalThis.fetch=(async()=>Response.json([{tag_name:'v0.4.4',body:'hash:20261021',assets:[{name:'app_arm64.apk',browser_download_url:'https://example.test/old.apk'}]}])) as any;
+globalThis.fetch=(async()=>Response.json([{tag_name:'v0.4.5',body:'hash:20261121',assets:[{name:'app_arm64.apk',browser_download_url:'https://example.test/old.apk'}]}])) as any;
 assert.equal((await checkUpdate()).hasUpdate,false,'The current same-date build must not be offered as a newer package');
-globalThis.fetch=(async()=>Response.json([{tag_name:'v0.4.4',body:'hash:20261022',assets:[{name:'app_build20261022_arm64.apk',browser_download_url:'https://example.test/next.apk'}]}])) as any;
+globalThis.fetch=(async()=>Response.json([{tag_name:'v0.4.5',body:'hash:20261122',assets:[{name:'app_build20261122_arm64.apk',browser_download_url:'https://example.test/next.apk'}]}])) as any;
 assert.equal((await checkUpdate()).hasUpdate,true);
 console.log('✓ 八位日期构建正常检查更新；兼容既有六位日期，同日不误报、跨日及跨年排序正确');

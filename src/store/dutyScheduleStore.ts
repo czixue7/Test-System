@@ -43,10 +43,12 @@ interface DutyScheduleState {
     filename: string
   ) => string;
   updateDuty: (id: string, updates: Partial<DutySchedule>) => void;
-  updateDutyWithSha: (
+  /** 应用发布源的新版本：保存新数据，并以发布版本作为后续标注比对基准 */
+  applyRemoteDuty: (
     id: string,
     updates: Partial<DutySchedule>,
-    sha: string
+    sha: string,
+    published: Pick<DutySchedule, 'drills' | 'roles'>
   ) => void;
   deleteDuty: (id: string) => void;
   getDuty: (id: string) => DutySchedule | undefined;
@@ -107,6 +109,8 @@ export const useDutyScheduleStore = create<DutyScheduleState>()(
           id,
           sourceSha: sha,
           sourceFilename: filename,
+          sourceDrills: dutyData.drills,
+          sourceRoles: dutyData.roles,
           createdAt: now,
           updatedAt: now
         };
@@ -128,11 +132,18 @@ export const useDutyScheduleStore = create<DutyScheduleState>()(
         });
       },
 
-      updateDutyWithSha: (id, updates, sha) => {
+      applyRemoteDuty: (id, updates, sha, published) => {
         set((state) => {
           const newDuties = state.duties.map((d) =>
             d.id === id
-              ? { ...d, ...updates, sourceSha: sha, updatedAt: new Date().toISOString() }
+              ? {
+                  ...d,
+                  ...updates,
+                  sourceSha: sha,
+                  sourceDrills: published.drills,
+                  sourceRoles: published.roles,
+                  updatedAt: new Date().toISOString()
+                }
               : d
           );
           saveDuties(newDuties);

@@ -72,27 +72,31 @@ const legacy = await downloadPublishedDuty({ ...item, filename: 'duty/排班表.
 assert.deepEqual(normalize(legacy), normalize(local), 'Legacy .xls and .xlsx must use the same import semantics');
 binary = xlsx;
 const original = duties.getState().duties[0];
-duties.getState().updateDuty(original.id, { name: '本机修改' });
+const localDrill = { date: '2026-10-01', group: 'C', name: '本地演练' };
+duties.getState().updateDuty(original.id, { name: '本机修改', drills: [localDrill] });
 const updatedWorkbook = XLSX.read(binary, { type: 'array' });
 XLSX.utils.book_append_sheet(updatedWorkbook, XLSX.utils.aoa_to_sheet([['辅助说明']]), '发布校验说明');
 binary = new Uint8Array(XLSX.write(updatedWorkbook, { type: 'buffer', bookType: 'xlsx' }));
 item = { ...item, sha: await contentHash(binary) };
 await syncDataNow('public');
-assert.equal(duties.getState().duties.length, 2);
-assert(duties.getState().duties.some(d => d.name === '本机修改（本机副本）'));
-assert(duties.getState().duties.some(d => d.id === original.id && d.name === item.name));
+assert.equal(duties.getState().duties.length, 1, '值班表更新应覆盖原记录而不是新增副本');
+const synced = duties.getState().duties[0];
+assert.equal(synced.id, original.id);
+assert.equal(synced.name, item.name);
+assert.equal(synced.sourceSha, item.sha);
+assert.deepEqual(synced.drills, [localDrill], '自动覆盖必须保留用户自己的标注');
 // JSON remains supported, including drill and role metadata.
 const data = { name: '新版值班表', shifts: [{ date: '2026-10-21', shiftType: '夜班', personInCharge: '测试人员' }],
   drills: [{ date: '2026-10-21', content: '测试演练' }], roles: [{ group: 'C', leader: '测试人员', posts: [] }] };
 binary = new TextEncoder().encode(JSON.stringify(data));
 item = { ...item, sha: await contentHash(binary) };
 await assert.rejects(syncDataNow('public'), /识别|文件|Unsupported|格式/);
-assert.equal(duties.getState().duties.length, 2, 'Malformed Excel must leave existing data untouched');
+assert.equal(duties.getState().duties.length, 1, 'Malformed Excel must leave existing data untouched');
 const jsonItem = { ...item, filename: 'duty/值班表.json', downloadUrl: `${base}/files/duty/值班表.json` };
 const json = await downloadPublishedDuty(jsonItem, token);
 assert.equal(json.shifts[0].shiftType, 'night');
 assert.deepEqual(json.drills, data.drills);
 assert.deepEqual(json.roles, data.roles);
 await assert.rejects(downloadPublishedDuty({ ...jsonItem, sha: '0'.repeat(64) }, token), /完整性校验失败/);
-assert(duties.getState().duties.some(d => d.name === '本机修改（本机副本）'));
+assert(duties.getState().duties.some(d => d.id === original.id && d.drills?.some(drill => drill.name === localDrill.name)));
 console.log(`✓ Published Excel: ${local.shifts.length} shifts, ${local.drills?.length ?? 0} drills, ${local.roles?.length ?? 0} roles; local/remote parsing, authenticated GET, no sync storage, unchanged reuse and invalid-file protection`);

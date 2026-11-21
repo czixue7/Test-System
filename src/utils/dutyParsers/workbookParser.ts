@@ -119,7 +119,7 @@ export async function parseDutyExcelFile(file: File): Promise<DutyParseResult> {
           if (!minDateStr || s.date < minDateStr) minDateStr = s.date;
           if (!maxDateStr || s.date > maxDateStr) maxDateStr = s.date;
         }
-        // 岗位划分同步延续到推算出的未来夜班，避免出现有班次却没有做表/休息
+        // 岗位划分同步延续到推算出的未来班次（白班 / 夜班），避免出现有班次却没有做表/休息
         allRoles.push(...continueDutyRoles(allRoles, fullYearShifts));
       }
     } catch (err) {

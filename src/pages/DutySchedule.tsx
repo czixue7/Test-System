@@ -14,6 +14,7 @@ import { applyDutyRoleEdits, dutyLeaderLabel, dutyPostKind, normalizeRolePersonO
 import SwapPersonnelModal from './duty/SwapPersonnelModal';
 import { fetchDutyIndex, checkDutyStatus } from '../utils/dutyScheduleIndex';
 import { downloadPublishedDuty } from '../utils/publishedDuty';
+import { mergePublishedDuty } from '../utils/dutyAutoUpdate';
 import { assertSourceAvailable } from '../utils/dataSourceRequest';
 import { parseDutyExcelFile, parseJsonDutyText, isRestShiftText, DutyParseResult } from '../utils/dutyParsers';
 import { generateDutyForecast } from '../utils/dutyForecast';
@@ -130,7 +131,7 @@ const DutySchedule: React.FC = () => {
   const navigate = useNavigate();
   const safeArea = useSafeArea();
   const { showSuccess, showError, showInfo } = useToast();
-  const { duties, loadDuties, importDuty, importDutyWithSha, updateDuty, updateDutyWithSha, deleteDuty } = useDutyScheduleStore();
+  const { duties, loadDuties, importDuty, importDutyWithSha, updateDuty, applyRemoteDuty, deleteDuty } = useDutyScheduleStore();
   const isLoaded = useDutyScheduleStore((s) => s.isLoaded);
 
   // 直接以 localStorage 记忆的当前值班表 id 初始化（而非挂载后再异步 set），
@@ -666,14 +667,12 @@ const DutySchedule: React.FC = () => {
       const newDuty = { ...schedule, sourceType: duty.source };
       const localExist = duties.find(d => d.sourceFilename === duty.filename && d.sourceType === duty.source);
       if (localExist && duty.hasUpdate) {
-        // 已被本地编辑（长按改写/人员交换）的记录：整体覆盖会丢失本地改动，改为导入为新记录以保留编辑
-        if (localExist.locallyEdited) {
-          importDutyWithSha(newDuty, duty.sha, duty.filename);
-          showSuccess(`「${newDuty.name}」最新数据已作为新记录导入，含本地编辑的原记录已保留`);
-        } else {
-          updateDutyWithSha(localExist.id, newDuty, duty.sha);
-          showSuccess(`「${newDuty.name}」更新成功`);
-        }
+        // 自动覆盖班次，但保留用户自己改过的演练/岗位标注
+        applyRemoteDuty(localExist.id, mergePublishedDuty(localExist, newDuty), duty.sha, {
+          drills: newDuty.drills,
+          roles: newDuty.roles
+        });
+        showSuccess(`「${newDuty.name}」更新成功，本地标注已保留`);
       } else if (localExist) {
         // 已存在且无更新的记录：避免重复新建
         showInfo(`「${newDuty.name}」已是最新，无需重复下载`);
@@ -939,8 +938,11 @@ const DutySchedule: React.FC = () => {
                       };
                       if (role?.leader) addTag(role.leader, dutyLeaderLabel(role), 'leader');
                       for (const post of role?.posts || []) {
-                        // 标签类型由岗位表列决定：巡检区域 / 做表 / 休息
-                        addTag(post.person, postLabel(post.name), dutyPostKind(post.name));
+                        // 标签类型由岗位表列决定：巡检区域 / 做表 / 休息。
+                        // 白班不显示休息标签，但保留名单，只显示纯姓名。
+                        const kind = dutyPostKind(post.name);
+                        if (!isNight && kind === 'rest') { addTag(post.person, '当班', 'on'); continue; }
+                        addTag(post.person, postLabel(post.name), kind);
                       }
                       const sortedMembers = [...sec.members].sort((a, b) => Number((b.shift.originGroup || b.shift.group) === g) - Number((a.shift.originGroup || a.shift.group) === g));
                       for (const m of sortedMembers) {
@@ -953,9 +955,9 @@ const DutySchedule: React.FC = () => {
                         const isCross = m.origin === 'cross' || (!!m.shift.originGroup && m.shift.originGroup !== g);
                         // 人员交换调入:弹窗里展示「由几号转到某班」完整信息
                         const swapped = !!m.shift.originGroup && m.shift.originGroup !== g && !isRest;
-                        // 岗位表已给出休息标签时不再重复标注排班表里的「休」
+                        // 岗位表已给出休息标签时不再重复标注排班表里的「休」；白班不显示休息标签，只保留姓名
                         const hasRestTag = personMap.get(name)?.tags.some(tag => tag.kind === 'rest');
-                        if (isRest && !hasRestTag) addTag(name, '休息', 'rest');
+                        if (isRest && !hasRestTag) addTag(name, isNight ? '休息' : '当班', isNight ? 'rest' : 'on');
                         if (swapped) addTag(name, m.shift.originDate ? `由 ${m.shift.originDate} 转到 ${g} 班` : `由 ${originGroup} 转到 ${g} 班`, 'swap');
                         else if (isCross && originGroup) addTag(name, `${originGroup} 组来援`, 'cross');
                         if (!isRest && !swapped && !isCross) addTag(name, '当班', 'on');
@@ -1020,7 +1022,7 @@ const DutySchedule: React.FC = () => {
                                   : '';
                                 return (
                                   <span key={person.name} style={NO_BLUR} className={`duty-person-chip ${chipClass}`}>
-                                    <span className={primary.kind === 'rest' ? 'line-through' : ''}>{person.name}</span>
+                                    <span className={primary.kind === 'rest' && isNight ? 'line-through' : ''}>{person.name}</span>
                                     {primary.kind !== 'on' && <span className="duty-person-role">{primary.label}</span>}
                                     {extra > 0 && <span className="duty-person-chip-extra">+{extra}</span>}
                                   </span>

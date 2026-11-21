@@ -8,6 +8,7 @@ import { convertJsonToBank, validateJsonBank } from "./jsonImporter";
 import { hydrateSourceBank } from "./dataSourceAssets";
 import { getStoreValue, setStoreValue } from "./tauriStore";
 import { downloadPublishedDuty } from "./publishedDuty";
+import { mergePublishedDuty } from "./dutyAutoUpdate";
 
 /** Public catalog downloads never send local resources or a personal space ID. */
 export async function fetchPublicResources(
@@ -47,6 +48,7 @@ export async function fetchPublicResources(
     const before = old ? canonicalJson(old) : "";
     const url = resolveSourceResource(item.downloadUrl, config.url);
     let incoming: QuestionBank | DutySchedule;
+    let publishedDuty: DutySchedule | null = null;
     if (bank) {
       const { data: raw } = await request<string>(url, true);
       if (await contentHash(raw) !== item.sha) throw new Error("公共资源完整性校验失败，请重新获取");
@@ -57,9 +59,18 @@ export async function fetchPublicResources(
         (item as BankIndexItem).imagePath ? resolveSourceResource((item as BankIndexItem).imagePath!, config.url) : undefined);
       incoming = { ...convertJsonToBank(hydrated), images: (item as BankIndexItem).images };
     } else {
+      const previous = old as DutySchedule | undefined;
       const duty = await downloadPublishedDuty({ ...item, downloadUrl: url }, config.token);
+      publishedDuty = duty as DutySchedule;
       const now = new Date().toISOString();
-      incoming = { ...duty, id: crypto.randomUUID(), createdAt: now, updatedAt: now };
+      // 值班表更新直接覆盖班次，但保留用户自己改过的演练/岗位标注
+      incoming = {
+        ...duty,
+        ...(previous ? mergePublishedDuty(previous, duty) : {}),
+        id: crypto.randomUUID(),
+        createdAt: now,
+        updatedAt: now
+      };
     }
     if (!enabled()) return count;
     const edited = old && (!baselines[old.id] || await contentHash(before) !== baselines[old.id]);
@@ -70,8 +81,9 @@ export async function fetchPublicResources(
     if (canonicalJson(current ?? null) !== canonicalJson(old ?? null))
       throw new Error("获取期间本地内容发生编辑或删除，已保留本地内容，请重新获取");
     const resource = { ...incoming, id: old?.id ?? incoming.id, createdAt: old?.createdAt ?? incoming.createdAt,
-      sourceFilename: filename, sourceSha: item.sha, sourceType };
-    const copy = edited ? { ...old, id: crypto.randomUUID(), name: `${old.name}（本机副本）`,
+      sourceFilename: filename, sourceSha: item.sha, sourceType,
+      ...(publishedDuty ? { sourceDrills: publishedDuty.drills, sourceRoles: publishedDuty.roles } : {}) };
+    const copy = bank && edited ? { ...old, id: crypto.randomUUID(), name: `${old.name}（本机副本）`,
       sourceFilename: undefined, sourceSha: undefined, sourceType: undefined } : null;
     if (bank) {
       await useQuestionBankStore.getState().applySyncedBanks([...(copy ? [copy as QuestionBank] : []), resource as QuestionBank]);

@@ -260,6 +260,10 @@ export interface DutySchedule {
   sourceSha?: string;
   sourceFilename?: string;
   sourceType?: 'system' | 'user';
+  /** 上次发布版本的演练数据：用于自动更新时识别用户自己改过的标注 */
+  sourceDrills?: DutyDrill[];
+  /** 上次发布版本的岗位划分：用于自动更新时识别用户自己改过的标注 */
+  sourceRoles?: DutyRoleAssignment[];
   locallyEdited?: boolean;
 }
 

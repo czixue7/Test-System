@@ -20,7 +20,7 @@ const newRaw = JSON.stringify({name:'新题库',questions:[{type:'subjective',co
 const sha = (text:string) => crypto.createHash('sha256').update(text).digest('hex');
 const oldTime = '2026-10-18T00:00:00Z', newTime = '2026-10-19T00:00:00Z', mirrorTime = '2026-10-20T00:00:00Z';
 const base: BankIndexItem = {bankId:'shared-bank',name:'同一题库',filename:'demo.json',downloadUrl:'files/demo.json',sha:sha(oldRaw),updatedAt:oldTime,images:[]};
-const defaults = source.getState().sources;
+const defaults = source.getState().sources.filter((entry) => entry.id !== 'builtin-service');
 const service = {id:'service',name:'电脑',kind:'service' as const,url:'https://controlled.test',token:'test-only-token-1234',enabled:true};
 source.setState({sources:[...defaults,service]});
 const calls:string[] = [];

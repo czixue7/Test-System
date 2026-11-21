@@ -4,7 +4,7 @@
  * 自动循环生成未来/全年排班。
  */
 import { DutyRoleAssignment, DutyRolePost, DutyShift, DutyShiftType } from '../types';
-import { dutyPostKind, roleShiftCategory } from './dutyRoleEdits';
+import { dutyPostKind, roleShiftCategory, RoleShiftCategory } from './dutyRoleEdits';
 
 // 日期字符串 → 绝对天数（UTC，避免时区影响）
 function dateToDayNumber(dateStr: string): number {
@@ -128,29 +128,48 @@ export interface ForecastResult {
   groups: string[];   // 参与推算的班组
 }
 
+// 巡检 / 轮休的延续状态：白班与夜班各自独立一条轮换序列，互不衔接。
+interface PatrolSignature {
+  patrol: Array<{ name: string; person: string }>;
+  rest: string[];
+}
+
+interface RolePatrolModel {
+  // rotate 模式：每班都填满全部分区，整体左移一位（夜班）
+  names: string[];      // 巡检列顺序
+  last: string[];       // 该类别最后一个有巡检数据的班次，各巡检列的人员
+  restSets: string[][]; // 观察到的两组轮休名单
+  restLast: string[];   // 该类别最后一个有巡检数据的班次的轮休人员
+  // cycle 模式：每班只由一组负责其中几个分区，按组循环（白班）
+  cycle?: PatrolSignature[];
+  cycleIndex?: number;
+}
+
 // 岗位划分的延续模型：全部从已有岗位表反推，不写死人员姓名。
 interface RoleModel {
   group: string;
   leader?: string;
   leaderLabel?: string;
-  patrolNames: string[];   // 巡检列顺序
-  patrolLast: string[];    // 最后一个班次各巡检列的人员
-  reportCycle: string[];   // 做表人员轮换顺序
+  patrolByCategory: Map<RoleShiftCategory, RolePatrolModel>;
+  personOrder: string[];   // 人员行展示顺序
+  reportCycle: string[];   // 做表人员轮换顺序（白班 + 夜班按日期连续）
   reportLast: string;      // 最后一个班次的做表人员
-  restSets: string[][];    // 观察到的两组轮休名单
-  restLast: string[];      // 最后一个班次的轮休人员
 }
 
 const postText = (name: string) => (name || '').replace(/^副岗位\s*/, '').trim();
 const setKey = (people: string[]) => [...people].sort().join('|');
 const byDate = (a: DutyRoleAssignment, b: DutyRoleAssignment) => a.date.localeCompare(b.date);
+const isPatrolPost = (post: DutyRolePost) => dutyPostKind(post.name) === 'patrol';
+const reportOf = (role: DutyRoleAssignment) =>
+  role.posts.find((post) => dutyPostKind(post.name) === 'report')?.person || '';
 
-// 从已有岗位划分里提取每个班组（白/夜分开）的轮换规律
+// 从已有岗位划分里提取每个班组的轮换规律：
+// 做表按「白班 + 夜班」的日期顺序连续轮换（每上一个班换一人）；
+// 巡检 / 轮休按白班、夜班各自独立的序列延续，不跨班次混合。
 function buildRoleModels(roles: DutyRoleAssignment[]): RoleModel[] {
   const byGroup = new Map<string, DutyRoleAssignment[]>();
   for (const role of roles) {
-    const key = `${role.group}|${roleShiftCategory(role.shiftType)}`;
-    byGroup.set(key, [...(byGroup.get(key) || []), role]);
+    byGroup.set(role.group, [...(byGroup.get(role.group) || []), role]);
   }
 
   const models: RoleModel[] = [];
@@ -158,96 +177,183 @@ function buildRoleModels(roles: DutyRoleAssignment[]): RoleModel[] {
     const sorted = [...list].sort(byDate);
     const last = sorted[sorted.length - 1];
 
-    const patrolPosts = last.posts.filter((p) => dutyPostKind(p.name) === 'patrol');
     const reportCycle: string[] = [];
     for (const role of sorted) {
-      for (const post of role.posts) {
-        if (dutyPostKind(post.name) !== 'report' || !post.person) continue;
-        if (!reportCycle.includes(post.person)) reportCycle.push(post.person);
+      const person = reportOf(role);
+      if (person && !reportCycle.includes(person)) reportCycle.push(person);
+    }
+    if (reportCycle.length === 0) continue;
+
+    const patrolByCategory = new Map<RoleShiftCategory, RolePatrolModel>();
+    for (const category of ['white', 'night'] as RoleShiftCategory[]) {
+      const categoryRows = sorted.filter((role) => roleShiftCategory(role.shiftType) === category);
+      const source = [...categoryRows].reverse().find((role) => role.posts.some(isPatrolPost));
+      if (!source) continue;
+
+      const patrolOf = (role: DutyRoleAssignment) => role.posts.filter(isPatrolPost);
+      const zoneNames = new Set<string>();
+      for (const role of categoryRows) patrolOf(role).forEach((post) => zoneNames.add(postText(post.name)));
+
+      // 同一班内有人负责多个分区（白班两人分摊全部区域）→ 按组轮换，记录观察到的一组编排循环使用；
+      // 每个分区各一人、逐班整体左移 → rotate 模式（夜班）。
+      const patrolPersons = new Set(patrolOf(source).map((post) => post.person));
+      if (zoneNames.size > patrolOf(source).length || patrolPersons.size < patrolOf(source).length) {
+        const cycle: PatrolSignature[] = [];
+        const cycleKeys: string[] = [];
+        const signatureOf = (role: DutyRoleAssignment): PatrolSignature => ({
+          patrol: patrolOf(role).map((post) => ({ name: postText(post.name), person: post.person })),
+          rest: role.posts.filter((p) => dutyPostKind(p.name) === 'rest').map((p) => p.person),
+        });
+        const signatureKey = (sig: PatrolSignature) =>
+          `${sig.patrol.map((p) => `${p.name}=${p.person}`).join('|')}#${setKey(sig.rest)}`;
+
+        for (const role of categoryRows) {
+          if (!patrolOf(role).length) continue;
+          const sig = signatureOf(role);
+          const key = signatureKey(sig);
+          if (!cycleKeys.includes(key)) {
+            cycleKeys.push(key);
+            cycle.push(sig);
+          }
+        }
+        const lastSig = signatureOf(source);
+        patrolByCategory.set(category, {
+          names: [],
+          last: [],
+          restSets: [],
+          restLast: [],
+          cycle,
+          cycleIndex: Math.max(0, cycleKeys.indexOf(signatureKey(lastSig))),
+        });
+        continue;
+      }
+
+      // 轮休名单只有两组，从该类别最近几行里取，避免把历史临时调整当成规律
+      const restSets: string[][] = [];
+      for (let i = categoryRows.indexOf(source); i >= 0; i--) {
+        const rest = categoryRows[i].posts.filter((p) => dutyPostKind(p.name) === 'rest').map((p) => p.person);
+        if (rest.length && !restSets.some((s) => setKey(s) === setKey(rest))) restSets.push(rest);
+        if (restSets.length === 2) break;
+      }
+
+      const patrolPosts = patrolOf(source);
+      patrolByCategory.set(category, {
+        names: patrolPosts.map((p) => postText(p.name)),
+        last: patrolPosts.map((p) => p.person),
+        restSets,
+        restLast: source.posts.filter((p) => dutyPostKind(p.name) === 'rest').map((p) => p.person),
+      });
+    }
+
+    // 人员行顺序取最近一条有巡检数据的班次，轮换只改变人身上的标签
+    const orderSource = [...sorted].reverse().find((role) => role.posts.some(isPatrolPost));
+    const personOrder: string[] = [];
+    if (orderSource) {
+      const ordered = [...orderSource.posts.filter(isPatrolPost), ...orderSource.posts.filter((p) => !isPatrolPost(p))];
+      for (const post of ordered) {
+        if (post.person && !personOrder.includes(post.person)) personOrder.push(post.person);
       }
     }
 
-    // 轮休名单只有两组，从最近几行里取，避免把历史临时调整当成规律
-    const restSets: string[][] = [];
-    for (const role of [...sorted].reverse()) {
-      const rest = role.posts.filter((p) => dutyPostKind(p.name) === 'rest').map((p) => p.person);
-      if (rest.length && !restSets.some((s) => setKey(s) === setKey(rest))) restSets.push(rest);
-      if (restSets.length === 2) break;
-    }
-
-    if (!patrolPosts.length || reportCycle.length === 0) continue;
     models.push({
       group: last.group,
       leader: last.leader,
       leaderLabel: last.leaderLabel,
-      patrolNames: patrolPosts.map((p) => postText(p.name)),
-      patrolLast: patrolPosts.map((p) => p.person),
+      patrolByCategory,
+      personOrder,
       reportCycle,
-      reportLast: last.posts.find((p) => dutyPostKind(p.name) === 'report')?.person || '',
-      restSets,
-      restLast: last.posts.filter((p) => dutyPostKind(p.name) === 'rest').map((p) => p.person),
+      reportLast: reportOf(last),
     });
   }
   return models;
 }
 
-// 按规律为未来的夜班生成岗位划分：做表顺延一人、轮休换到另一组、巡检区域整体左移一位。
-// 输出的岗位始终按「最后一个班次的人员顺序」排列：轮换的是巡检区域标签，
-// 人员行位置保持固定，避免名单在表格里逐日跳动。
+// 按规律为未来的当班班次生成岗位划分：
+// 做表每上一个班（白班 / 夜班）顺延一人；巡检区域整体左移一位、轮休换到另一组，
+// 白班与夜班各自延续自己的序列。输出的岗位始终按固定人员顺序排列：
+// 轮换的是巡检区域标签，人员行位置保持固定，避免名单在表格里逐日跳动。
 function forecastRoles(models: RoleModel[], forecastShifts: DutyShift[]): DutyRoleAssignment[] {
-  const nights = new Map<string, string[]>();
+  // 按班组收集当班日期：白班与夜班一起进入同一个做表轮换
+  const shiftsByGroup = new Map<string, Map<string, DutyShiftType>>();
   for (const shift of forecastShifts) {
-    if (shift.shiftType !== 'night' || !shift.group) continue;
-    const list = nights.get(shift.group) || [];
-    if (!list.includes(shift.date)) list.push(shift.date);
-    nights.set(shift.group, list);
+    if (!shift.group || shiftToType(shift) === '休') continue;
+    const dayMap = shiftsByGroup.get(shift.group) || new Map<string, DutyShiftType>();
+    if (!dayMap.has(shift.date)) dayMap.set(shift.date, shift.shiftType);
+    shiftsByGroup.set(shift.group, dayMap);
   }
 
   const out: DutyRoleAssignment[] = [];
   for (const model of models) {
-    const dates = (nights.get(model.group) || []).sort();
-    if (!dates.length) continue;
+    const dayMap = shiftsByGroup.get(model.group);
+    if (!dayMap) continue;
+    const dates = [...dayMap.keys()].sort();
 
-    let patrol = [...model.patrolLast];
-    let rest = [...model.restLast];
+    // 每个班次类别各持一份巡检 / 轮休状态，从该类别最后一条已填班次继续
+    const rotateState = new Map<RoleShiftCategory, { patrol: string[]; rest: string[] }>();
+    const cycleState = new Map<RoleShiftCategory, number>();
+    for (const [category, patrolModel] of model.patrolByCategory) {
+      if (patrolModel.cycle && patrolModel.cycle.length > 0) {
+        cycleState.set(category, patrolModel.cycleIndex ?? 0);
+      } else {
+        rotateState.set(category, { patrol: [...patrolModel.last], rest: [...patrolModel.restLast] });
+      }
+    }
+
     let reportIndex = model.reportCycle.indexOf(model.reportLast);
     const personOrder = new Map<string, number>();
-    model.patrolLast.forEach((person, index) => {
+    model.personOrder.forEach((person, index) => {
       if (person && !personOrder.has(person)) personOrder.set(person, index);
     });
 
     for (const date of dates) {
+      const shiftType = dayMap.get(date)!;
       reportIndex = (reportIndex + 1) % model.reportCycle.length;
       const report = model.reportCycle[reportIndex];
 
-      if (model.restSets.length > 1) {
-        const other = model.restSets.find((s) => setKey(s) !== setKey(rest));
-        if (other) rest = [...other];
+      const posts: DutyRolePost[] = [{ name: '做表', person: report, kind: 'report' as const }];
+      const category = roleShiftCategory(shiftType);
+      const patrolModel = model.patrolByCategory.get(category);
+      const cycle = patrolModel?.cycle;
+      if (patrolModel && cycle && cycle.length > 0) {
+        // 白班：按组循环，每班只用一组负责各自的几个分区
+        const next = ((cycleState.get(category) ?? 0) + 1) % cycle.length;
+        cycleState.set(category, next);
+        const sig = cycle[next];
+        posts.push(
+          ...sig.patrol.map((p) => ({ name: p.name, person: p.person, kind: 'patrol' as const })),
+          ...sig.rest.map((person) => ({ name: '休息', person, kind: 'rest' as const })),
+        );
+      } else {
+        const state = rotateState.get(category);
+        if (state && patrolModel) {
+          if (patrolModel.restSets.length > 1) {
+            const other = patrolModel.restSets.find((s) => setKey(s) !== setKey(state.rest));
+            if (other) state.rest = [...other];
+          }
+          state.patrol = [...state.patrol.slice(1), state.patrol[0]];
+          posts.push(
+            ...patrolModel.names.map((name, i) => ({ name, person: state.patrol[i] || '', kind: 'patrol' as const })),
+            ...state.rest.map((person) => ({ name: '休息', person, kind: 'rest' as const })),
+          );
+        }
       }
-      patrol = [...patrol.slice(1), patrol[0]];
-
-      const posts: DutyRolePost[] = [
-        ...model.patrolNames.map((name, i) => ({ name, person: patrol[i] || '', kind: 'patrol' as const })),
-        { name: '做表', person: report, kind: 'report' as const },
-        ...rest.map((person) => ({ name: '休息', person, kind: 'rest' as const })),
-      ].filter((post) => post.person).sort((a, b) =>
-        (personOrder.get(a.person) ?? Number.MAX_SAFE_INTEGER) - (personOrder.get(b.person) ?? Number.MAX_SAFE_INTEGER));
 
       out.push({
         date,
         group: model.group,
-        shiftType: 'night',
+        shiftType,
         leader: model.leader,
         leaderLabel: model.leaderLabel,
-        posts,
+        posts: posts.filter((post) => post.person).sort((a, b) =>
+          (personOrder.get(a.person) ?? Number.MAX_SAFE_INTEGER) - (personOrder.get(b.person) ?? Number.MAX_SAFE_INTEGER)),
       });
     }
   }
-  return out;
+  return out.sort(byDate);
 }
 
 /**
- * 按已有岗位划分的规律，为「最后一个岗位划分日期之后」的夜班生成岗位划分。
+ * 按已有岗位划分的规律，为「最后一个岗位划分日期之后」的当班班次（白班与夜班）生成岗位划分。
  * 导入 Excel 补全全年班次时使用，避免出现有班次却没有做表/休息的情况。
  */
 export function continueDutyRoles(roles: DutyRoleAssignment[], futureShifts: DutyShift[]): DutyRoleAssignment[] {
