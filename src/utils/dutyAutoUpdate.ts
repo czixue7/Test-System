@@ -1,7 +1,8 @@
 import type { DutyDrill, DutyRoleAssignment, DutySchedule } from '../types';
 import { useDutyScheduleStore } from '../store/dutyScheduleStore';
+import { useDataSourceStore } from '../store/dataSourceStore';
 import { useToastStore } from '../components/Toast';
-import { fetchDutyIndex, findDutyInIndex } from './dutyScheduleIndex';
+import { fetchDutyIndex, findPublishedDuty } from './dutyScheduleIndex';
 import { downloadPublishedDuty } from './publishedDuty';
 
 type PublishedDuty = Omit<DutySchedule, 'id' | 'createdAt' | 'updatedAt'>;
@@ -79,23 +80,64 @@ export interface DutyAutoUpdateResult {
   failed: number;
 }
 
+export interface DutyAutoUpdateOptions {
+  /** 只查询电脑服务来源，用于前台定时轮询 */
+  quick?: boolean;
+}
+
 let running: Promise<DutyAutoUpdateResult> | null = null;
 
 /** 自动检查已下载值班表的发布版本，有更新时直接覆盖班次并保留用户标注。 */
-export function autoUpdateDuties(): Promise<DutyAutoUpdateResult> {
-  if (!running) running = run();
+export function autoUpdateDuties(
+  options: DutyAutoUpdateOptions = {}
+): Promise<DutyAutoUpdateResult> {
+  if (!running) {
+    running = run(options).finally(() => {
+      running = null;
+    });
+  }
   return running;
 }
 
-async function run(): Promise<DutyAutoUpdateResult> {
-  const candidates = useDutyScheduleStore
+function hasServiceSource(): boolean {
+  return useDataSourceStore
     .getState()
-    .duties.filter((d) => d.sourceSha && d.sourceFilename && d.sourceType);
+    .sources.some((source) => source.enabled && source.kind === 'service');
+}
+
+/**
+ * 应用在前台时定时检查服务来源的值班表，切回前台立即检查一次。
+ * 没有启用的电脑服务来源时不做轮询，避免反复请求 GitHub/Gitee。
+ */
+export function startDutyLiveSync(intervalMs = 60000): () => void {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return () => {};
+  if (!hasServiceSource()) return () => {};
+  let stopped = false;
+  const tick = () => {
+    if (stopped || document.visibilityState !== 'visible') return;
+    void autoUpdateDuties({ quick: true });
+  };
+  const onVisible = () => {
+    if (document.visibilityState === 'visible') tick();
+  };
+  const timer = window.setInterval(tick, intervalMs);
+  document.addEventListener('visibilitychange', onVisible);
+  window.addEventListener('focus', onVisible);
+  return () => {
+    stopped = true;
+    window.clearInterval(timer);
+    document.removeEventListener('visibilitychange', onVisible);
+    window.removeEventListener('focus', onVisible);
+  };
+}
+
+async function run(options: DutyAutoUpdateOptions): Promise<DutyAutoUpdateResult> {
+  const candidates = useDutyScheduleStore.getState().duties;
   if (!candidates.length) return { updated: 0, failed: 0 };
 
   let index;
   try {
-    index = await fetchDutyIndex();
+    index = await fetchDutyIndex(options.quick ? { serviceOnly: true } : undefined);
   } catch (error) {
     console.warn('[DutyAutoUpdate] 获取值班表索引失败:', error);
     return { updated: 0, failed: 0 };
@@ -106,18 +148,26 @@ async function run(): Promise<DutyAutoUpdateResult> {
   let failed = 0;
 
   for (const duty of candidates) {
-    const item = findDutyInIndex(index, duty.sourceFilename!, duty.sourceType!);
-    if (!item || !duty.sourceSha) continue;
-    // SHA 算法不同无法比较，按无更新处理
-    if (duty.sourceSha.length !== item.sha.length || duty.sourceSha === item.sha) continue;
+    const match = findPublishedDuty(index, duty);
+    if (!match) continue;
+    const { item, source } = match;
+    // 已有来源标记且 SHA 一致时无需下载；旧数据没有来源标记时下载一次完成认领。
+    if (
+      duty.sourceSha &&
+      duty.sourceSha.length === item.sha.length &&
+      duty.sourceSha === item.sha
+    )
+      continue;
 
     try {
       const published = await downloadPublishedDuty(item);
       const merged = mergePublishedDuty(duty, published);
-      useDutyScheduleStore.getState().applyRemoteDuty(duty.id, merged, item.sha, {
-        drills: published.drills,
-        roles: published.roles
-      });
+      useDutyScheduleStore.getState().applyRemoteDuty(
+        duty.id,
+        { ...merged, sourceFilename: item.filename, sourceType: source },
+        item.sha,
+        { drills: published.drills, roles: published.roles }
+      );
       updatedNames.push(duty.name);
     } catch (error) {
       failed++;

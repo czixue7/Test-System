@@ -15,6 +15,31 @@ import type {
   DutyIndexItem,
 } from "../types";
 type IndexItem = BankIndexItem | DutyIndexItem;
+export interface IndexFetchOptions {
+  /** 只查询电脑服务来源，供值班表轻量轮询使用 */
+  serviceOnly?: boolean;
+  /** 单个仓库来源的最长等待，避免 GitHub 等慢源拖住整体 */
+  repoTimeoutMs?: number;
+}
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label}请求超时`)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
 type RepoFile = {
   name: string;
   path: string;
@@ -135,14 +160,19 @@ async function fromRepository(
 }
 export async function fetchConfiguredIndex(
   resource: "bank",
+  options?: IndexFetchOptions,
 ): Promise<BankIndex>;
 export async function fetchConfiguredIndex(
   resource: "duty",
+  options?: IndexFetchOptions,
 ): Promise<DutyIndex>;
 export async function fetchConfiguredIndex(
   resource: "bank" | "duty",
+  options: IndexFetchOptions = {},
 ): Promise<BankIndex | DutyIndex> {
-  const sources = enabledSources(),
+  const sources = enabledSources().filter(
+      (source) => !options.serviceOnly || source.kind === "service",
+    ),
     fingerprint = sourcesFingerprint();
   if (!sources.length)
     throw new Error("没有启用的数据来源，请在设置中添加或启用条目");
@@ -160,7 +190,11 @@ export async function fetchConfiguredIndex(
                 { base: source.url, token: source.token },
               )
             ).data
-          : await fromRepository(source, resource),
+          : await withTimeout(
+              fromRepository(source, resource),
+              options.repoTimeoutMs ?? 8000,
+              source.name,
+            ),
     })),
   );
   if (fingerprint !== sourcesFingerprint())

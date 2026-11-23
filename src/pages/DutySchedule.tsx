@@ -665,10 +665,17 @@ const DutySchedule: React.FC = () => {
       const schedule = await downloadPublishedDuty(duty);
       assertSourceAvailable(duty.sourceId, duty.downloadUrl);
       const newDuty = { ...schedule, sourceType: duty.source };
-      const localExist = duties.find(d => d.sourceFilename === duty.filename && d.sourceType === duty.source);
-      if (localExist && duty.hasUpdate) {
+      const localExist = duties.find(d =>
+        (d.sourceFilename === duty.filename && d.sourceType === duty.source)
+        || (!d.sourceFilename && d.name === duty.name)
+      );
+      if (localExist && (duty.hasUpdate || !localExist.sourceSha)) {
         // 自动覆盖班次，但保留用户自己改过的演练/岗位标注
-        applyRemoteDuty(localExist.id, mergePublishedDuty(localExist, newDuty), duty.sha, {
+        applyRemoteDuty(localExist.id, {
+          ...mergePublishedDuty(localExist, newDuty),
+          sourceFilename: duty.filename,
+          sourceType: duty.source
+        }, duty.sha, {
           drills: newDuty.drills,
           roles: newDuty.roles
         });

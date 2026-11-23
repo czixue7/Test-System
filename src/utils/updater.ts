@@ -80,7 +80,7 @@ export const CURRENT_VERSION = '0.4.5';
  * 当前版本哈希（每次构建时更新）
  * 用于区分同一版本的不同构建
  */
-export const CURRENT_VERSION_HASH = '20261121A'; // 北京时间 YYYYMMDD，可在同日追加 A-Z（如 20261121A，A 最小、Z 最大）用于更小范围更新
+export const CURRENT_VERSION_HASH = '20261123'; // 北京时间 YYYYMMDD，可在同日追加 A-Z（如 20261123A，A 最小、Z 最大）用于更小范围更新
 
 /**
  * 检查当前系统架构

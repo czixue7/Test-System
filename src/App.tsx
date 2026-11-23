@@ -10,7 +10,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import UpdateDialog from './components/UpdateDialog';
 import { useUpdaterStore } from './store/updaterStore';
 import { useSettingsStore } from './store/settingsStore';
-import { autoUpdateDuties } from './utils/dutyAutoUpdate';
+import { autoUpdateDuties, startDutyLiveSync } from './utils/dutyAutoUpdate';
 
 const Home = lazy(() => import('./pages/Home'));
 const Profile = lazy(() => import('./pages/Profile'));
@@ -92,14 +92,18 @@ const App: React.FC = () => {
     return () => clearTimeout(timer);
   }, [initializing, checkForUpdate]);
 
-  // 值班表数据加载完成后自动检查发布源，有更新则覆盖班次并保留本地标注
+  // 值班表加载完成后自动检查发布源；应用在前台时每分钟检查一次服务来源，切回前台立即检查
   const dutiesLoaded = useDutyScheduleStore((state) => state.isLoaded);
   useEffect(() => {
     if (!dutiesLoaded) return;
     const timer = setTimeout(() => {
       void autoUpdateDuties();
     }, 1200);
-    return () => clearTimeout(timer);
+    const stopLiveSync = startDutyLiveSync();
+    return () => {
+      clearTimeout(timer);
+      stopLiveSync();
+    };
   }, [dutiesLoaded]);
 
   useEffect(() => {

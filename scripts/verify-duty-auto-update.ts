@@ -72,4 +72,29 @@ const legacyMerged = mergePublishedDuty({ ...base, sourceDrills: undefined, sour
 assert.equal(legacyMerged.drills?.filter(item => item.date === '2026-11-01')[0].name, '旧演练A');
 assert.equal(legacyMerged.drills?.filter(item => item.date === '2026-11-04')[0].name, '远端新增演练D');
 
+// 旧数据没有来源标记时，按名称唯一匹配发布版本完成认领
+const { findPublishedDuty } = await import('../src/utils/dutyScheduleIndex');
+const index = {
+  version: '1', generatedAt: '',
+  systemDuties: [],
+  userDuties: [{
+    name: '排班表', filename: 'service:abc:排班表.xlsx', sha: 'a'.repeat(64),
+    size: 1, updatedAt: 1, downloadUrl: '', sourceId: 'svc',
+  }],
+} as any;
+const adopted = findPublishedDuty(index, { name: '排班表' } as any);
+assert.equal(adopted?.item.filename, 'service:abc:排班表.xlsx', '无来源标记的旧表应按唯一名称认领');
+assert.equal(adopted?.source, 'user');
+const ambiguous = {
+  ...index,
+  userDuties: [...index.userDuties, { ...index.userDuties[0], filename: 'service:xyz:排班表.xlsx' }],
+};
+assert.equal(findPublishedDuty(ambiguous, { name: '排班表' } as any), null, '同名发布版本不唯一时不应认领');
+assert.equal(
+  findPublishedDuty(ambiguous, { name: '排班表', sourceFilename: 'service:xyz:排班表.xlsx', sourceType: 'user' } as any)?.item.filename,
+  'service:xyz:排班表.xlsx',
+  '已有来源标记时按文件名精确匹配',
+);
+
 console.log('✓ 值班表自动更新：覆盖班次、保留用户改过/删除的标注、未改条目跟随发布版本');
+console.log('✓ 旧值班表认领：名称唯一时匹配发布版本，同名多条不误替换，已有来源标记按文件名匹配');
