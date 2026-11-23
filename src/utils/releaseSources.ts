@@ -34,9 +34,8 @@ export function compareBuildNumbers(
   return a > b ? 1 : a < b ? -1 : 0;
 }
 /**
- * 构建号 = 北京时间日期 + 可选字母后缀（A 最小、Z 最大）。
- * 无字母视为小于 A，例如 20261121 < 20261121A < 20261121Z < 20261122。
- * 兼容旧六位日期与任意纯数字构建号。
+ * 构建号 = 北京时间日期 + 字母后缀，同日首次构建为 A，之后 B-Z 递增。
+ * 兼容无字母的旧构建号（视为小于 A），例如 20261121 < 20261121A < 20261121Z < 20261122。
  */
 function buildKey(value: string): { base: bigint; letter: number } | null {
   const match = /^(\d+)([A-Za-z])?$/.exec(value.trim());
