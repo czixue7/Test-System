@@ -9,6 +9,7 @@ import { hydrateSourceBank } from "./dataSourceAssets";
 import { getStoreValue, setStoreValue } from "./tauriStore";
 import { downloadPublishedDuty } from "./publishedDuty";
 import { mergePublishedDuty } from "./dutyAutoUpdate";
+import { preserveSharedAnnotations } from "./sharedDutyAnnotations";
 
 /** Public catalog downloads never send local resources or a personal space ID. */
 export async function fetchPublicResources(
@@ -63,10 +64,12 @@ export async function fetchPublicResources(
       const duty = await downloadPublishedDuty({ ...item, downloadUrl: url }, config.token);
       publishedDuty = duty as DutySchedule;
       const now = new Date().toISOString();
+      const shared = previous && preserveSharedAnnotations(previous, filename);
       // 值班表更新直接覆盖班次，但保留用户自己改过的演练/岗位标注
       incoming = {
         ...duty,
-        ...(previous ? mergePublishedDuty(previous, duty) : {}),
+        ...(previous ? mergePublishedDuty({ ...previous, sharedAnnotations: shared }, duty) : {}),
+        sharedAnnotations: shared,
         id: crypto.randomUUID(),
         createdAt: now,
         updatedAt: now

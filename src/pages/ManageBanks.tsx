@@ -1,7 +1,7 @@
 import Collapse from '../components/Collapse';
+import { useBackNavigation } from '../hooks/useBackNavigation';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Modal from '../components/Modal';
-import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuestionBankStore } from '../store/questionBankStore';
 import { isBuiltInBank } from '../utils/builtInBanks';
 import { useToast } from '../hooks/useToast';
@@ -15,8 +15,6 @@ import { useKnowledgeStore } from '../store/knowledgeStore';
 import { getOrCreateSummary, downloadSummary, SummaryType } from '../utils/knowledgeSummary';
 
 const ManageBanks: React.FC = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
   const { banks, deleteBank, updateBankWithSha, loadBanks } = useQuestionBankStore();
   const { items: knowledgeItems } = useKnowledgeStore();
   const { showSuccess, showWarning, showInfo, showError } = useToast();
@@ -102,13 +100,7 @@ const ManageBanks: React.FC = () => {
     void loadBanks();
   }, [loadBanks]);
 
-  const handleGoBack = () => {
-    if (window.history.length > 1 && location.key !== 'default') {
-      navigate(-1);
-    } else {
-      navigate('/profile');
-    }
-  };
+  const handleGoBack = useBackNavigation('/profile');
 
   const toggleSection = (section: 'user' | 'builtIn') => {
     setExpandedSections(prev => ({

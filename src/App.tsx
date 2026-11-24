@@ -11,6 +11,7 @@ import UpdateDialog from './components/UpdateDialog';
 import { useUpdaterStore } from './store/updaterStore';
 import { useSettingsStore } from './store/settingsStore';
 import { autoUpdateDuties, startDutyLiveSync } from './utils/dutyAutoUpdate';
+import { startSharedDutySync } from './utils/sharedDutySync';
 
 const Home = lazy(() => import('./pages/Home'));
 const Profile = lazy(() => import('./pages/Profile'));
@@ -27,16 +28,23 @@ const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase'));
 const KnowledgeItemView = lazy(() => import('./pages/KnowledgeItemView'));
 const PreDrill = lazy(() => import('./pages/PreDrill'));
 
-// 开屏默认主页：只在应用启动、且地址为根路径时替换一次。
+// 开屏默认主页：只在应用启动、且地址为根路径时跳转一次。
 // 之后的页面跳转（例如点击底部「首页」）仍按用户操作执行，不会被反复重定向。
+// 这里必须用 pushState：replaceState 不会新增历史条目，WebView 的 canGoBack 仍为 false，
+// 安卓系统返回键会直接退出应用；pushState 后历史为 [首页, 默认主页]，
+// 系统返回键先回到首页（上一级），再按才会退出。
 let defaultLandingApplied = false;
 const applyDefaultLanding = () => {
   if (defaultLandingApplied) return;
   defaultLandingApplied = true;
   if (window.location.pathname !== '/') return;
   const page = useSettingsStore.getState().defaultHome;
-  if (page === 'duty') window.history.replaceState(null, '', '/duty');
-  else if (page === 'knowledge') window.history.replaceState(null, '', '/placeholder');
+  const target = page === 'duty' ? '/duty' : page === 'knowledge' ? '/placeholder' : undefined;
+  if (!target) return;
+  const initial = window.history.state;
+  const index = initial?.idx ?? 0;
+  if (initial?.idx == null) window.history.replaceState({ ...initial, idx: index }, '');
+  window.history.pushState({ idx: index + 1, key: 'default-landing', usr: null }, '', target);
 };
 
 const App: React.FC = () => {
@@ -100,9 +108,11 @@ const App: React.FC = () => {
       void autoUpdateDuties();
     }, 1200);
     const stopLiveSync = startDutyLiveSync();
+    const stopSharedSync = startSharedDutySync();
     return () => {
       clearTimeout(timer);
       stopLiveSync();
+      stopSharedSync();
     };
   }, [dutiesLoaded]);
 

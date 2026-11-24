@@ -81,6 +81,9 @@ pub struct Shared {
     pub metrics: Mutex<Metrics>,
     pub(crate) sync_lock: tokio::sync::Mutex<()>,
     slots: Semaphore,
+    duty_watch_slots: Semaphore,
+    duty_lock: tokio::sync::Mutex<()>,
+    duty_changes: tokio::sync::watch::Sender<u64>,
 }
 pub struct Running {
     pub shared: Arc<Shared>,
@@ -150,6 +153,9 @@ pub async fn start(config: Config, dir: PathBuf) -> Result<Running, String> {
         metrics: Mutex::new(metrics),
         sync_lock: tokio::sync::Mutex::new(()),
         slots: Semaphore::new(32),
+        duty_watch_slots: Semaphore::new(128),
+        duty_lock: tokio::sync::Mutex::new(()),
+        duty_changes: tokio::sync::watch::channel(0).0,
     });
     let router = Router::new().fallback(handle).with_state(shared.clone());
     let (stop, rx) = oneshot::channel();
@@ -328,7 +334,8 @@ async fn handle(
         .and_then(|v| v.to_str().ok())
         .map(|v| v.strip_prefix("Bearer ") == Some(state.config.access_token.as_str()))
         .unwrap_or(false);
-    let permit = state.slots.try_acquire();
+    let watch = method == "GET" && path.starts_with("/api/v1/duty-shared/watch/");
+    let permit = if watch { state.duty_watch_slots.try_acquire() } else { state.slots.try_acquire() };
     let mut download = 0;
     let res = if method == "OPTIONS" {
         response(204, Value::Null)
@@ -345,7 +352,9 @@ async fn handle(
         {
             Ok(Ok(body)) => {
                 download = body.len() as u64;
-                detail.request_body = request_log::preview(&body, &content_type, secret);
+                if !path.starts_with("/api/v1/duty-shared/") {
+                    detail.request_body = request_log::preview(&body, &content_type, secret);
+                }
                 match route(&state, &method, &path, &body).await {
                     Ok(r) => r,
                     Err((code, e)) => response(code, json!({"error":e})),
@@ -355,11 +364,15 @@ async fn handle(
             Err(_) => response(408, json!({"error":"读取请求超时"})),
         }
     };
+    if watch && res.status().as_u16() == 204 {
+        return res;
+    }
     use axum::body::HttpBody;
     let upload = res.body().size_hint().exact().or_else(|| res.headers().get("content-length").and_then(|v|v.to_str().ok()?.parse().ok())).unwrap_or(0);
     detail.duration_ms = started.elapsed().as_millis() as u64;
     detail.response_headers = request_log::headers(res.headers(), secret);
-    detail.response_body = res.extensions().get::<BodyPreview>().cloned().unwrap_or(BodyPreview {
+    detail.response_body = (!path.starts_with("/api/v1/duty-shared/")).then(|| res.extensions().get::<BodyPreview>())
+        .flatten().cloned().unwrap_or(BodyPreview {
         kind: "binary".into(), text: "流式文件，内容不展开".into(), truncated: false,
     });
     detail.response_body.text = request_log::redact_text(&detail.response_body.text, secret);
@@ -377,7 +390,59 @@ async fn handle(
     res
 }
 type ApiResult = Result<Response<Body>, (u16, String)>;
+async fn shared_duty(state: &Arc<Shared>, method: &str, rest: &str, body: &[u8]) -> ApiResult {
+    let (since, resource) = if let Some(watch) = rest.strip_prefix("watch/") {
+        let (version, resource) = watch.split_once('/').ok_or((400, "订阅路径无效".into()))?;
+        let version = version.parse::<u64>().map_err(|_| (400, "共享版本无效".into()))?;
+        (Some(version), resource)
+    } else {
+        (None, rest.strip_prefix("sheet/").ok_or((404, "找不到共享排班接口".into()))?)
+    };
+    if method != "GET" && (method != "PUT" || since.is_some()) {
+        return Err((405, "共享标注仅支持 GET / PUT".into()));
+    }
+    let (id, relative) = resource.split_once('/').ok_or((404, "找不到发布排班表".into()))?;
+    let mount = state.config.mounts.iter().find(|m| m.enabled && m.kind == "duty" && m.id == id)
+        .ok_or((404, "找不到发布排班表".into()))?;
+    let root = fs::canonicalize(&mount.path).map_err(|_| (404, "找不到发布排班表".into()))?;
+    let file = safe_file(&mount.path, relative).map_err(|_| (404, "找不到发布排班表".into()))?;
+    if !file.is_file() || !(is_duty_excel(&file) || ext(&file) == "json") {
+        return Err((404, "找不到发布排班表".into()));
+    }
+    let relative = file.strip_prefix(root).map_err(|_| (404, "找不到发布排班表".into()))?;
+    let identity = format!("{id}/{}", relative.to_string_lossy().replace('\\', "/"));
+    let key = format!("{:x}", Sha256::digest(identity.as_bytes()));
+    let document = state.data_dir.join("duty-shared").join(format!("{key}.json"));
+    if method == "PUT" {
+        let _guard = state.duty_lock.lock().await;
+        let body = body.to_vec();
+        let (status, snapshot, changed) = tokio::task::spawn_blocking(move || crate::duty_shared::save(&document, &body))
+            .await.map_err(|error| (500, error.to_string()))??;
+        if changed {
+            state.duty_changes.send_modify(|change| *change = change.wrapping_add(1));
+        }
+        return Ok(response(status, json!(snapshot)));
+    }
+    // Subscribe before reading so a write between read and wait cannot be missed.
+    let mut changes = state.duty_changes.subscribe();
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(18);
+    loop {
+        let path = document.clone();
+        let snapshot = tokio::task::spawn_blocking(move || crate::duty_shared::read(&path))
+            .await.map_err(|error| (500, error.to_string()))??;
+        if since != Some(snapshot.revision) {
+            return Ok(response(200, json!(snapshot)));
+        }
+        if tokio::time::timeout_at(deadline, changes.changed()).await.is_err() {
+            return Ok(response(204, Value::Null));
+        }
+    }
+}
+
 async fn route(state: &Arc<Shared>, method: &str, path: &str, body: &[u8]) -> ApiResult {
+    if let Some(rest) = path.strip_prefix("/api/v1/duty-shared/") {
+        return shared_duty(state, method, rest, body).await;
+    }
     if let Some(rest) = path.strip_prefix("/api/v1/text-history/") {
         let _lock = state.sync_lock.lock().await;
         let mounts=state.config.mounts.clone();let data=state.data_dir.clone();
@@ -764,6 +829,84 @@ pub fn catalog(mounts: &[Mount]) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn shared_duty_updates_two_clients_without_writing_reference() {
+        let dir = std::env::temp_dir().join(format!("shared-duty-{}", uuid::Uuid::new_v4()));
+        let published = dir.join("published");
+        fs::create_dir_all(&published).unwrap();
+        let file = published.join("排班表.xlsx");
+        let reference = b"reference workbook";
+        fs::write(&file, reference).unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut config = Config::default();
+        config.port = listener.local_addr().unwrap().port();
+        drop(listener);
+        config.mounts = vec![Mount {
+            id: "duty".into(), name: "排班表".into(), path: published.to_string_lossy().into(),
+            kind: "duty".into(), enabled: true,
+        }];
+        let data = dir.join("state");
+        let service = start(config.clone(), data.clone()).await.unwrap();
+        let host = format!("http://127.0.0.1:{}", config.port);
+        let resource = format!("duty/{}", encoded(Path::new("排班表.xlsx")));
+        let sheet = format!("{host}/api/v1/duty-shared/sheet/{resource}");
+        let watch = format!("{host}/api/v1/duty-shared/watch/0/{resource}");
+        let a = reqwest::Client::new();
+        let b = reqwest::Client::new();
+        let token = &config.access_token;
+        assert_eq!(a.get(&sheet).send().await.unwrap().status(), 401);
+        let get = || async {
+            let bytes = a.get(&sheet).bearer_auth(token).send().await.unwrap().bytes().await.unwrap();
+            serde_json::from_slice::<Value>(&bytes).unwrap()
+        };
+        assert_eq!(get().await, json!({"revision":0,"entries":{}}));
+        let wait = tokio::spawn({
+            let token = token.clone();
+            async move { b.get(watch).bearer_auth(token).send().await.unwrap() }
+        });
+        tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            while service.shared.duty_changes.receiver_count() == 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        }).await.unwrap();
+        let first = json!({"id":"first","changes":{"drill/2026-11-28/C":{
+            "expected":null,"value":[{"date":"2026-11-28","group":"C","name":"夜班演练"},
+                {"date":"2026-11-28","group":"C","name":"第二项演练"}]
+        }}});
+        let put = |input: Value| {
+            a.put(&sheet).bearer_auth(token).header("content-type", "application/json")
+                .body(input.to_string()).send()
+        };
+        assert_eq!(put(first.clone()).await.unwrap().status(), 200);
+        let remote = tokio::time::timeout(std::time::Duration::from_secs(3), wait).await.unwrap().unwrap();
+        let snapshot: Value = serde_json::from_slice(&remote.bytes().await.unwrap()).unwrap();
+        assert_eq!(snapshot["entries"]["drill/2026-11-28/C"]["value"][0]["name"], "夜班演练");
+        assert_eq!(snapshot["entries"]["drill/2026-11-28/C"]["value"][1]["name"], "第二项演练");
+        assert_eq!(put(first).await.unwrap().status(), 200);
+        assert_eq!(get().await["revision"], 1);
+        let stale = json!({"id":"stale","changes":{"drill/2026-11-28/C":{"expected":null,"value":null}}});
+        assert_eq!(put(stale).await.unwrap().status(), 409);
+        let disjoint = json!({"id":"other_day","changes":{"role/2026-11-29/C/night":{
+            "expected":null,"value":{"date":"2026-11-29","group":"C","shiftType":"night","posts":[{"person":"赵锐","name":"四层"}]}
+        }}});
+        assert_eq!(put(disjoint).await.unwrap().status(), 200);
+        let invalid = json!({"id":"invalid","changes":{"drill/2026-11-28/C":{
+            "expected":"first","value":[{"date":"2026-12-01","group":"C","name":"错误的日期"}]
+        }}});
+        assert_eq!(put(invalid).await.unwrap().status(), 400);
+        let deletion = json!({"id":"remove","changes":{"drill/2026-11-28/C":{"expected":"first","value":null}}});
+        assert_eq!(put(deletion).await.unwrap().status(), 200);
+        let latest = get().await;
+        assert_eq!(latest["revision"], 3);
+        assert!(latest["entries"]["drill/2026-11-28/C"]["value"].is_null());
+        assert_eq!(fs::read(&file).unwrap(), reference);
+        service.stop().await.unwrap();
+        let restarted = start(config.clone(), data).await.unwrap();
+        assert_eq!(get().await, latest);
+        restarted.stop().await.unwrap();
+        fs::remove_dir_all(dir).unwrap();
+    }
+
     #[tokio::test]
     async fn text_sync_authenticated_roundtrip_and_concurrent_conflict() {
         async fn value(response: reqwest::Response) -> Value { serde_json::from_slice(&response.bytes().await.unwrap()).unwrap() }

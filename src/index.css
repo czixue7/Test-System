@@ -480,6 +480,10 @@ button, input, textarea, select {
   transition-duration: 200ms;
 }
 
+.question-choice {
+  transition: none;
+}
+
 /* 美化滚动条样�?*/
 ::-webkit-scrollbar {
   width: 6px;

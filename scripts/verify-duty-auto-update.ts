@@ -32,7 +32,7 @@ const base = {
     { date: '2026-11-02', group: 'C', shiftType: 'night', posts: [] },
   ],
 };
-const local = structuredClone(base);
+const local = { ...structuredClone(base), locallyEdited: true };
 // 用户改过 A、删掉 C；B / 岗位未改，应跟随远端
 local.drills = [
   { date: '2026-11-01', group: 'C', name: '本地改过的演练A' },
@@ -68,9 +68,11 @@ assert.equal(roles.get('2026-11-01|C|night'), '本地人员', '用户改过的�
 assert.equal(roles.get('2026-11-02|C|night'), '远端人员2', '用户未改的岗位应跟随发布版本');
 
 // 旧记录没有发布基准时：本地标注优先，不能因自动更新丢失
-const legacyMerged = mergePublishedDuty({ ...base, sourceDrills: undefined, sourceRoles: undefined } as any, published);
+const legacyMerged = mergePublishedDuty({ ...base, locallyEdited: true, sourceDrills: undefined, sourceRoles: undefined } as any, published);
 assert.equal(legacyMerged.drills?.filter(item => item.date === '2026-11-01')[0].name, '旧演练A');
 assert.equal(legacyMerged.drills?.filter(item => item.date === '2026-11-04')[0].name, '远端新增演练D');
+const legacyUnedited = mergePublishedDuty({ ...base, sourceDrills: undefined, sourceRoles: undefined } as any, published);
+assert.deepEqual(legacyUnedited.roles, published.roles, '未编辑的旧排班应采用发布的巡检人员和分区');
 
 // 旧数据没有来源标记时，按名称唯一匹配发布版本完成认领
 const { findPublishedDuty } = await import('../src/utils/dutyScheduleIndex');

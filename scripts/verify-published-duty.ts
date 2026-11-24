@@ -15,6 +15,7 @@ const { downloadPublishedDuty } = await import('../src/utils/publishedDuty');
 const { parseDutyExcelFile } = await import('../src/utils/dutyParsers');
 const { fetchDutyIndex } = await import('../src/utils/dutyScheduleIndex');
 const { syncDataNow } = await import('../src/utils/dataSync');
+const { dutyWithSharedAnnotations } = await import('../src/utils/sharedDutyAnnotations');
 const { contentHash } = await import('../src/utils/questionBankSync');
 
 const workbook = XLSX.utils.book_new();
@@ -84,7 +85,8 @@ const synced = duties.getState().duties[0];
 assert.equal(synced.id, original.id);
 assert.equal(synced.name, item.name);
 assert.equal(synced.sourceSha, item.sha);
-assert.deepEqual(synced.drills, [localDrill], '自动覆盖必须保留用户自己的标注');
+assert.deepEqual(dutyWithSharedAnnotations(synced).drills, [localDrill], '更新参考表必须保留待提交的共享标注');
+assert.deepEqual(synced.drills, local.drills, '标注不得改写参考数据');
 // JSON remains supported, including drill and role metadata.
 const data = { name: '新版值班表', shifts: [{ date: '2026-10-21', shiftType: '夜班', personInCharge: '测试人员' }],
   drills: [{ date: '2026-10-21', content: '测试演练' }], roles: [{ group: 'C', leader: '测试人员', posts: [] }] };
@@ -98,5 +100,38 @@ assert.equal(json.shifts[0].shiftType, 'night');
 assert.deepEqual(json.drills, data.drills);
 assert.deepEqual(json.roles, data.roles);
 await assert.rejects(downloadPublishedDuty({ ...jsonItem, sha: '0'.repeat(64) }, token), /完整性校验失败/);
-assert(duties.getState().duties.some(d => d.id === original.id && d.drills?.some(drill => drill.name === localDrill.name)));
+assert(duties.getState().duties.some(d => d.id === original.id && dutyWithSharedAnnotations(d).drills?.some(drill => drill.name === localDrill.name)));
+
+// An unbound import, including one created before source baselines, must update in place.
+const { autoUpdateDuties } = await import('../src/utils/dutyAutoUpdate');
+const { useToastStore } = await import('../src/components/Toast');
+const updatedRoles = [{ date: '2026-11-28', group: 'C', shiftType: 'night', posts: [
+  { name: '(整层)四层', person: '赵锐', kind: 'patrol' },
+] }] as const;
+const staleRoles = [{ date: '2026-11-28', group: 'C', shiftType: 'night', posts: [
+  { name: '(左)屋面+四层', person: '旧人员', kind: 'patrol' },
+] }] as const;
+binary = new TextEncoder().encode(JSON.stringify({ ...data, name: item.name, roles: updatedRoles }));
+item = { ...jsonItem, name: item.name, sha: await contentHash(binary) };
+const stale = { ...original, name: item.name, sourceSha: undefined, sourceType: undefined,
+  sourceFilename: undefined, sourceRoles: undefined, locallyEdited: undefined,
+  roles: structuredClone(staleRoles) as typeof original.roles };
+duties.setState({ duties: [stale] });
+assert.deepEqual(await autoUpdateDuties(), { updated: 1, failed: 0 });
+const current = duties.getState().duties[0];
+assert.equal(current.id, stale.id);
+assert.deepEqual(current.roles, updatedRoles);
+assert.equal(current.sourceSha, item.sha);
+
+// Recover an update that recorded its SHA while leaving old roles on screen.
+duties.setState({ duties: [{ ...current, roles: stale.roles }] });
+requests = [];
+assert.deepEqual(await autoUpdateDuties(), { updated: 1, failed: 0 });
+assert(requests.every(request => request.url.endsWith('/duty-index.json')), 'Recovery must reuse the saved baseline without downloading again');
+assert.deepEqual(duties.getState().duties[0].roles, updatedRoles);
+const toastCount = useToastStore.getState().toasts.length;
+binary = new TextEncoder().encode(JSON.stringify({ ...data, name: item.name, description: '元数据更新', roles: updatedRoles }));
+item = { ...item, sha: await contentHash(binary) };
+assert.deepEqual(await autoUpdateDuties(), { updated: 0, failed: 0 });
+assert.equal(useToastStore.getState().toasts.length, toastCount, 'No success toast for metadata-only changes');
 console.log(`✓ Published Excel: ${local.shifts.length} shifts, ${local.drills?.length ?? 0} drills, ${local.roles?.length ?? 0} roles; local/remote parsing, authenticated GET, no sync storage, unchanged reuse and invalid-file protection`);

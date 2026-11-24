@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useBackNavigation } from '../hooks/useBackNavigation';
+import { useNavigate } from 'react-router-dom';
 import { useRecordStore } from '../store/recordStore';
 import ConfirmModal from '../components/ConfirmModal';
 import { useSafeArea } from '../hooks/useSafeArea';
@@ -8,19 +9,12 @@ import { ExamRecord } from '../types';
 
 const Records: React.FC = () => {
   const navigate = useNavigate();
-  const location = useLocation();
   const { records, deleteRecord, clearRecords } = useRecordStore();
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<ExamRecord | null>(null);
   const safeArea = useSafeArea();
 
-  const handleGoBack = () => {
-    if (window.history.length > 1 && location.key !== 'default') {
-      navigate(-1);
-    } else {
-      navigate('/');
-    }
-  };
+  const handleGoBack = useBackNavigation('/profile');
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 safe-header">

@@ -75,10 +75,11 @@ export function checkDutyStatus(
     return { exists: true, hasUpdate: true, isBuiltIn: false };
   }
 
-  // 如果 SHA 长度不同，说明使用了不同的哈希算法，无法比较，视为无更新
-  const hasUpdate =
-    existingDuty.sourceSha.length === remoteSha.length &&
-    existingDuty.sourceSha !== remoteSha;
+  // 哈希算法可能不同（仓库是 40 位 Git blob SHA-1、电脑服务是 64 位 SHA-256），
+  // 不能用长度否定更新，否则旧 sha 永远对不上、点下载也不会刷新内容。
+  // 只要值不同就按「需要刷新」处理，由下载流程拿到文件后按实际内容比对，
+  // 内容一致时只更新 sha，不提示有更新。
+  const hasUpdate = existingDuty.sourceSha !== remoteSha;
 
   return {
     exists: true,
@@ -104,9 +105,8 @@ export function checkDutyUpdate(
     return { hasUpdate: false, remoteSha: null };
   }
 
-  const hasUpdate =
-    duty.sourceSha.length === remoteDuty.sha.length &&
-    remoteDuty.sha !== duty.sourceSha;
+  // 同 checkDutyStatus：值不同即视为需要刷新（哈希算法可能不同，不能只看长度）
+  const hasUpdate = remoteDuty.sha !== duty.sourceSha;
 
   return { hasUpdate, remoteSha: remoteDuty.sha };
 }

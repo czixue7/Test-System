@@ -247,6 +247,22 @@ export interface DutyRoleAssignment {
   posts: DutyRolePost[];     // 岗位划分
 }
 
+export type DutyAnnotation = DutyDrill[] | DutyRoleAssignment | DutyShift[] | null;
+export interface SharedDutySnapshot {
+  revision: number;
+  entries: Record<string, { version: string; value: DutyAnnotation }>;
+}
+export interface SharedDutyBatch {
+  id: string;
+  changes: Record<string, { expected: string | null; value: DutyAnnotation }>;
+}
+export interface SharedDutyState {
+  snapshot?: SharedDutySnapshot;
+  pending: SharedDutyBatch[];
+  conflict?: boolean;
+  error?: string;
+}
+
 // 一份值班表（可包含多天、多班次）
 export interface DutySchedule {
   id: string;
@@ -265,6 +281,7 @@ export interface DutySchedule {
   /** 上次发布版本的岗位划分：用于自动更新时识别用户自己改过的标注 */
   sourceRoles?: DutyRoleAssignment[];
   locallyEdited?: boolean;
+  sharedAnnotations?: SharedDutyState;
 }
 
 // 索引文件中的一项（与 BankIndexItem 对应）

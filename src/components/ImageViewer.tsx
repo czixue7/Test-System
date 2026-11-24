@@ -79,6 +79,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
   const handleClose = useCallback(() => {
     if (closeStartedRef.current) return;
     closeStartedRef.current = true;
+    if (window.history.state?.imageViewer === true) window.history.back();
     log('Closing viewer');
     const image = imageRef.current;
     // 保留当前缩放/拖动的视觉位置，从当前位置直接缩回，不先跳回居中。
@@ -139,7 +140,9 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
   // 于是父组件每重渲染一次就压入一条历史 —— 顺序练题计时器每秒重渲染一次，
   // 在图片上停留 60 秒后按安卓返回键要按 60 多次才能真正返回。
   useEffect(() => {
-    window.history.pushState(null, '', window.location.href);
+    if (window.history.state?.imageViewer !== true) {
+      window.history.pushState({ ...window.history.state, imageViewer: true }, '', window.location.href);
+    }
 
     const handlePopState = (e: PopStateEvent) => {
       if (visibleRef.current && !closingRef.current) {

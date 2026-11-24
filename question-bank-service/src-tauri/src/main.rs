@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod endpoint;
 mod api_config;
+mod duty_shared;
 mod bank_sync;
 mod model;
 mod packages;

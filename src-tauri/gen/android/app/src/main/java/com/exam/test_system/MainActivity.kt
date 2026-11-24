@@ -14,6 +14,9 @@ import androidx.activity.enableEdgeToEdge
 
 class MainActivity : TauriActivity() {
 
+    // Let the WebView consume back gestures while it has a previous page.
+    override val handleBackNavigation: Boolean = true
+
     companion object {
         private const val REQUEST_CODE_INSTALL_PERMISSION = 1001
         private const val REQUEST_CODE_INSTALL_APK = 1002

@@ -4,12 +4,15 @@ import { useDataSourceStore } from '../store/dataSourceStore';
 import { useToastStore } from '../components/Toast';
 import { fetchDutyIndex, findPublishedDuty } from './dutyScheduleIndex';
 import { downloadPublishedDuty } from './publishedDuty';
+import { canonicalJson } from './dataSyncMerge';
+import { dutyWithSharedAnnotations, preserveSharedAnnotations } from './sharedDutyAnnotations';
 
 type PublishedDuty = Omit<DutySchedule, 'id' | 'createdAt' | 'updatedAt'>;
+type DutyContent = Pick<DutySchedule, 'name' | 'description' | 'shifts' | 'drills' | 'roles'>;
 
 const drillKey = (item: DutyDrill) => `${item.date}|${item.group}`;
 const roleKey = (item: DutyRoleAssignment) => `${item.date}|${item.group}|${item.shiftType || ''}`;
-const sameEntry = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+const sameEntry = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
 
 /**
  * 以发布版本为基准合并用户标注：
@@ -62,16 +65,38 @@ function mergeAnnotations<T>(
   return result;
 }
 
+/**
+ * 判断发布内容与本地展示内容是否一致。
+ * 解析文件时每次都会重新生成班次 id，直接比较会误判为“有更新”，
+ * 因此序列化时丢弃所有 id 字段，并统一空数组与 undefined。
+ */
+export function sameDutyContent(
+  local: DutySchedule,
+  next: DutyContent
+): boolean {
+  const snapshot = (value: DutyContent) => canonicalJson({
+    name: value.name,
+    shifts: value.shifts.map(({ id: _id, ...shift }) => shift),
+    drills: value.drills ?? [],
+    roles: value.roles ?? [],
+  });
+  return snapshot(local) === snapshot(next);
+}
+
 /** 用发布源数据覆盖班次，同时保留用户自己改过的演练与岗位标注。 */
-export function mergePublishedDuty(local: DutySchedule, published: PublishedDuty): Partial<DutySchedule> {
-  const drills = mergeAnnotations(published.drills, local.drills, local.sourceDrills, drillKey);
-  const roles = mergeAnnotations(published.roles, local.roles, local.sourceRoles, roleKey);
+export function mergePublishedDuty(local: DutySchedule, published: PublishedDuty): DutyContent {
+  const drills = local.locallyEdited && !local.sharedAnnotations
+    ? mergeAnnotations(published.drills, local.drills, local.sourceDrills, drillKey)
+    : published.drills;
+  const roles = local.locallyEdited && !local.sharedAnnotations
+    ? mergeAnnotations(published.roles, local.roles, local.sourceRoles, roleKey)
+    : published.roles;
   return {
     name: published.name,
     description: published.description,
     shifts: published.shifts,
-    drills: drills.length ? drills : undefined,
-    roles: roles.length ? roles : undefined
+    drills: drills?.length ? drills : undefined,
+    roles: roles?.length ? roles : undefined
   };
 }
 
@@ -111,10 +136,9 @@ function hasServiceSource(): boolean {
  */
 export function startDutyLiveSync(intervalMs = 60000): () => void {
   if (typeof window === 'undefined' || typeof document === 'undefined') return () => {};
-  if (!hasServiceSource()) return () => {};
   let stopped = false;
   const tick = () => {
-    if (stopped || document.visibilityState !== 'visible') return;
+    if (stopped || document.visibilityState !== 'visible' || !hasServiceSource()) return;
     void autoUpdateDuties({ quick: true });
   };
   const onVisible = () => {
@@ -151,24 +175,42 @@ async function run(options: DutyAutoUpdateOptions): Promise<DutyAutoUpdateResult
     const match = findPublishedDuty(index, duty);
     if (!match) continue;
     const { item, source } = match;
-    // 已有来源标记且 SHA 一致时无需下载；旧数据没有来源标记时下载一次完成认领。
-    if (
-      duty.sourceSha &&
-      duty.sourceSha.length === item.sha.length &&
-      duty.sourceSha === item.sha
-    )
-      continue;
-
     try {
+      const store = useDutyScheduleStore.getState();
+      const current = store.getDuty(duty.id);
+      if (!current || current.sourceSha !== duty.sourceSha || current.sourceFilename !== duty.sourceFilename) continue;
+      const binding = { sourceFilename: item.filename, sourceType: source };
+      const refreshReference = !!(current.sharedAnnotations && current.locallyEdited);
+      if (current.sourceSha && current.sourceSha === item.sha && !refreshReference) {
+        // 旧版可能先记下了新哈希和基准，却仍显示旧岗位。用已保存的基准修复未编辑的表。
+        if (current.locallyEdited) continue;
+        const roles = current.sourceRoles ?? current.roles;
+        const drills = current.sourceDrills ?? current.drills;
+        const changed = !sameEntry(current.roles ?? [], roles ?? []) || !sameEntry(current.drills ?? [], drills ?? []);
+        if (changed || current.sourceFilename !== item.filename || current.sourceType !== source) {
+          store.applyRemoteDuty(current.id, { roles, drills, ...binding }, item.sha, {
+            drills: current.sourceDrills, roles: current.sourceRoles
+          });
+        }
+        if (changed && !current.sharedAnnotations) updatedNames.push(current.name);
+        continue;
+      }
+
       const published = await downloadPublishedDuty(item);
-      const merged = mergePublishedDuty(duty, published);
-      useDutyScheduleStore.getState().applyRemoteDuty(
-        duty.id,
-        { ...merged, sourceFilename: item.filename, sourceType: source },
-        item.sha,
-        { drills: published.drills, roles: published.roles }
-      );
-      updatedNames.push(duty.name);
+      const latest = store.getDuty(duty.id);
+      if (!latest || latest.sourceSha !== current.sourceSha || latest.sourceFilename !== current.sourceFilename) continue;
+      const shared = preserveSharedAnnotations(latest, item.filename);
+      const merged = mergePublishedDuty({ ...latest, sharedAnnotations: shared }, published);
+      const changed = !sameDutyContent(latest, merged);
+      const displayChanged = shared ? !sameDutyContent(dutyWithSharedAnnotations(latest), dutyWithSharedAnnotations({
+        ...latest, ...merged, sharedAnnotations: shared, sourceDrills: published.drills, sourceRoles: published.roles,
+      })) : changed;
+      store.applyRemoteDuty(latest.id, {
+        ...(changed ? merged : { description: merged.description }),
+        ...(shared ? { sharedAnnotations: shared, locallyEdited: false } : {}),
+        ...binding
+      }, item.sha, { drills: published.drills, roles: published.roles });
+      if (displayChanged) updatedNames.push(merged.name);
     } catch (error) {
       failed++;
       console.warn(`[DutyAutoUpdate]「${duty.name}」自动更新失败:`, error);

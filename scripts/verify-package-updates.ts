@@ -6,7 +6,7 @@ nav('Android arm64','Linux aarch64');
 const {useDataSourceStore:store}=await import('../src/store/dataSourceStore');
 const {configuredRelease,compareBuildNumbers}=await import('../src/utils/releaseSources');
 const {platformAsset}=await import('../src/utils/updateAssets');
-const {checkUpdate,downloadApk}=await import('../src/utils/updater');
+const {checkUpdate,downloadApk,CURRENT_VERSION_HASH}=await import('../src/utils/updater');
 const {useUpdaterStore}=await import('../src/store/updaterStore');
 for(const source of store.getState().sources)store.getState().deleteSource(source.id);
 store.getState().saveSource({id:'packages',kind:'service',name:'软件包',url:'https://packages.test/prefix',token:'package-test-token-1234',enabled:true});
@@ -61,7 +61,18 @@ assert.equal((await configuredRelease()).version_hash,'261021');
 assert.equal((await checkUpdate()).hasUpdate,false);
 globalThis.fetch=(async()=>Response.json([{tag_name:'v0.4.5',body:'hash:20261121',assets:[{name:'app_arm64.apk',browser_download_url:'https://example.test/old.apk'}]}])) as any;
 assert.equal((await checkUpdate()).hasUpdate,false,'更早日期的构建不能当作更新的安装包');
-globalThis.fetch=(async()=>Response.json([{tag_name:'v0.4.5',body:'hash:20261124A',assets:[{name:'app_build20261124A_arm64.apk',browser_download_url:'https://example.test/next.apk'}]}])) as any;
+const buildDate = CURRENT_VERSION_HASH.slice(0, 8);
+const nextDate = new Date(Date.UTC(Number(buildDate.slice(0, 4)), Number(buildDate.slice(4, 6)) - 1, Number(buildDate.slice(6, 8)) + 1));
+const tomorrowBuild = nextDate.toISOString().slice(0, 10).replaceAll('-', '') + 'A';
+const buildLetter = CURRENT_VERSION_HASH.at(-1)!;
+const nextBuild = buildLetter === 'Z' ? tomorrowBuild : buildDate + String.fromCharCode(buildLetter.charCodeAt(0) + 1);
+const serveBuild = (build: string) => {
+  globalThis.fetch = async () => Response.json([{
+    tag_name: 'v0.4.5', body: `hash:${build}`,
+    assets: [{ name: `app_build${build}_arm64.apk`, browser_download_url: 'https://example.test/build.apk' }],
+  }]);
+};
+serveBuild(tomorrowBuild);
 assert.equal((await checkUpdate()).hasUpdate,true);
 console.log('✓ 八位日期构建正常检查更新；兼容既有六位日期，同日不误报、跨日及跨年排序正确');
 assert(compareBuildNumbers('20261121','20261121A')<0);
@@ -69,9 +80,9 @@ assert(compareBuildNumbers('20261121A','20261121B')<0);
 assert(compareBuildNumbers('20261121Z','20261122')<0);
 assert(compareBuildNumbers('261021B','20261021')>0);
 assert.equal(compareBuildNumbers('20261121A','20261121a'),0);
-globalThis.fetch=(async()=>Response.json([{tag_name:'v0.4.5',body:'hash:20261123A',assets:[{name:'app_build20261123A_arm64.apk',browser_download_url:'https://example.test/letter.apk'}]}])) as any;
-assert.equal((await configuredRelease()).version_hash,'20261123A');
+serveBuild(CURRENT_VERSION_HASH);
+assert.equal((await configuredRelease()).version_hash,CURRENT_VERSION_HASH);
 assert.equal((await checkUpdate()).hasUpdate,false,'当前字母构建不能被当作更新的安装包');
-globalThis.fetch=(async()=>Response.json([{tag_name:'v0.4.5',body:'hash:20261123B',assets:[{name:'app_build20261123B_arm64.apk',browser_download_url:'https://example.test/letter-b.apk'}]}])) as any;
+serveBuild(nextBuild);
 assert.equal((await checkUpdate()).hasUpdate,true);
 console.log('✓ 构建号同日从 A 开始：同 A 不误报、同 B 更新，跨日仍更大，大小写等价');

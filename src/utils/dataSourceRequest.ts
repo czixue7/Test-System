@@ -125,6 +125,7 @@ export async function sourceRequest<T>(
     }
   }
   let data: any;
+  if (status === 204) return { status, data: undefined as T };
   if (options.raw && status >= 200 && status < 300)
     return { status, data: text as T };
   try {

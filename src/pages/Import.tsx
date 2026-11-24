@@ -1,13 +1,11 @@
 import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useBackNavigation } from '../hooks/useBackNavigation';
 import { useQuestionBankStore } from '../store/questionBankStore';
 import { useSafeArea } from '../hooks/useSafeArea';
 import { useToast } from '../hooks/useToast';
 import { convertJsonToBank, parseJsonFile, validateJsonBank } from '../utils/jsonImporter';
 
 const Import: React.FC = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
   const { importBank } = useQuestionBankStore();
   const safeArea = useSafeArea();
   const { showSuccess, showError } = useToast();
@@ -68,13 +66,7 @@ const Import: React.FC = () => {
   ]
 }`;
 
-  const handleGoBack = () => {
-    if (window.history.length > 1 && location.key !== 'default') {
-      navigate(-1);
-    } else {
-      navigate('/');
-    }
-  };
+  const handleGoBack = useBackNavigation('/');
 
   const handleImportFiles = async (files: FileList | null) => {
     if (!files) return;
@@ -145,7 +137,7 @@ const Import: React.FC = () => {
         );
       }
       if (importedCount > 0) {
-        navigate('/');
+        handleGoBack();
       }
     } finally {
       setIsImporting(false);

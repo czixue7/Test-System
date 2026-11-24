@@ -17,20 +17,32 @@ let count=0, mode='empty';
 let finish:((value:any)=>void)|undefined;
 const state:any={React,console,safeArea:{top:0},loadingRemote:false,remoteDuties:[],remoteError:null,
   remoteRequestPending:{current:false},duties:[],closeAddModal:()=>{},showError:()=>{},
+  closeDownloadPanel:()=>{},showDownloadPanel:false,
+  navigate:(pathname:string, options:any)=>{
+    assert.equal(pathname,'/duty');
+    state.showDownloadPanel=options.state.downloadPanel;
+  },
+  useEffect:(callback:()=>void)=>callback(),
   checkDutyStatus:()=>({exists:false,hasUpdate:false}),handleDownloadRemote:()=>{},
   fetchDutyIndex:async()=>{count++;if(mode==='hold')return new Promise(r=>{finish=r;});if(mode==='error')throw Error('Offline');return {systemDuties:[],userDuties:[]};},
 };
 for(const [setter,key] of [['setLoadingRemote','loadingRemote'],['setRemoteError','remoteError'],['setRemoteDuties','remoteDuties'],['setShowDownloadPanel','showDownloadPanel']])
   state[setter]=(value:any)=>{state[key]=typeof value==='function'?value(state[key]):value;};
 const openHandlers:ts.ArrowFunction[]=[];
-const visit=(node:ts.Node)=>{if(ts.isJsxAttribute(node)&&node.name.getText(ast)==='onClick'&&node.initializer&&ts.isJsxExpression(node.initializer)&&node.initializer.expression&&ts.isArrowFunction(node.initializer.expression)&&node.initializer.expression.getText(ast).includes('setShowDownloadPanel(true)'))openHandlers.push(node.initializer.expression);ts.forEachChild(node,visit);};
+const downloadEffects:ts.CallExpression[]=[];
+const visit=(node:ts.Node)=>{
+  if(ts.isJsxAttribute(node)&&node.name.getText(ast)==='onClick'&&node.initializer&&ts.isJsxExpression(node.initializer)&&node.initializer.expression&&ts.isArrowFunction(node.initializer.expression)&&node.initializer.expression.getText(ast).includes('openDownloadPanel()'))openHandlers.push(node.initializer.expression);
+  if(ts.isCallExpression(node)&&node.expression.getText(ast)==='useEffect'&&node.arguments[1]?.getText(ast)==='[showDownloadPanel]')downloadEffects.push(node);
+  ts.forEachChild(node,visit);
+};
 visit(ast);assert.equal(openHandlers.length,1);
-const code=`const ${find('fetchRemoteDutyList').getText(ast)}; const ${find('renderDownloadPanel').getText(ast)}; globalThis.handlers={fetchRemoteDutyList,renderDownloadPanel,open:${openHandlers[0].getText(ast)}};`;
+assert.equal(downloadEffects.length,1);
+const code=`const ${find('fetchRemoteDutyList').getText(ast)}; const ${find('renderDownloadPanel').getText(ast)}; const ${find('openDownloadPanel').getText(ast)}; globalThis.handlers={fetchRemoteDutyList,renderDownloadPanel,open:${openHandlers[0].getText(ast)},onViewChange:()=>{${downloadEffects[0].getText(ast)};}};`;
 vm.runInNewContext(ts.transpileModule(code,{compilerOptions:{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React}}).outputText,state);
 const h=state.handlers;
 for(let i=0;i<5;i++)h.renderDownloadPanel();
 assert.equal(count,0,'Rendering an empty panel must not fetch');
-h.open();await new Promise(r=>setImmediate(r));
+h.open();h.onViewChange();await new Promise(r=>setImmediate(r));
 assert.equal(count,1,'Explicitly opening the download panel fetches once');
 for(let i=0;i<20;i++)h.renderDownloadPanel();
 await new Promise(r=>setImmediate(r));assert.equal(count,1,'An empty response must stay idle through repeated renders');

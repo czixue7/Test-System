@@ -1,5 +1,23 @@
-import { AnswerWithImages, AutomationStats, BlankResult, Question, UserAnswer } from '../types';
+import { AnswerWithImages, AutomationStats, BlankResult, Question, QuestionType, UserAnswer } from '../types';
 import { normalizeAnswer } from './answerNormalize';
+
+/** 题型中文名：题干最前方用灰色小字提示当前是什么题型 */
+export function getQuestionTypeLabel(type: QuestionType | undefined): string {
+  switch (type) {
+    case 'single-choice':
+      return '单选题';
+    case 'multiple-choice':
+      return '多选题';
+    case 'fill-in-blank':
+      return '填空题';
+    case 'true-false':
+      return '判断题';
+    case 'subjective':
+      return '主观题';
+    default:
+      return '题目';
+  }
+}
 
 export interface BlankMatchResult {
   blankResults: BlankResult[];

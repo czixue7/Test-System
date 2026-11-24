@@ -1,6 +1,7 @@
 import Collapse from '../components/Collapse';
+import { useBackNavigation } from '../hooks/useBackNavigation';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useQuestionBankStore } from '../store/questionBankStore';
 import { QuestionBank, BankIndex, BankImageInfo, BankIndexItem } from '../types';
 import { useToast } from '../hooks/useToast';
@@ -50,7 +51,6 @@ const sortBanks = (a: BankInfo, b: BankInfo) => dictionaryCompare(a.name, b.name
 
 const DownloadBanks: React.FC = () => {
   const navigate = useNavigate();
-  const location = useLocation();
   const { importBankWithSha, updateBankWithSha, banks } = useQuestionBankStore();
   const { showSuccess, showError, showInfo } = useToast();
   const safeArea = useSafeArea();
@@ -389,13 +389,7 @@ const DownloadBanks: React.FC = () => {
     }
   };
 
-  const handleGoBack = () => {
-    if (window.history.length > 1 && location.key !== 'default') {
-      navigate(-1);
-    } else {
-      navigate('/');
-    }
-  };
+  const handleGoBack = useBackNavigation('/');
 
   const toggleSection = (section: 'system' | 'user') => {
     setExpandedSections(prev => ({

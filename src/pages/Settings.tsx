@@ -1,7 +1,7 @@
 import Collapse from '../components/Collapse';
+import { useBackNavigation } from '../hooks/useBackNavigation';
 import ConfirmModal from '../components/ConfirmModal';
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { normalizeQuestionsPerRound, QUESTIONS_PER_ROUND_MAX, QUESTIONS_PER_ROUND_MIN, DefaultHomePage, useSettingsStore } from '../store/settingsStore';
 import AIProfileSettings from '../components/AIProfileSettings';
 import DataSourceSettings from '../components/DataSourceSettings';
@@ -18,7 +18,6 @@ const DEFAULT_HOME_OPTIONS: Array<{ value: DefaultHomePage; label: string }> = [
 ];
 
 const Settings: React.FC = () => {
-  const navigate = useNavigate();
   const { showSuccess } = useToast();
   const safeArea = useSafeArea();
   const {
@@ -93,6 +92,8 @@ const Settings: React.FC = () => {
     }
   };
 
+  const handleGoBack = useBackNavigation('/profile');
+
   const handleToggleGrading = () => {
     setGradingExpanded(!gradingExpanded);
   };
@@ -105,7 +106,7 @@ const Settings: React.FC = () => {
       >
         <div className="max-w-lg mx-auto px-4 h-9 flex items-center justify-between">
           <button
-            onClick={() => navigate(-1)}
+            onClick={handleGoBack}
             className="w-8 h-8 flex items-center justify-center"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useBackNavigation } from '../hooks/useBackNavigation';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useDutyScheduleStore } from '../store/dutyScheduleStore';
-import { DutyShift, DutyShiftType, DutyRoleAssignment, DutyDrill } from '../types';
+import { DutyShift, DutyShiftType, DutyRoleAssignment, DutyDrill, DutySchedule as DutyScheduleData } from '../types';
 import { useSafeArea } from '../hooks/useSafeArea';
 import { useToast } from '../hooks/useToast';
 import { useLongPress } from '../hooks/useLongPress';
@@ -14,10 +15,11 @@ import { applyDutyRoleEdits, dutyLeaderLabel, dutyPostKind, normalizeRolePersonO
 import SwapPersonnelModal from './duty/SwapPersonnelModal';
 import { fetchDutyIndex, checkDutyStatus } from '../utils/dutyScheduleIndex';
 import { downloadPublishedDuty } from '../utils/publishedDuty';
-import { mergePublishedDuty } from '../utils/dutyAutoUpdate';
+import { mergePublishedDuty, sameDutyContent } from '../utils/dutyAutoUpdate';
 import { assertSourceAvailable } from '../utils/dataSourceRequest';
 import { parseDutyExcelFile, parseJsonDutyText, isRestShiftText, DutyParseResult } from '../utils/dutyParsers';
 import { generateDutyForecast } from '../utils/dutyForecast';
+import { dutyWithSharedAnnotations, preserveSharedAnnotations, sharedDutyReference } from '../utils/sharedDutyAnnotations';
 
 const STORAGE_KEY_CURRENT_DUTY = 'current-duty-id';
 
@@ -129,14 +131,16 @@ interface DutySection {
 
 const DutySchedule: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const safeArea = useSafeArea();
   const { showSuccess, showError, showInfo } = useToast();
-  const { duties, loadDuties, importDuty, importDutyWithSha, updateDuty, applyRemoteDuty, deleteDuty } = useDutyScheduleStore();
+  const { duties, loadDuties, importDuty, importDutyWithSha, updateDuty, applyRemoteDuty, deleteDuty, resolveSharedDutyConflict } = useDutyScheduleStore();
   const isLoaded = useDutyScheduleStore((s) => s.isLoaded);
 
   // 直接以 localStorage 记忆的当前值班表 id 初始化（而非挂载后再异步 set），
   // 这样首帧就能命中数据，避免每次切回值班表 tab 先渲染一帧「空态」再跳变到完整布局的闪动
   const [currentDutyId, setCurrentDutyId] = useState<string | null>(() => localStorage.getItem(STORAGE_KEY_CURRENT_DUTY));
+  const [editBasis, setEditBasis] = useState<DutyScheduleData>();
   const [showDutySheet, setShowDutySheet] = useState(false);
 
   const now = new Date();
@@ -208,34 +212,36 @@ const DutySchedule: React.FC = () => {
   // 内容改写：替换 longPressDate 当天的演练条目
   const handleSaveDrills = (date: string | null, rows: DutyDrill[]) => {
     if (!currentDuty || !date) return;
+    const basis = editBasis ?? currentDuty;
     updateDuty(currentDuty.id, {
-      drills: [...(currentDuty.drills || []).filter((d) => d.date !== date), ...rows.map((r) => ({ ...r, date }))]
-    });
+      drills: [...(basis.drills || []).filter((d) => d.date !== date), ...rows.map((r) => ({ ...r, date }))]
+    }, basis);
     setDrillEditOpen(false);
     setLongPressDate(null);
-    showSuccess('演练内容已更新');
+    showSuccess(sharedReference ? '演练修改已保存，正在同步' : '演练内容已更新');
   };
 
   // 岗位改写：替换 longPressDate 当天的岗位划分
   const handleSaveRoles = (date: string | null, roles: DutyRoleAssignment[], renames: RoleNameChange[]) => {
     if (!currentDuty || !date) return;
+    const basis = editBasis ?? currentDuty;
     updateDuty(currentDuty.id, {
-      roles: applyDutyRoleEdits(currentDuty.roles || [], date, roles, renames)
-    });
+      roles: applyDutyRoleEdits(basis.roles || [], date, roles, renames)
+    }, basis);
     setRoleEditOpen(false);
     setLongPressDate(null);
-    showSuccess(renames.length ? '岗位名称已应用到整张值班表，人员改动已保存' : '岗位划分已更新');
+    showSuccess(sharedReference ? '岗位修改已保存，正在同步' : '岗位划分已更新');
   };
 
   // 人员交换：整体替换班次列表（swapPersonnel 已在弹窗内完成对调）
   const handleApplySwap = (newShifts: DutyShift[]) => {
     if (!currentDuty) return;
-    updateDuty(currentDuty.id, { shifts: newShifts });
+    updateDuty(currentDuty.id, { shifts: newShifts }, editBasis ?? currentDuty);
     setSwapOpen(false);
     setLongPressDate(null);
     setSwapTargetDate(null);
     setSwapPickTarget(false);
-    showSuccess('人员交换成功');
+    showSuccess(sharedReference ? '人员交换已保存，正在同步' : '人员交换成功');
   };
 
   // 推算未来排班弹窗
@@ -255,7 +261,14 @@ const DutySchedule: React.FC = () => {
   const [importPreview, setImportPreview] = useState<DutyParseResult | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
-  const [showDownloadPanel, setShowDownloadPanel] = useState(false);
+  // 下载面板作为本页内的二级视图，用路由 state 表示：
+  // 打开时 navigate 一条带标记的历史记录，系统返回键 / 面板返回按钮都只需回退一条，
+  // 从而先回到值班表主视图（值班表 tab），而不是直接离开本页退回上一个 tab 或退出应用。
+  const showDownloadPanel = (location.state as { downloadPanel?: boolean } | null)?.downloadPanel === true;
+  const openDownloadPanel = () => {
+    navigate('/duty', { state: { downloadPanel: true } });
+  };
+  const closeDownloadPanel = useBackNavigation('/duty');
   const remoteRequestPending = useRef(false);
   const [remoteDuties, setRemoteDuties] = useState<RemoteDutyInfo[]>([]);
   const [loadingRemote, setLoadingRemote] = useState(false);
@@ -284,7 +297,12 @@ const DutySchedule: React.FC = () => {
 
   // 兜底：首帧 currentDutyId 尚未经 effect 校正时，直接回退到第一张值班表，
   // 避免「空态 → 完整布局」的跳变闪动（effect 随后会把 currentDutyId 校正并写回 localStorage）
-  const currentDuty = duties.find((d) => d.id === currentDutyId) || duties[0] || undefined;
+  const storedDuty = duties.find((d) => d.id === currentDutyId) || duties[0];
+  const sharedReference = sharedDutyReference(storedDuty?.sourceFilename);
+  const shared = storedDuty?.sharedAnnotations;
+  const currentDuty = useMemo(() => storedDuty && dutyWithSharedAnnotations(storedDuty), [storedDuty]);
+  const editDrills = useMemo(() => (editBasis?.drills ?? []).filter(item => item.date === longPressDate), [editBasis, longPressDate]);
+  const editRoles = useMemo(() => normalizeRolePersonOrder(editBasis?.roles ?? []).filter(item => item.date === longPressDate), [editBasis, longPressDate]);
   const todayStr = formatDate(now);
 
   // 每个值班表的班次/人数统计:一次遍历全部值班表,仅在 duties 变化时重算
@@ -665,28 +683,35 @@ const DutySchedule: React.FC = () => {
       const schedule = await downloadPublishedDuty(duty);
       assertSourceAvailable(duty.sourceId, duty.downloadUrl);
       const newDuty = { ...schedule, sourceType: duty.source };
-      const localExist = duties.find(d =>
+      const localExist = useDutyScheduleStore.getState().duties.find(d =>
         (d.sourceFilename === duty.filename && d.sourceType === duty.source)
         || (!d.sourceFilename && d.name === duty.name)
       );
-      if (localExist && (duty.hasUpdate || !localExist.sourceSha)) {
+      if (localExist && (localExist.sourceSha !== duty.sha || (localExist.sharedAnnotations && localExist.locallyEdited))) {
         // 自动覆盖班次，但保留用户自己改过的演练/岗位标注
+        const sharedAnnotations = preserveSharedAnnotations(localExist, duty.filename);
+        const merged = mergePublishedDuty({ ...localExist, sharedAnnotations }, newDuty);
         applyRemoteDuty(localExist.id, {
-          ...mergePublishedDuty(localExist, newDuty),
+          ...merged,
+          ...(sharedAnnotations ? { sharedAnnotations, locallyEdited: false } : {}),
           sourceFilename: duty.filename,
           sourceType: duty.source
         }, duty.sha, {
           drills: newDuty.drills,
           roles: newDuty.roles
         });
-        showSuccess(`「${newDuty.name}」更新成功，本地标注已保留`);
+        // 索引 sha 与实际内容可能不同步（Git SHA-1 / SHA-256），这里按实际展示内容判断，
+        // 内容确实没变化时不要提示「更新成功」，以免用户以为界面没刷新
+        if (sameDutyContent(localExist, merged)) showInfo(`「${newDuty.name}」已是最新，无需重复下载`);
+        else showSuccess(`「${newDuty.name}」更新成功，本地标注已保留`);
       } else if (localExist) {
         // 已存在且无更新的记录：避免重复新建
         showInfo(`「${newDuty.name}」已是最新，无需重复下载`);
       } else {
-        importDutyWithSha(newDuty, duty.sha, duty.filename);
+        handleSelectDuty(importDutyWithSha(newDuty, duty.sha, duty.filename));
         showSuccess(`「${newDuty.name}」下载成功`);
       }
+      if (localExist) handleSelectDuty(localExist.id);
       setRemoteDuties(prev => prev.map((d, i) => i === index ? { ...d, downloading: false, progress: 100, exists: true, hasUpdate: false } : d));
     } catch (err) {
       setRemoteDuties(prev => prev.map((d, i) => i === index ? { ...d, downloading: false } : d));
@@ -702,13 +727,25 @@ const DutySchedule: React.FC = () => {
     closeDeleteModal();
   };
 
+  // 下载面板是值班表页内的二级视图，历史记录由上面的 navigate('/duty', {state}) 负责，
+  // 打开面板时拉取一次远程列表即可。
+  useEffect(() => {
+    if (!showDownloadPanel) return;
+    void fetchRemoteDutyList();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showDownloadPanel]);
+
+  // 返回上一个操作页面；值班表作为默认落地页时没有上一级，退回首页。
+  // 页内下载面板是路由 state 二级视图，它有自己的历史条目，关闭只回退一条落到值班表本身。
+  const handleGoBack = useBackNavigation('/');
+
   // ===== 下载面板 =====
   const renderDownloadPanel = () => {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900" style={{ paddingTop: safeArea.top }}>
         <header className="sticky top-0 z-10 bg-white dark:bg-gray-800 shadow border-b border-gray-200 dark:border-gray-700">
           <div className="max-w-lg mx-auto px-4 h-9 flex items-center justify-between">
-            <button onClick={() => setShowDownloadPanel(false)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
+            <button onClick={closeDownloadPanel} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
             </button>
             <h1 className="text-base font-semibold dark:text-white">下载值班表</h1>
@@ -763,7 +800,7 @@ const DutySchedule: React.FC = () => {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900" style={{ paddingTop: safeArea.top + 36, paddingBottom: safeArea.bottom + 70 }}>
       <header className="fixed top-0 left-0 right-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800" style={{ paddingTop: safeArea.top }}>
         <div className="relative max-w-lg mx-auto px-4 h-9 flex items-center justify-between">
-          <button onClick={() => navigate('/')} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-300">
+          <button onClick={handleGoBack} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-300">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
           </button>
           <button onClick={() => (duties.length > 0 ? setShowDutySheet(true) : setShowAddModal(true))}
@@ -785,6 +822,25 @@ const DutySchedule: React.FC = () => {
       </header>
 
       <div className="max-w-lg mx-auto px-4 pt-1">
+        {sharedReference && storedDuty && (shared?.pending.length || shared?.error || shared?.conflict) ? (
+          <div className="mb-2 border-b border-gray-200 py-2 text-xs text-gray-600 dark:border-gray-700 dark:text-gray-300">
+            <div role="status">
+              {shared.conflict ? '共享标注有冲突' : shared.pending.length > 0 && `${shared.pending.length} 项修改待同步`}
+              {shared.error && <p>{shared.error}</p>}
+            </div>
+            {shared.conflict && (
+              <div className="mt-2 space-y-2">
+                <p>同一处标注已有其他人修改。请选择本次冲突的处理方式。</p>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="rounded border px-2 py-1"
+                    onClick={() => resolveSharedDutyConflict(storedDuty.id, false)}>采用共享版</button>
+                  <button type="button" className="rounded border px-2 py-1"
+                    onClick={() => resolveSharedDutyConflict(storedDuty.id, true)}>提交我的修改</button>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
         {/* 空状态：未导入任何值班表 */}
         {!currentDuty && (
           <div className="mb-3 bg-gray-100 dark:bg-gray-800 rounded-xl p-6 text-center">
@@ -1157,7 +1213,7 @@ const DutySchedule: React.FC = () => {
                 <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
               </div>
 
-              <button onClick={() => { closeAddModal(); setShowDownloadPanel(true); void fetchRemoteDutyList(); }}
+              <button onClick={() => { closeAddModal(); openDownloadPanel(); }}
                 className="w-full flex items-center gap-3 p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-purple-500 hover:bg-purple-50/50 dark:hover:bg-purple-900/20 transition-colors">
                 <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900/50 rounded-full flex items-center justify-center flex-shrink-0">
                   <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
@@ -1271,7 +1327,7 @@ const DutySchedule: React.FC = () => {
               </button>
             </div>
             <div className="p-5 space-y-3">
-              <button onClick={() => { setShowActionPanel(false); setDrillEditOpen(true); }}
+              <button onClick={() => { setEditBasis(currentDuty); setShowActionPanel(false); setDrillEditOpen(true); }}
                 className="w-full flex items-center gap-3 p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-900/20 transition-colors">
                 <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/50 rounded-full flex items-center justify-center flex-shrink-0">
                   <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
@@ -1281,7 +1337,7 @@ const DutySchedule: React.FC = () => {
                   <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">修改、新增当日卡片中的演练条目</div>
                 </div>
               </button>
-              <button onClick={() => { setShowActionPanel(false); setSwapTargetDate(null); setSwapPickTarget(true); }}
+              <button onClick={() => { setEditBasis(currentDuty); setShowActionPanel(false); setSwapTargetDate(null); setSwapPickTarget(true); }}
                 className="w-full flex items-center gap-3 p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-emerald-400 hover:bg-emerald-50/50 dark:hover:bg-emerald-900/20 transition-colors">
                 <div className="w-10 h-10 bg-emerald-100 dark:bg-emerald-900/50 rounded-full flex items-center justify-center flex-shrink-0">
                   <svg className="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
@@ -1291,7 +1347,7 @@ const DutySchedule: React.FC = () => {
                   <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">与另一日期的人员对调（支持多选、数量可不等）</div>
                 </div>
               </button>
-              <button onClick={() => { setShowActionPanel(false); setRoleEditOpen(true); }}
+              <button onClick={() => { setEditBasis(currentDuty); setShowActionPanel(false); setRoleEditOpen(true); }}
                 className="w-full flex items-center gap-3 p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-purple-400 hover:bg-purple-50/50 dark:hover:bg-purple-900/20 transition-colors">
                 <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900/50 rounded-full flex items-center justify-center flex-shrink-0">
                   <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
@@ -1308,7 +1364,7 @@ const DutySchedule: React.FC = () => {
       <DrillEditModal
         open={drillEditOpen}
         date={longPressDate}
-        initialRows={currentDuty?.drills?.filter((d) => d.date === longPressDate) || []}
+        initialRows={editDrills}
         defaultGroup={dateGroups.get(longPressDate || '')?.[0] || 'A'}
         onSave={(rows) => handleSaveDrills(longPressDate, rows)}
         onClose={() => setDrillEditOpen(false)}
@@ -1318,7 +1374,7 @@ const DutySchedule: React.FC = () => {
       <RoleEditModal
         open={roleEditOpen}
         date={longPressDate}
-        roles={fixedOrderRoles.filter((r) => r.date === longPressDate)}
+        roles={editRoles}
         onSave={(roles, renames) => handleSaveRoles(longPressDate, roles, renames)}
         onClose={() => setRoleEditOpen(false)}
       />
@@ -1337,7 +1393,7 @@ const DutySchedule: React.FC = () => {
         open={swapOpen}
         date={longPressDate}
         targetDate={swapTargetDate}
-        shifts={currentDuty?.shifts || []}
+        shifts={editBasis?.shifts || []}
         onApply={handleApplySwap}
         onClose={() => setSwapOpen(false)}
       />
